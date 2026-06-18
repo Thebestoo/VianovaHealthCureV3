@@ -8,11 +8,14 @@ let transporter = null
 function getTransporter() {
   if (!transporter) {
     transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,          // STARTTLS on port 587
+      family: 4,              // force IPv4 — prevents ENETUNREACH on IPv6-only hosts
       auth: { user: USER, pass: PASS },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
     })
   }
   return transporter
