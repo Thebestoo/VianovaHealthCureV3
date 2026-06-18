@@ -55,22 +55,24 @@ export default function Logs() {
         {/* ── Summary boxes ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, padding: '24px 32px 0' }}>
           <SummaryBox
-            icon={<Activity size={20} color={isSuperAdmin ? '#0e7490' : '#94a3b8'} />}
-            iconBg={isSuperAdmin ? '#e0f2fe' : '#f1f5f9'}
-            label="Total Updates"
-            value={isSuperAdmin ? (summary?.updates ?? '…') : null}
-            locked={!isSuperAdmin}
+            icon={<Activity size={20} color="#0e7490" />}
+            iconBg="#e0f2fe"
+            label="Case Updates"
+            value={summary?.updates ?? '…'}
+            locked={false}
             active={tab === 'updates'}
-            onClick={() => isSuperAdmin && setTab('updates')}
+            onClick={() => setTab('updates')}
+            cta="View →"
           />
           <SummaryBox
-            icon={<AlertCircle size={20} color={isSuperAdmin ? '#dc2626' : '#94a3b8'} />}
-            iconBg={isSuperAdmin ? '#fee2e2' : '#f1f5f9'}
-            label="Total Errors"
-            value={isSuperAdmin ? (summary?.errors ?? '…') : null}
-            locked={!isSuperAdmin}
+            icon={<AlertCircle size={20} color="#dc2626" />}
+            iconBg="#fee2e2"
+            label={isSuperAdmin ? 'System Errors' : 'Case Errors'}
+            value={summary?.errors ?? '…'}
+            locked={false}
             active={tab === 'errors'}
-            onClick={() => isSuperAdmin && setTab('errors')}
+            onClick={() => setTab('errors')}
+            cta="View →"
           />
           <SummaryBox
             icon={<FolderOpen size={20} color="#0e7490" />}
@@ -88,8 +90,8 @@ export default function Logs() {
         <div style={{ padding: '20px 32px 0', display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginTop: 24 }}>
           {[
             { id: 'overview', label: 'Overview' },
-            { id: 'updates',  label: 'Updates',  adminOnly: true },
-            { id: 'errors',   label: 'Errors',   adminOnly: true },
+            { id: 'updates',  label: 'Updates' },
+            { id: 'errors',   label: 'Errors' },
             { id: 'cases',    label: 'Cases' },
           ].map(t => {
             const locked = t.adminOnly && !isSuperAdmin
@@ -113,10 +115,8 @@ export default function Logs() {
         {/* ── Tab content ── */}
         <div style={{ padding: '24px 32px' }}>
           {tab === 'overview' && <OverviewTab summary={summary} isSuperAdmin={isSuperAdmin} setTab={setTab} />}
-          {tab === 'updates' && isSuperAdmin  && <UpdatesPanel apiKey={apiKey} />}
-          {tab === 'updates' && !isSuperAdmin && <LockedSection />}
-          {tab === 'errors'  && isSuperAdmin  && <ErrorsPanel apiKey={apiKey} />}
-          {tab === 'errors'  && !isSuperAdmin && <LockedSection />}
+          {tab === 'updates' && <UpdatesPanel apiKey={apiKey} />}
+          {tab === 'errors'  && <ErrorsPanel apiKey={apiKey} isSuperAdmin={isSuperAdmin} />}
           {tab === 'cases' && <CasesPanel apiKey={apiKey} />}
         </div>
       </>

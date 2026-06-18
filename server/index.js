@@ -160,7 +160,7 @@ function logError(type, message, route = null, stack = null, metadata = null) {
   insertError.run(type, message, stack || null, route || null, metadata ? JSON.stringify(metadata) : null, new Date().toISOString())
 }
 
-// ── email helper ───────────────────────────────────────────────────────────────
+// ── email helpers ─────────────────────────────────────────────────────────────
 async function notify(email, tpl) {
   const result = await sendEmail({ to: email, ...tpl })
   if (!result.ok) {
@@ -169,6 +169,51 @@ async function notify(email, tpl) {
     logUpdate('email_sent', `Email sent to ${email}: ${tpl.subject}`, { to: email, subject: tpl.subject })
   }
   return result
+}
+
+// Broadcast a notification to ALL active users (all doctors + superadmins)
+// skipEmail: optional email to exclude (e.g. the submitter who already gets a different copy)
+function notifyAll(tpl, { skipEmail } = {}) {
+  const users = db.prepare('SELECT email FROM users WHERE active = 1').all()
+  users.forEach(u => {
+    if (skipEmail && u.email === skipEmail) return
+    if (!u.email) return
+    sendEmail({ to: u.email, ...tpl }).then(r => {
+      if (!r.ok) logError('email_failed', r.error, 'notifyAll()', null, { to: u.email, subject: tpl.subject })
+      else logUpdate('email_sent', `Email sent to ${u.email}: ${tpl.subject}`, { to: u.email, subject: tpl.subject })
+    }).catch(() => {})
+  })
+}
+
+// Send a system-error alert to all superadmins + the given doctor email
+function notifySystemError(errorMsg, route, submitterEmail) {
+  const tpl = {
+    subject: '⚠️ Vianova System Error',
+    html: `
+      <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+        <div style="background:#7f1d1d;color:#fff;padding:20px 24px;border-radius:12px 12px 0 0">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin-bottom:4px">Vianova Health · System Alert</div>
+          <div style="font-size:20px;font-weight:700">System Error Detected</div>
+        </div>
+        <div style="background:#fff;border:1px solid #fecaca;border-top:none;padding:20px 24px;border-radius:0 0 12px 12px">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <tr><td style="padding:7px 0;color:#64748b;width:120px">Route</td><td style="color:#0f172a;font-family:monospace">${route || '—'}</td></tr>
+            <tr><td style="padding:7px 0;color:#64748b">Error</td><td style="color:#dc2626;font-weight:600">${errorMsg}</td></tr>
+            <tr><td style="padding:7px 0;color:#64748b">Triggered by</td><td style="color:#0f172a">${submitterEmail || '—'}</td></tr>
+            <tr><td style="padding:7px 0;color:#64748b">Time</td><td style="color:#0f172a">${new Date().toLocaleString()}</td></tr>
+          </table>
+          <div style="margin-top:16px;font-size:12px;color:#94a3b8">Check the Logs &amp; Analytics → Errors tab for full details.</div>
+        </div>
+      </div>
+    `
+  }
+  // Email all superadmins
+  const admins = db.prepare("SELECT email FROM users WHERE role = 'superadmin' AND active = 1").all()
+  admins.forEach(u => { sendEmail({ to: u.email, ...tpl }).catch(() => {}) })
+  // Also email the submitter if they're not a superadmin
+  if (submitterEmail && !admins.find(u => u.email === submitterEmail)) {
+    sendEmail({ to: submitterEmail, ...tpl }).catch(() => {})
+  }
 }
 
 // ── new auth middleware ────────────────────────────────────────────────────────
@@ -430,19 +475,21 @@ app.post('/api/analyze', auth, async (req, res) => {
       confidence: analysis.confidence_level,
       emergency: isEmergency,
     }
+    // Notify ALL users about the new case
     if (isEmergency) {
-      notify(req.apiKey, tplEmergencyAlert({
+      notifyAll(tplEmergencyAlert({
         ...emailCtx,
         redFlags: analysis.red_flags?.indicators || [],
       }))
     } else {
-      notify(req.apiKey, tplNewCase(emailCtx))
+      notifyAll(tplNewCase(emailCtx))
     }
 
     res.json({ case_id: caseId, analysis })
   } catch (err) {
     console.error(err)
     logError('analyze_failed', err.message, 'POST /api/analyze', err.stack)
+    notifySystemError(err.message, 'POST /api/analyze', req.apiKey)
     res.status(500).json({ error: err.message })
   }
 })
@@ -515,7 +562,7 @@ app.patch('/api/cases/:id/review', auth, (req, res) => {
       age: patient.age, sex: patient.sex,
       treatment: final_approved_cure,
     })
-    notify(req.apiKey, tplCaseApproved({
+    notifyAll(tplCaseApproved({
       caseId: req.params.id,
       label: req.keyLabel,
       age: patient.age, sex: patient.sex,
@@ -528,7 +575,7 @@ app.patch('/api/cases/:id/review', auth, (req, res) => {
       case_id: req.params.id, label: req.keyLabel,
       old_treatment: oldTreatment, new_treatment: final_approved_cure,
     })
-    notify(req.apiKey, tplTreatmentEdited({
+    notifyAll(tplTreatmentEdited({
       caseId: req.params.id,
       label: req.keyLabel,
       age: patient.age, sex: patient.sex,
@@ -629,20 +676,17 @@ app.post('/api/auth/verify', (req, res) => {
 })
 
 // ── GET /api/logs/updates ─────────────────────────────────────────────────────
-const DOCTOR_UPDATE_TYPES = ['case_submitted','case_approved','case_reviewed','treatment_edited','notes_updated','email_sent']
+// Superadmin: all update types. Doctor: all case-related updates for all doctors.
+const CASE_UPDATE_TYPES = ['case_submitted','case_approved','case_reviewed','treatment_edited','notes_updated','email_sent']
 app.get('/api/logs/updates', auth, (req, res) => {
   let rows
   if (req.keyRole === 'superadmin') {
     rows = db.prepare('SELECT * FROM updates_log ORDER BY created_at DESC LIMIT 500').all()
   } else {
-    rows = db.prepare(`SELECT * FROM updates_log WHERE type IN (${DOCTOR_UPDATE_TYPES.map(()=>'?').join(',')}) ORDER BY created_at DESC LIMIT 500`).all(...DOCTOR_UPDATE_TYPES)
-    rows = rows.filter(r => {
-      if (!r.metadata) return true
-      try {
-        const m = JSON.parse(r.metadata)
-        return !m.label || m.label === req.keyLabel
-      } catch { return true }
-    })
+    // Doctors see all case-related activity (not just their own) — no personal filter
+    rows = db.prepare(
+      `SELECT * FROM updates_log WHERE type IN (${CASE_UPDATE_TYPES.map(()=>'?').join(',')}) ORDER BY created_at DESC LIMIT 500`
+    ).all(...CASE_UPDATE_TYPES)
   }
   const counts = {}
   rows.forEach(r => { counts[r.type] = (counts[r.type] || 0) + 1 })
@@ -650,12 +694,16 @@ app.get('/api/logs/updates', auth, (req, res) => {
 })
 
 // ── GET /api/logs/errors ──────────────────────────────────────────────────────
+// Superadmin: all errors. Doctor: only case-submission failures (analyze_failed + email_failed).
+const DOCTOR_ERROR_TYPES = ['analyze_failed', 'email_failed']
 app.get('/api/logs/errors', auth, (req, res) => {
   let rows
   if (req.keyRole === 'superadmin') {
     rows = db.prepare('SELECT * FROM errors_log ORDER BY created_at DESC LIMIT 500').all()
   } else {
-    rows = db.prepare(`SELECT * FROM errors_log WHERE type = 'email_failed' ORDER BY created_at DESC LIMIT 200`).all()
+    rows = db.prepare(
+      `SELECT * FROM errors_log WHERE type IN (${DOCTOR_ERROR_TYPES.map(()=>'?').join(',')}) ORDER BY created_at DESC LIMIT 200`
+    ).all(...DOCTOR_ERROR_TYPES)
   }
   const counts = {}
   rows.forEach(r => { counts[r.type] = (counts[r.type] || 0) + 1 })
