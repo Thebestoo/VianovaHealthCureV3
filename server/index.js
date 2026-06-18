@@ -787,6 +787,138 @@ app.get('/api/share/:token', (req, res) => {
   })
 })
 
+// ── RPM & CCM tables (migrations) ─────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS rpm_patients (
+    id         TEXT PRIMARY KEY,
+    owner_key  TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    dob        TEXT,
+    condition  TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS rpm_readings (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_id   TEXT NOT NULL,
+    owner_key    TEXT NOT NULL,
+    heart_rate   REAL,
+    spo2         REAL,
+    systolic_bp  REAL,
+    diastolic_bp REAL,
+    temperature  REAL,
+    resp_rate    REAL,
+    note         TEXT,
+    recorded_at  TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ccm_patients (
+    id           TEXT PRIMARY KEY,
+    owner_key    TEXT NOT NULL,
+    name         TEXT NOT NULL,
+    dob          TEXT,
+    phone        TEXT,
+    condition    TEXT,
+    insurance    TEXT,
+    care_manager TEXT,
+    status       TEXT NOT NULL DEFAULT 'active',
+    created_at   TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ccm_care_plans (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_id TEXT NOT NULL UNIQUE,
+    owner_key  TEXT NOT NULL,
+    tasks      TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ccm_checkins (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_id TEXT NOT NULL,
+    owner_key  TEXT NOT NULL,
+    minutes    INTEGER,
+    notes      TEXT,
+    barriers   TEXT,
+    plan_update TEXT,
+    created_at TEXT NOT NULL
+  );
+`)
+
+// ── RPM routes ─────────────────────────────────────────────────────────────────
+app.get('/api/rpm/patients', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM rpm_patients WHERE owner_key = ? ORDER BY name').all(req.apiKey)
+  res.json({ patients: rows })
+})
+
+app.post('/api/rpm/patients', auth, (req, res) => {
+  const { name, dob, condition } = req.body
+  if (!name) return res.status(400).json({ error: 'name required' })
+  const id = randomUUID()
+  db.prepare('INSERT INTO rpm_patients (id, owner_key, name, dob, condition, created_at) VALUES (?,?,?,?,?,?)').run(
+    id, req.apiKey, name, dob || null, condition || null, new Date().toISOString()
+  )
+  res.json({ id })
+})
+
+app.get('/api/rpm/patients/:pid/readings', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM rpm_readings WHERE patient_id = ? AND owner_key = ? ORDER BY recorded_at DESC').all(req.params.pid, req.apiKey)
+  res.json({ readings: rows })
+})
+
+app.post('/api/rpm/patients/:pid/readings', auth, (req, res) => {
+  const { heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note } = req.body
+  db.prepare(`INSERT INTO rpm_readings (patient_id, owner_key, heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note, recorded_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    req.params.pid, req.apiKey,
+    heart_rate || null, spo2 || null, systolic_bp || null, diastolic_bp || null,
+    temperature || null, resp_rate || null, note || null,
+    new Date().toISOString()
+  )
+  res.json({ ok: true })
+})
+
+// ── CCM routes ─────────────────────────────────────────────────────────────────
+app.get('/api/ccm/patients', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM ccm_patients WHERE owner_key = ? ORDER BY name').all(req.apiKey)
+  res.json({ patients: rows })
+})
+
+app.post('/api/ccm/patients', auth, (req, res) => {
+  const { name, dob, phone, condition, insurance, care_manager } = req.body
+  if (!name) return res.status(400).json({ error: 'name required' })
+  const id = randomUUID()
+  db.prepare(`INSERT INTO ccm_patients (id, owner_key, name, dob, phone, condition, insurance, care_manager, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`).run(
+    id, req.apiKey, name, dob || null, phone || null,
+    condition || null, insurance || null, care_manager || null, new Date().toISOString()
+  )
+  res.json({ id })
+})
+
+app.get('/api/ccm/patients/:pid/plan', auth, (req, res) => {
+  const plan = db.prepare('SELECT * FROM ccm_care_plans WHERE patient_id = ? AND owner_key = ?').get(req.params.pid, req.apiKey)
+  res.json({ plan: plan || null })
+})
+
+app.post('/api/ccm/patients/:pid/plan', auth, (req, res) => {
+  const { tasks } = req.body
+  db.prepare(`INSERT INTO ccm_care_plans (patient_id, owner_key, tasks, updated_at) VALUES (?,?,?,?)
+    ON CONFLICT(patient_id) DO UPDATE SET tasks=excluded.tasks, updated_at=excluded.updated_at`).run(
+    req.params.pid, req.apiKey, tasks || '[]', new Date().toISOString()
+  )
+  res.json({ ok: true })
+})
+
+app.get('/api/ccm/patients/:pid/checkins', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM ccm_checkins WHERE patient_id = ? AND owner_key = ? ORDER BY created_at DESC').all(req.params.pid, req.apiKey)
+  res.json({ checkins: rows })
+})
+
+app.post('/api/ccm/patients/:pid/checkins', auth, (req, res) => {
+  const { minutes, notes, barriers, plan_update } = req.body
+  db.prepare(`INSERT INTO ccm_checkins (patient_id, owner_key, minutes, notes, barriers, plan_update, created_at) VALUES (?,?,?,?,?,?,?)`).run(
+    req.params.pid, req.apiKey, minutes || null, notes || null, barriers || null, plan_update || null, new Date().toISOString()
+  )
+  res.json({ ok: true })
+})
+
 // ── Serve built frontend (whenever dist/ exists) ──────────────────────────────
 const DIST = join(__dirname, '../dist')
 if (existsSync(DIST)) {

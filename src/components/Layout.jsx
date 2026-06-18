@@ -2,7 +2,8 @@ import React from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, FolderOpen, PlusCircle, BarChart2,
-  HeartPulse, ShieldCheck, Wrench, Stethoscope, LogOut, Wifi, WifiOff
+  HeartPulse, ShieldCheck, Wrench, Stethoscope, LogOut, Wifi, WifiOff,
+  Activity, ClipboardList
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
@@ -10,6 +11,8 @@ const NAV = [
   { label: 'Dashboard',       icon: LayoutDashboard, path: '/dashboard' },
   { label: 'All Cases',       icon: FolderOpen,      path: '/cases' },
   { label: 'New Case',        icon: PlusCircle,      path: '/cases/new' },
+  { label: 'RPM',             icon: Activity,        path: '/rpm' },
+  { label: 'CCM',             icon: ClipboardList,   path: '/ccm' },
   { label: 'Logs & Analytics',icon: BarChart2,       path: '/logs' },
 ]
 

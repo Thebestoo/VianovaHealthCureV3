@@ -8,6 +8,8 @@ import NewCase from './pages/NewCase.jsx'
 import CaseReview from './pages/CaseReview.jsx'
 import Cases from './pages/Cases.jsx'
 import Logs from './pages/Logs.jsx'
+import RPM from './pages/RPM.jsx'
+import CCM from './pages/CCM.jsx'
 import SharedCase from './pages/SharedCase.jsx'
 
 export default function App() {
@@ -24,6 +26,8 @@ export default function App() {
               <Route path="/cases" element={<Cases />} />
               <Route path="/cases/new" element={<NewCase />} />
               <Route path="/cases/:id" element={<CaseReview />} />
+              <Route path="/rpm" element={<RPM />} />
+              <Route path="/ccm" element={<CCM />} />
               <Route path="/logs" element={<Logs />} />
             </Routes>
           </Layout>
