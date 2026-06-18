@@ -559,12 +559,16 @@ app.post('/api/auth/request-otp', async (req, res) => {
   const code = String(Math.floor(100000 + Math.random() * 900000))
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
   db.prepare('INSERT INTO otp_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(user.email, code, expiresAt)
-  await sendEmail({
+  // Respond immediately — don't block on email delivery
+  res.json({ ok: true })
+  // Send email in background (don't await — prevents hanging if SMTP is slow)
+  console.log(`  OTP for ${user.email}: ${code}`)
+  sendEmail({
     to: user.email,
     subject: 'Your Vianova Login Code',
     html: `
       <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
+        <div style="margin-bottom:24px">
           <span style="font-size:22px;font-weight:700;color:#0f766e">Vianova Health</span>
         </div>
         <h2 style="margin:0 0 8px;color:#111827;font-size:20px">Your login code</h2>
@@ -575,8 +579,9 @@ app.post('/api/auth/request-otp', async (req, res) => {
         <p style="color:#9ca3af;font-size:12px">If you didn't request this, ignore this email.</p>
       </div>
     `
-  })
-  res.json({ ok: true })
+  }).then(r => {
+    if (!r.ok) console.error(`  OTP email failed for ${user.email}:`, r.error)
+  }).catch(err => console.error('  OTP email error:', err.message))
 })
 
 // ── POST /api/auth/verify-otp ──────────────────────────────────────────────────
