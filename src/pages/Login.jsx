@@ -20,6 +20,10 @@ export default function Login() {
   async function handleRequestOtp(e) {
     e.preventDefault()
     setError('')
+    if (!email.trim() || !email.includes('@')) {
+      setError('Please enter a valid email address.')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/auth/request-otp', {
@@ -95,7 +99,7 @@ export default function Login() {
 
         {/* Step 1: Email */}
         {step === 1 && (
-          <form onSubmit={handleRequestOtp}>
+          <form onSubmit={handleRequestOtp} noValidate>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 6 }}>
                 Sign in
@@ -110,11 +114,12 @@ export default function Login() {
                 Email address
               </label>
               <input
-                type="email"
+                type="text"
+                inputMode="email"
+                autoComplete="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                required
                 autoFocus
                 style={{
                   width: '100%', padding: '10px 12px',
@@ -158,7 +163,7 @@ export default function Login() {
 
         {/* Step 2: OTP code */}
         {step === 2 && (
-          <form onSubmit={handleVerifyOtp}>
+          <form onSubmit={handleVerifyOtp} noValidate>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 6 }}>
                 Enter your code

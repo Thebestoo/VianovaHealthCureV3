@@ -101,6 +101,13 @@ export function KeyProvider({ children }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: k }),
       })
+      if (res.status === 401 || res.status === 403) {
+        // stale key — clear it so user is redirected to login
+        localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_ROLE)
+        localStorage.removeItem(LS_LABEL); localStorage.removeItem(LS_EMAIL)
+        setKeyState(''); setRoleState(''); setLabelState(''); setEmailState(''); setStats(null)
+        return
+      }
       const data = await res.json()
       if (res.ok) setStats(data.stats || null)
     } catch {}
