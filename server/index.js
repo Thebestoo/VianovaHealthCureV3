@@ -153,6 +153,23 @@ function requireRole(...roles) {
   }
 }
 
+// ── Auto-seed keys on first run ───────────────────────────────────────────────
+const keyCount = db.prepare('SELECT COUNT(*) as c FROM keys').get().c
+if (keyCount === 0) {
+  const now = new Date().toISOString()
+  const devKey = `vnh_dev_${randomBytes(20).toString('hex')}`
+  const docKey = `vnh_doc_${randomBytes(20).toString('hex')}`
+  db.prepare('INSERT INTO keys (key, role, label, email, created_at) VALUES (?, ?, ?, ?, ?)').run(devKey, 'dev', 'Dev Team', '', now)
+  db.prepare('INSERT INTO keys (key, role, label, email, created_at) VALUES (?, ?, ?, ?, ?)').run(docKey, 'doctor', 'Doctor Team', process.env.DOCTOR_EMAIL || '', now)
+  console.log('\n╔══════════════════════════════════════════════════════╗')
+  console.log('║        VIANOVA — FIRST RUN: KEYS GENERATED          ║')
+  console.log('╠══════════════════════════════════════════════════════╣')
+  console.log(`║  DEV KEY:    ${devKey}  ║`)
+  console.log(`║  DOCTOR KEY: ${docKey}  ║`)
+  console.log('║  Save these — they will not be shown again!          ║')
+  console.log('╚══════════════════════════════════════════════════════╝\n')
+}
+
 // log server start
 logUpdate('server_start', 'Vianova server started', { port: process.env.PORT || 3001 })
 
