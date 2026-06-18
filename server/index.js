@@ -58,6 +58,43 @@ db.exec(`
     metadata    TEXT,
     created_at  TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id         TEXT PRIMARY KEY,
+    email      TEXT UNIQUE NOT NULL,
+    name       TEXT NOT NULL,
+    role       TEXT NOT NULL DEFAULT 'doctor',
+    active     INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS otp_codes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    email      TEXT NOT NULL,
+    code       TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used       INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    user_email TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS gen_patients (
+    id          TEXT PRIMARY KEY,
+    owner_email TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    dob         TEXT,
+    sex         TEXT,
+    phone       TEXT,
+    conditions  TEXT,
+    notes       TEXT,
+    created_at  TEXT NOT NULL
+  );
 `)
 
 // ── migrations ────────────────────────────────────────────────────────────────
@@ -77,19 +114,18 @@ const updateAnalysis = db.prepare('UPDATE cases SET analysis = ?, follow_up_date
 const getCase        = db.prepare('SELECT * FROM cases WHERE case_id = ?')
 const listCases      = db.prepare('SELECT * FROM cases ORDER BY created_at DESC')
 const listCasesByKey = db.prepare('SELECT * FROM cases WHERE owner_key = ? ORDER BY created_at DESC')
-const getCaseOwned   = db.prepare('SELECT * FROM cases WHERE case_id = ? AND (owner_key = ? OR ? = ?)')
 
 // ── ownership helper ───────────────────────────────────────────────────────────
 function getCaseForKey(caseId, reqKey, reqRole) {
-  if (reqRole === 'dev') return getCase.get(caseId)
+  if (reqRole === 'superadmin') return getCase.get(caseId)
   return db.prepare('SELECT * FROM cases WHERE case_id = ? AND owner_key = ?').get(caseId, reqKey)
 }
 function listCasesForKey(reqKey, reqRole) {
-  if (reqRole === 'dev') return listCases.all()
+  if (reqRole === 'superadmin') return listCases.all()
   return listCasesByKey.all(reqKey)
 }
 function keyStats(apiKey, role) {
-  const rows = role === 'dev'
+  const rows = role === 'superadmin'
     ? db.prepare('SELECT analysis, owner_key FROM cases').all()
     : db.prepare('SELECT analysis FROM cases WHERE owner_key = ?').all(apiKey)
   let total = rows.length, pending = 0, approved = 0, emergency = 0
@@ -99,15 +135,15 @@ function keyStats(apiKey, role) {
     else pending++
     if (a.red_flags?.emergency_detected) emergency++
   })
-  // dev: also list distinct doctors
+  // superadmin: also list distinct doctors
   let doctors = undefined
-  if (role === 'dev') {
-    const keys = db.prepare('SELECT key, label, role FROM keys WHERE active = 1').all()
-    doctors = keys.map(k => ({
-      key: k.key.slice(0, 12) + '…',
-      label: k.label,
-      role: k.role,
-      cases: rows.filter(r => r.owner_key === k.key).length
+  if (role === 'superadmin') {
+    const users = db.prepare('SELECT id, name, email, role FROM users WHERE active = 1').all()
+    doctors = users.map(u => ({
+      key: u.email,
+      label: u.name,
+      role: u.role,
+      cases: rows.filter(r => r.owner_key === u.email).length
     }))
   }
   return { total, pending, approved, emergency, ...(doctors ? { doctors } : {}) }
@@ -116,7 +152,6 @@ function keyStats(apiKey, role) {
 // ── DB helpers: logs ───────────────────────────────────────────────────────────
 const insertUpdate  = db.prepare('INSERT INTO updates_log (type, description, metadata, created_at) VALUES (?, ?, ?, ?)')
 const insertError   = db.prepare('INSERT INTO errors_log (type, message, stack, route, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-const getKey        = db.prepare('SELECT * FROM keys WHERE key = ? AND active = 1')
 
 function logUpdate(type, description, metadata = null) {
   insertUpdate.run(type, description, metadata ? JSON.stringify(metadata) : null, new Date().toISOString())
@@ -126,61 +161,102 @@ function logError(type, message, route = null, stack = null, metadata = null) {
 }
 
 // ── email helper ───────────────────────────────────────────────────────────────
-async function notify(apiKey, tpl) {
-  const keyRow = db.prepare('SELECT email, label FROM keys WHERE key = ?').get(apiKey)
-  const to = keyRow?.email
-  const result = await sendEmail({ to, ...tpl })
+async function notify(email, tpl) {
+  const result = await sendEmail({ to: email, ...tpl })
   if (!result.ok) {
-    logError('email_failed', result.error, 'notify()', null, { to, subject: tpl.subject })
+    logError('email_failed', result.error, 'notify()', null, { to: email, subject: tpl.subject })
   } else {
-    logUpdate('email_sent', `Email sent to ${to}: ${tpl.subject}`, { to, subject: tpl.subject })
+    logUpdate('email_sent', `Email sent to ${email}: ${tpl.subject}`, { to: email, subject: tpl.subject })
   }
   return result
 }
 
-// ── auth middleware ────────────────────────────────────────────────────────────
+// ── new auth middleware ────────────────────────────────────────────────────────
+function auth(req, res, next) {
+  const token = req.headers['x-api-key'] || req.query.key
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+  const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token)
+  if (!session || new Date(session.expires_at) < new Date()) return res.status(401).json({ error: 'Session expired' })
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id)
+  if (!user || !user.active) return res.status(401).json({ error: 'Account inactive' })
+  req.apiKey   = user.email   // backward compat — owner_key queries use email
+  req.keyRole  = user.role
+  req.keyLabel = user.name
+  req.user     = user
+  next()
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
+  next()
+}
+
+// ── legacy requireRole (kept for backward compat; mapped to auth/requireAdmin) ─
 function requireRole(...roles) {
   return (req, res, next) => {
-    const key = req.headers['x-api-key'] || req.query.key
-    if (!key) return res.status(401).json({ error: 'API key required' })
-    const row = getKey.get(key)
-    if (!row) return res.status(403).json({ error: 'Invalid or revoked key' })
-    if (!roles.includes(row.role)) return res.status(403).json({ error: 'Insufficient permissions' })
-    req.apiKey  = key
-    req.keyRole = row.role
-    req.keyLabel= row.label
-    next()
+    // Try new session-based auth first
+    const token = req.headers['x-api-key'] || req.query.key
+    if (token) {
+      const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token)
+      if (session && new Date(session.expires_at) >= new Date()) {
+        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id)
+        if (user && user.active) {
+          req.apiKey   = user.email
+          req.keyRole  = user.role
+          req.keyLabel = user.name
+          req.user     = user
+          // map roles: 'dev' => 'superadmin', 'doctor' => 'doctor'
+          const mappedRoles = roles.map(r => r === 'dev' ? 'superadmin' : r)
+          if (mappedRoles.includes(user.role)) return next()
+          return res.status(403).json({ error: 'Insufficient permissions' })
+        }
+      }
+      // Fall back to legacy key lookup
+      const row = db.prepare('SELECT * FROM keys WHERE key = ? AND active = 1').get(token)
+      if (row) {
+        if (!roles.includes(row.role)) return res.status(403).json({ error: 'Insufficient permissions' })
+        req.apiKey   = row.key
+        req.keyRole  = row.role
+        req.keyLabel = row.label
+        return next()
+      }
+    }
+    return res.status(401).json({ error: 'Unauthorized' })
   }
 }
 
-// ── Seed keys from env vars (upserts on every start) ─────────────────────────
+// ── Seed superadmins and doctors ──────────────────────────────────────────────
 ;(() => {
   const now = new Date().toISOString()
-  const upsert = db.prepare(`
-    INSERT INTO keys (key, role, label, email, created_at, active) VALUES (?, ?, ?, ?, ?, 1)
-    ON CONFLICT(key) DO UPDATE SET label=excluded.label, email=excluded.email, active=1
+  const upsertUser = db.prepare(`
+    INSERT INTO users (id, email, name, role, active, created_at) VALUES (?, ?, ?, ?, 1, ?)
+    ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, active=1
   `)
 
-  // Dev key
-  const devKey = process.env.DEV_KEY || `vnh_dev_${randomBytes(20).toString('hex')}`
-  upsert.run(devKey, 'dev', process.env.DEV_LABEL || 'Dev Team', '', now)
-
-  // Doctor keys — supports up to 5 via DOC_KEY, DOC_KEY_2 … DOC_KEY_5
-  const docSlots = [
-    { key: process.env.DOC_KEY,   email: process.env.DOCTOR_EMAIL, label: process.env.DOC_LABEL   || 'Doctor Team' },
-    { key: process.env.DOC_KEY_2, email: process.env.DOC_EMAIL_2,  label: process.env.DOC_LABEL_2 || 'Doctor 2'    },
-    { key: process.env.DOC_KEY_3, email: process.env.DOC_EMAIL_3,  label: process.env.DOC_LABEL_3 || 'Doctor 3'    },
-    { key: process.env.DOC_KEY_4, email: process.env.DOC_EMAIL_4,  label: process.env.DOC_LABEL_4 || 'Doctor 4'    },
-    { key: process.env.DOC_KEY_5, email: process.env.DOC_EMAIL_5,  label: process.env.DOC_LABEL_5 || 'Doctor 5'    },
+  // Hardcoded superadmins
+  const superadmins = [
+    { email: 'diar.azemi@outlook.com', name: 'Diar Azemi',    role: 'superadmin' },
+    { email: 'emorina@vianova.ai',     name: 'Emorina Salihu', role: 'superadmin' },
   ]
-  docSlots.filter(d => d.key).forEach(d => {
-    upsert.run(d.key, 'doctor', d.label, d.email || '', now)
-    console.log(`  DOCTOR: ${d.key} → email: ${d.email || 'NOT SET'}`)
+  superadmins.forEach(u => {
+    upsertUser.run(randomUUID(), u.email, u.name, u.role, now)
   })
 
-  console.log('\n  === Vianova Keys ===')
-  console.log(`  DEV:    ${devKey}`)
-  docSlots.filter(d => d.key).forEach(d => console.log(`  DOCTOR: ${d.key}  (${d.label})`))
+  // Doctors from env vars
+  const docSlots = [
+    { email: process.env.DOC_EMAIL_1, name: process.env.DOC_NAME_1 },
+    { email: process.env.DOC_EMAIL_2, name: process.env.DOC_NAME_2 },
+    { email: process.env.DOC_EMAIL_3, name: process.env.DOC_NAME_3 },
+    { email: process.env.DOC_EMAIL_4, name: process.env.DOC_NAME_4 },
+    { email: process.env.DOC_EMAIL_5, name: process.env.DOC_NAME_5 },
+  ]
+  docSlots.filter(d => d.email && d.name).forEach(d => {
+    upsertUser.run(randomUUID(), d.email, d.name, 'doctor', now)
+    console.log(`  DOCTOR: ${d.email} (${d.name})`)
+  })
+
+  console.log('\n  === Vianova Users ===')
+  superadmins.forEach(u => console.log(`  SUPERADMIN: ${u.email}`))
   console.log()
 })()
 
@@ -306,7 +382,7 @@ You receive one JSON object of patient data. Return EXACTLY this JSON structure 
 }`
 
 // ── POST /api/analyze ──────────────────────────────────────────────────────────
-app.post('/api/analyze', requireRole('dev', 'doctor'), async (req, res) => {
+app.post('/api/analyze', auth, async (req, res) => {
   try {
     const patientData = req.body
     const caseId = randomUUID()
@@ -372,7 +448,7 @@ app.post('/api/analyze', requireRole('dev', 'doctor'), async (req, res) => {
 })
 
 // ── GET /api/cases ─────────────────────────────────────────────────────────────
-app.get('/api/cases', requireRole('dev', 'doctor'), (req, res) => {
+app.get('/api/cases', auth, (req, res) => {
   const rows = listCasesForKey(req.apiKey, req.keyRole)
   const list = rows.map(row => {
     const patient  = JSON.parse(row.patient_input)
@@ -396,7 +472,7 @@ app.get('/api/cases', requireRole('dev', 'doctor'), (req, res) => {
 })
 
 // ── GET /api/cases/:id ─────────────────────────────────────────────────────────
-app.get('/api/cases/:id', requireRole('dev', 'doctor'), (req, res) => {
+app.get('/api/cases/:id', auth, (req, res) => {
   const row = getCaseForKey(req.params.id, req.apiKey, req.keyRole)
   if (!row) return res.status(404).json({ error: 'Not found or access denied' })
   res.json({
@@ -409,7 +485,7 @@ app.get('/api/cases/:id', requireRole('dev', 'doctor'), (req, res) => {
 })
 
 // ── PATCH /api/cases/:id/review ────────────────────────────────────────────────
-app.patch('/api/cases/:id/review', requireRole('dev', 'doctor'), (req, res) => {
+app.patch('/api/cases/:id/review', auth, (req, res) => {
   const row = getCaseForKey(req.params.id, req.apiKey, req.keyRole)
   if (!row) return res.status(404).json({ error: 'Not found or access denied' })
 
@@ -474,28 +550,87 @@ app.patch('/api/cases/:id/review', requireRole('dev', 'doctor'), (req, res) => {
   })
 })
 
-// ── POST /api/auth/verify ──────────────────────────────────────────────────────
+// ── POST /api/auth/request-otp ─────────────────────────────────────────────────
+app.post('/api/auth/request-otp', async (req, res) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'Email required' })
+  const user = db.prepare('SELECT * FROM users WHERE email = ? AND active = 1').get(email.toLowerCase().trim())
+  if (!user) return res.status(404).json({ error: 'No account for this email' })
+  const code = String(Math.floor(100000 + Math.random() * 900000))
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  db.prepare('INSERT INTO otp_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(user.email, code, expiresAt)
+  await sendEmail({
+    to: user.email,
+    subject: 'Your Vianova Login Code',
+    html: `
+      <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
+          <span style="font-size:22px;font-weight:700;color:#0f766e">Vianova Health</span>
+        </div>
+        <h2 style="margin:0 0 8px;color:#111827;font-size:20px">Your login code</h2>
+        <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Use the code below to sign in. It expires in 10 minutes.</p>
+        <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px">
+          <span style="font-size:36px;font-weight:700;letter-spacing:8px;color:#0f766e">${code}</span>
+        </div>
+        <p style="color:#9ca3af;font-size:12px">If you didn't request this, ignore this email.</p>
+      </div>
+    `
+  })
+  res.json({ ok: true })
+})
+
+// ── POST /api/auth/verify-otp ──────────────────────────────────────────────────
+app.post('/api/auth/verify-otp', (req, res) => {
+  const { email, code } = req.body
+  if (!email || !code) return res.status(400).json({ error: 'Email and code required' })
+  const normalEmail = email.toLowerCase().trim()
+  const otp = db.prepare(
+    'SELECT * FROM otp_codes WHERE email = ? AND code = ? AND used = 0 AND expires_at > ? ORDER BY id DESC LIMIT 1'
+  ).get(normalEmail, code, new Date().toISOString())
+  if (!otp) return res.status(400).json({ error: 'Invalid or expired code' })
+  db.prepare('UPDATE otp_codes SET used = 1 WHERE id = ?').run(otp.id)
+  const user = db.prepare('SELECT * FROM users WHERE email = ? AND active = 1').get(normalEmail)
+  if (!user) return res.status(400).json({ error: 'Account not found' })
+  const token = randomBytes(32).toString('hex')
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+  db.prepare('INSERT INTO sessions (token, user_id, user_email, expires_at, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    token, user.id, user.email, expiresAt, new Date().toISOString()
+  )
+  const displayName = user.role === 'doctor' ? `Dr. ${user.name}` : user.name
+  logUpdate('auth_login', `${user.role} "${displayName}" signed in via OTP`, { email: user.email, role: user.role })
+  res.json({ token, role: user.role, label: displayName, email: user.email })
+})
+
+// ── POST /api/auth/verify — backward compat (session token lookup) ─────────────
 app.post('/api/auth/verify', (req, res) => {
   const { key } = req.body
   if (!key) return res.status(400).json({ error: 'Key required' })
-  const row = getKey.get(key)
+  // Try session token
+  const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(key)
+  if (session && new Date(session.expires_at) >= new Date()) {
+    const user = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(session.user_id)
+    if (user) {
+      const displayName = user.role === 'doctor' ? `Dr. ${user.name}` : user.name
+      const stats = keyStats(user.email, user.role)
+      return res.json({ role: user.role, label: displayName, stats, email: user.email })
+    }
+  }
+  // Fall back to legacy key
+  const row = db.prepare('SELECT * FROM keys WHERE key = ? AND active = 1').get(key)
   if (!row) return res.status(403).json({ error: 'Invalid or revoked key' })
   logUpdate('auth_login', `${row.role} key "${row.label}" connected`, { role: row.role, label: row.label })
   const stats = keyStats(key, row.role)
   res.json({ role: row.role, label: row.label, stats })
 })
 
-// ── GET /api/logs/updates (dev + doctor) ──────────────────────────────────────
-// Doctor sees only their own activity; dev sees all
+// ── GET /api/logs/updates ─────────────────────────────────────────────────────
 const DOCTOR_UPDATE_TYPES = ['case_submitted','case_approved','case_reviewed','treatment_edited','notes_updated','email_sent']
-app.get('/api/logs/updates', requireRole('dev', 'doctor'), (req, res) => {
+app.get('/api/logs/updates', auth, (req, res) => {
   let rows
-  if (req.keyRole === 'dev') {
+  if (req.keyRole === 'superadmin') {
     rows = db.prepare('SELECT * FROM updates_log ORDER BY created_at DESC LIMIT 500').all()
   } else {
-    // filter to doctor-relevant types and only their cases
     rows = db.prepare(`SELECT * FROM updates_log WHERE type IN (${DOCTOR_UPDATE_TYPES.map(()=>'?').join(',')}) ORDER BY created_at DESC LIMIT 500`).all(...DOCTOR_UPDATE_TYPES)
-    // further filter: only rows where metadata.label matches or no label filter
     rows = rows.filter(r => {
       if (!r.metadata) return true
       try {
@@ -509,10 +644,10 @@ app.get('/api/logs/updates', requireRole('dev', 'doctor'), (req, res) => {
   res.json({ total: rows.length, by_type: counts, items: rows.map(r => ({ ...r, metadata: r.metadata ? JSON.parse(r.metadata) : null })) })
 })
 
-// ── GET /api/logs/errors — dev sees all; doctor sees only email errors ─────────
-app.get('/api/logs/errors', requireRole('dev', 'doctor'), (req, res) => {
+// ── GET /api/logs/errors ──────────────────────────────────────────────────────
+app.get('/api/logs/errors', auth, (req, res) => {
   let rows
-  if (req.keyRole === 'dev') {
+  if (req.keyRole === 'superadmin') {
     rows = db.prepare('SELECT * FROM errors_log ORDER BY created_at DESC LIMIT 500').all()
   } else {
     rows = db.prepare(`SELECT * FROM errors_log WHERE type = 'email_failed' ORDER BY created_at DESC LIMIT 200`).all()
@@ -522,8 +657,8 @@ app.get('/api/logs/errors', requireRole('dev', 'doctor'), (req, res) => {
   res.json({ total: rows.length, by_type: counts, items: rows.map(r => ({ ...r, metadata: r.metadata ? JSON.parse(r.metadata) : null })) })
 })
 
-// ── GET /api/logs/errors/:id/report (dev only) ────────────────────────────────
-app.get('/api/logs/errors/:id/report', requireRole('dev'), (req, res) => {
+// ── GET /api/logs/errors/:id/report (superadmin only) ─────────────────────────
+app.get('/api/logs/errors/:id/report', auth, requireAdmin, (req, res) => {
   const row = db.prepare('SELECT * FROM errors_log WHERE id = ?').get(req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
   const meta = row.metadata ? JSON.parse(row.metadata) : {}
@@ -551,8 +686,8 @@ app.get('/api/logs/errors/:id/report', requireRole('dev'), (req, res) => {
   res.send(report)
 })
 
-// ── GET /api/logs/cases (dev + doctor) ────────────────────────────────────────
-app.get('/api/logs/cases', requireRole('dev', 'doctor'), (req, res) => {
+// ── GET /api/logs/cases ───────────────────────────────────────────────────────
+app.get('/api/logs/cases', auth, (req, res) => {
   const rows = listCasesForKey(req.apiKey, req.keyRole)
   const cases = rows.map(r => {
     const patient = JSON.parse(r.patient_input)
@@ -572,7 +707,6 @@ app.get('/api/logs/cases', requireRole('dev', 'doctor'), (req, res) => {
       reviewed_by: analysis.doctor_review?.reviewed_by,
       reviewed_at: analysis.doctor_review?.reviewed_at,
       differentials: analysis.differential_assessment?.map(d => d.possibility) || [],
-      // FHIR vitals if imported from JSON
       vitals: patient.vitals || [],
       fhir_imported: !!(patient.fhir_source || (patient.vitals && patient.vitals.length > 0)),
       patient_name: patient.patient_name || null,
@@ -588,8 +722,8 @@ app.get('/api/logs/cases', requireRole('dev', 'doctor'), (req, res) => {
   res.json({ total: cases.length, by_status: byStatus, by_confidence: byConfidence, cases })
 })
 
-// ── GET /api/logs/cases/report (dev + doctor) — beautiful HTML sheet ──────────
-app.get('/api/logs/cases/report', requireRole('dev', 'doctor'), (req, res) => {
+// ── GET /api/logs/cases/report ────────────────────────────────────────────────
+app.get('/api/logs/cases/report', auth, (req, res) => {
   const rows = listCases.all()
   const cases = rows.map(r => {
     const patient  = JSON.parse(r.patient_input)
@@ -638,8 +772,8 @@ app.get('/api/logs/cases/report', requireRole('dev', 'doctor'), (req, res) => {
   res.send(html)
 })
 
-// ── GET /api/logs/summary (auth check + totals) ────────────────────────────────
-app.get('/api/logs/summary', requireRole('dev', 'doctor'), (req, res) => {
+// ── GET /api/logs/summary ──────────────────────────────────────────────────────
+app.get('/api/logs/summary', auth, (req, res) => {
   const updates = db.prepare('SELECT COUNT(*) as c FROM updates_log').get().c
   const errors  = db.prepare('SELECT COUNT(*) as c FROM errors_log').get().c
   const stats   = keyStats(req.apiKey, req.keyRole)
@@ -647,11 +781,11 @@ app.get('/api/logs/summary', requireRole('dev', 'doctor'), (req, res) => {
 })
 
 // ── GET /api/patients/timeline ────────────────────────────────────────────────
-app.get('/api/patients/timeline', requireRole('dev', 'doctor'), (req, res) => {
+app.get('/api/patients/timeline', auth, (req, res) => {
   const q = String(req.query.q || '').trim()
   if (!q) return res.json([])
   const like = `%${q}%`
-  const rows = req.keyRole === 'dev'
+  const rows = req.keyRole === 'superadmin'
     ? db.prepare(`SELECT * FROM cases WHERE patient_input LIKE ? ORDER BY created_at ASC`).all(like)
     : db.prepare(`SELECT * FROM cases WHERE patient_input LIKE ? AND owner_key = ? ORDER BY created_at ASC`).all(like, req.apiKey)
 
@@ -672,8 +806,8 @@ app.get('/api/patients/timeline', requireRole('dev', 'doctor'), (req, res) => {
   res.json(items)
 })
 
-// ── GET /api/cases/:id/print — printable HTML summary ─────────────────────────
-app.get('/api/cases/:id/print', requireRole('dev', 'doctor'), (req, res) => {
+// ── GET /api/cases/:id/print ───────────────────────────────────────────────────
+app.get('/api/cases/:id/print', auth, (req, res) => {
   const row = getCaseForKey(req.params.id, req.apiKey, req.keyRole)
   if (!row) return res.status(404).send('Not found')
   const patient = JSON.parse(row.patient_input)
@@ -756,8 +890,8 @@ ${dr.final_approved_cure ? `<div class="complaint" style="border-left-color:#059
   res.send(html)
 })
 
-// ── POST /api/cases/:id/share — generate share token ─────────────────────────
-app.post('/api/cases/:id/share', requireRole('dev', 'doctor'), (req, res) => {
+// ── POST /api/cases/:id/share ──────────────────────────────────────────────────
+app.post('/api/cases/:id/share', auth, (req, res) => {
   const row = getCaseForKey(req.params.id, req.apiKey, req.keyRole)
   if (!row) return res.status(404).json({ error: 'Not found or access denied' })
   let token = row.share_token
@@ -769,7 +903,7 @@ app.post('/api/cases/:id/share', requireRole('dev', 'doctor'), (req, res) => {
   res.json({ token, share_url: '/share/' + token })
 })
 
-// ── GET /api/share/:token — public read-only access ──────────────────────────
+// ── GET /api/share/:token — public read-only access ───────────────────────────
 app.get('/api/share/:token', (req, res) => {
   const row = db.prepare('SELECT * FROM cases WHERE share_token = ?').get(req.params.token)
   if (!row) return res.status(404).json({ error: 'Not found' })
@@ -785,6 +919,83 @@ app.get('/api/share/:token', (req, res) => {
     patient_input: { age: patient.age || null, sex: patient.sex || null },
     analysis,
   })
+})
+
+// ── Admin routes ───────────────────────────────────────────────────────────────
+app.get('/api/admin/users', auth, requireAdmin, (req, res) => {
+  const users = db.prepare('SELECT id, email, name, role, active, created_at FROM users ORDER BY created_at DESC').all()
+  res.json({ users })
+})
+
+app.post('/api/admin/users', auth, requireAdmin, (req, res) => {
+  const { email, name, role = 'doctor' } = req.body
+  if (!email || !name) return res.status(400).json({ error: 'email and name required' })
+  const normalEmail = email.toLowerCase().trim()
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalEmail)
+  if (existing) {
+    db.prepare('UPDATE users SET name = ?, role = ?, active = 1 WHERE email = ?').run(name, role, normalEmail)
+    res.json({ id: existing.id })
+  } else {
+    const id = randomUUID()
+    db.prepare('INSERT INTO users (id, email, name, role, active, created_at) VALUES (?, ?, ?, ?, 1, ?)').run(
+      id, normalEmail, name, role, new Date().toISOString()
+    )
+    res.json({ id })
+  }
+})
+
+app.patch('/api/admin/users/:id', auth, requireAdmin, (req, res) => {
+  const { active, name, role } = req.body
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  const newName   = name   !== undefined ? name   : user.name
+  const newRole   = role   !== undefined ? role   : user.role
+  const newActive = active !== undefined ? (active ? 1 : 0) : user.active
+  db.prepare('UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?').run(newName, newRole, newActive, req.params.id)
+  res.json({ ok: true })
+})
+
+app.delete('/api/admin/users/:id', auth, requireAdmin, (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(req.params.id)
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id)
+  res.json({ ok: true })
+})
+
+// ── gen_patients routes ────────────────────────────────────────────────────────
+app.get('/api/gen-patients', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM gen_patients WHERE owner_email = ? ORDER BY name').all(req.apiKey)
+  res.json({ patients: rows })
+})
+
+app.post('/api/gen-patients', auth, (req, res) => {
+  const { name, dob, sex, phone, conditions, notes } = req.body
+  if (!name) return res.status(400).json({ error: 'name required' })
+  const id = randomUUID()
+  db.prepare('INSERT INTO gen_patients (id, owner_email, name, dob, sex, phone, conditions, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(
+    id, req.apiKey, name, dob || null, sex || null, phone || null, conditions || null, notes || null, new Date().toISOString()
+  )
+  res.json({ id })
+})
+
+app.put('/api/gen-patients/:id', auth, (req, res) => {
+  const existing = db.prepare('SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?').get(req.params.id, req.apiKey)
+  if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
+  const { name, dob, sex, phone, conditions, notes } = req.body
+  db.prepare('UPDATE gen_patients SET name = ?, dob = ?, sex = ?, phone = ?, conditions = ?, notes = ? WHERE id = ? AND owner_email = ?').run(
+    name || existing.name, dob ?? existing.dob, sex ?? existing.sex,
+    phone ?? existing.phone, conditions ?? existing.conditions,
+    notes ?? existing.notes, req.params.id, req.apiKey
+  )
+  res.json({ ok: true })
+})
+
+app.delete('/api/gen-patients/:id', auth, (req, res) => {
+  const existing = db.prepare('SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?').get(req.params.id, req.apiKey)
+  if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
+  db.prepare('DELETE FROM gen_patients WHERE id = ? AND owner_email = ?').run(req.params.id, req.apiKey)
+  res.json({ ok: true })
 })
 
 // ── RPM & CCM tables (migrations) ─────────────────────────────────────────────

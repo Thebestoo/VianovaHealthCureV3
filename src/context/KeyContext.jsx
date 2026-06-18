@@ -6,13 +6,16 @@ const KeyContext = createContext(null)
 const LS_KEY   = 'vnh_api_key'
 const LS_ROLE  = 'vnh_api_role'
 const LS_LABEL = 'vnh_api_label'
+const LS_EMAIL = 'vnh_user_email'
 
 export function KeyProvider({ children }) {
   const [key,   setKeyState]   = useState(() => localStorage.getItem(LS_KEY)   || '')
   const [role,  setRoleState]  = useState(() => localStorage.getItem(LS_ROLE)  || '')
   const [label, setLabelState] = useState(() => localStorage.getItem(LS_LABEL) || '')
+  const [email, setEmailState] = useState(() => localStorage.getItem(LS_EMAIL) || '')
   const [stats, setStats]      = useState(null)
 
+  // connect(apiKey) — backward compat: validates a session token via /api/auth/verify
   const connect = useCallback(async (apiKey) => {
     const res  = await fetch('/api/auth/verify', {
       method: 'POST',
@@ -25,9 +28,11 @@ export function KeyProvider({ children }) {
     localStorage.setItem(LS_KEY,   apiKey)
     localStorage.setItem(LS_ROLE,  data.role)
     localStorage.setItem(LS_LABEL, data.label)
+    localStorage.setItem(LS_EMAIL, data.email || '')
     setKeyState(apiKey)
     setRoleState(data.role)
     setLabelState(data.label)
+    setEmailState(data.email || '')
     setStats(data.stats || null)
 
     toast.success(
@@ -35,26 +40,56 @@ export function KeyProvider({ children }) {
       {
         duration: 4000,
         style: {
-          background: data.role === 'dev' ? '#0e7490' : '#059669',
+          background: data.role === 'superadmin' ? '#0e7490' : '#059669',
           color: '#fff',
           fontWeight: 600,
           fontSize: 13,
           borderRadius: 10,
           padding: '10px 16px',
         },
-        iconTheme: { primary: '#fff', secondary: data.role === 'dev' ? '#0e7490' : '#059669' },
+        iconTheme: { primary: '#fff', secondary: data.role === 'superadmin' ? '#0e7490' : '#059669' },
       }
     )
 
     return data
   }, [])
 
+  // loginWithOTP — called by Login page after successful OTP verification
+  const loginWithOTP = useCallback((token, role, labelStr, userEmail) => {
+    localStorage.setItem(LS_KEY,   token)
+    localStorage.setItem(LS_ROLE,  role)
+    localStorage.setItem(LS_LABEL, labelStr)
+    localStorage.setItem(LS_EMAIL, userEmail || '')
+    setKeyState(token)
+    setRoleState(role)
+    setLabelState(labelStr)
+    setEmailState(userEmail || '')
+    setStats(null)
+
+    toast.success(
+      `Welcome, ${labelStr}`,
+      {
+        duration: 4000,
+        style: {
+          background: role === 'superadmin' ? '#0e7490' : '#059669',
+          color: '#fff',
+          fontWeight: 600,
+          fontSize: 13,
+          borderRadius: 10,
+          padding: '10px 16px',
+        },
+        iconTheme: { primary: '#fff', secondary: role === 'superadmin' ? '#0e7490' : '#059669' },
+      }
+    )
+  }, [])
+
   const disconnect = useCallback(() => {
     localStorage.removeItem(LS_KEY)
     localStorage.removeItem(LS_ROLE)
     localStorage.removeItem(LS_LABEL)
-    setKeyState(''); setRoleState(''); setLabelState(''); setStats(null)
-    toast('Disconnected', { icon: '🔒', style: { fontSize: 13 } })
+    localStorage.removeItem(LS_EMAIL)
+    setKeyState(''); setRoleState(''); setLabelState(''); setEmailState(''); setStats(null)
+    toast('Signed out', { icon: '🔒', style: { fontSize: 13 } })
   }, [])
 
   const refreshStats = useCallback(async (apiKey) => {
@@ -72,7 +107,7 @@ export function KeyProvider({ children }) {
   }, [key])
 
   return (
-    <KeyContext.Provider value={{ key, role, label, stats, connect, disconnect, refreshStats }}>
+    <KeyContext.Provider value={{ key, role, label, email, stats, connect, loginWithOTP, disconnect, refreshStats }}>
       {children}
     </KeyContext.Provider>
   )
