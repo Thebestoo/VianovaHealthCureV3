@@ -746,13 +746,13 @@ app.get('/api/share/:token', (req, res) => {
   })
 })
 
-// ── Serve built frontend in production ────────────────────────────────────────
+// ── Serve built frontend (whenever dist/ exists) ──────────────────────────────
 const DIST = join(__dirname, '../dist')
-if (IS_PROD && existsSync(DIST)) {
+if (existsSync(DIST)) {
   app.use(express.static(DIST))
-  // SPA fallback — React Router handles all non-API routes
+  // SPA fallback — let React Router handle all non-API routes
   app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api') && !req.path.startsWith('/share')) {
+    if (!req.path.startsWith('/api')) {
       res.sendFile(join(DIST, 'index.html'))
     }
   })
