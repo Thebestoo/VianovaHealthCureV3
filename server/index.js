@@ -101,6 +101,9 @@ db.exec(`
 try { db.exec(`ALTER TABLE keys ADD COLUMN email TEXT NOT NULL DEFAULT ''`) } catch {}
 try { db.exec(`ALTER TABLE cases ADD COLUMN follow_up_date TEXT`) } catch {}
 try { db.exec(`ALTER TABLE cases ADD COLUMN share_token TEXT`) } catch {}
+// notify_email: where OTPs and notifications are delivered
+// (separate from login email so custom-domain accounts can use a real inbox)
+try { db.exec(`ALTER TABLE users ADD COLUMN notify_email TEXT NOT NULL DEFAULT ''`) } catch {}
 
 const app = express()
 app.use(cors())
@@ -172,15 +175,16 @@ async function notify(email, tpl) {
 }
 
 // Broadcast a notification to ALL active users (all doctors + superadmins)
-// skipEmail: optional email to exclude (e.g. the submitter who already gets a different copy)
+// Delivers to notify_email if set, otherwise falls back to login email
 function notifyAll(tpl, { skipEmail } = {}) {
-  const users = db.prepare('SELECT email FROM users WHERE active = 1').all()
+  const users = db.prepare('SELECT email, notify_email FROM users WHERE active = 1').all()
   users.forEach(u => {
     if (skipEmail && u.email === skipEmail) return
-    if (!u.email) return
-    sendEmail({ to: u.email, ...tpl }).then(r => {
-      if (!r.ok) logError('email_failed', r.error, 'notifyAll()', null, { to: u.email, subject: tpl.subject })
-      else logUpdate('email_sent', `Email sent to ${u.email}: ${tpl.subject}`, { to: u.email, subject: tpl.subject })
+    const dest = u.notify_email || u.email
+    if (!dest) return
+    sendEmail({ to: dest, ...tpl }).then(r => {
+      if (!r.ok) logError('email_failed', r.error, 'notifyAll()', null, { to: dest, subject: tpl.subject })
+      else logUpdate('email_sent', `Email sent to ${dest}: ${tpl.subject}`, { to: dest, subject: tpl.subject })
     }).catch(() => {})
   })
 }
@@ -608,10 +612,11 @@ app.post('/api/auth/request-otp', async (req, res) => {
   db.prepare('INSERT INTO otp_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(user.email, code, expiresAt)
   // Respond immediately — don't block on email delivery
   res.json({ ok: true })
-  // Send email in background (don't await — prevents hanging if SMTP is slow)
-  console.log(`  OTP for ${user.email}: ${code}`)
+  // Deliver to notify_email if set, otherwise login email
+  const otpDest = user.notify_email || user.email
+  console.log(`  OTP for ${user.email} → ${otpDest}: ${code}`)
   sendEmail({
-    to: user.email,
+    to: otpDest,
     subject: 'Your Vianova Login Code',
     html: `
       <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
@@ -976,7 +981,7 @@ app.get('/api/share/:token', (req, res) => {
 
 // ── Admin routes ───────────────────────────────────────────────────────────────
 app.get('/api/admin/users', auth, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, email, name, role, active, created_at FROM users ORDER BY created_at DESC').all()
+  const users = db.prepare('SELECT id, email, notify_email, name, role, active, created_at FROM users ORDER BY created_at DESC').all()
   res.json({ users })
 })
 
@@ -998,13 +1003,15 @@ app.post('/api/admin/users', auth, requireAdmin, (req, res) => {
 })
 
 app.patch('/api/admin/users/:id', auth, requireAdmin, (req, res) => {
-  const { active, name, role } = req.body
+  const { active, name, role, notify_email } = req.body
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
   if (!user) return res.status(404).json({ error: 'User not found' })
-  const newName   = name   !== undefined ? name   : user.name
-  const newRole   = role   !== undefined ? role   : user.role
-  const newActive = active !== undefined ? (active ? 1 : 0) : user.active
-  db.prepare('UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?').run(newName, newRole, newActive, req.params.id)
+  const newName        = name         !== undefined ? name         : user.name
+  const newRole        = role         !== undefined ? role         : user.role
+  const newActive      = active       !== undefined ? (active ? 1 : 0) : user.active
+  const newNotifyEmail = notify_email !== undefined ? notify_email.toLowerCase().trim() : user.notify_email
+  db.prepare('UPDATE users SET name = ?, role = ?, active = ?, notify_email = ? WHERE id = ?')
+    .run(newName, newRole, newActive, newNotifyEmail, req.params.id)
   res.json({ ok: true })
 })
 
