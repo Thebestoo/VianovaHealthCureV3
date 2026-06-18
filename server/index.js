@@ -153,14 +153,30 @@ function requireRole(...roles) {
   }
 }
 
-// ── Seed keys from env vars (runs every start, upserts) ───────────────────────
-const now = new Date().toISOString()
-const devKey = process.env.DEV_KEY   || `vnh_dev_${randomBytes(20).toString('hex')}`
-const docKey = process.env.DOC_KEY   || `vnh_doc_${randomBytes(20).toString('hex')}`
-const docEmail = process.env.DOCTOR_EMAIL || ''
-db.prepare(`INSERT INTO keys (key, role, label, email, created_at, active) VALUES (?, 'dev', 'Dev Team', '', ?, 1) ON CONFLICT(key) DO NOTHING`).run(devKey, now)
-db.prepare(`INSERT INTO keys (key, role, label, email, created_at, active) VALUES (?, 'doctor', 'Doctor Team', ?, ?, 1) ON CONFLICT(key) DO NOTHING`).run(docKey, docEmail, now)
-console.log(`\n  DEV KEY:    ${devKey}\n  DOCTOR KEY: ${docKey}\n`)
+// ── Seed keys from env vars (upserts on every start) ─────────────────────────
+;(() => {
+  const now = new Date().toISOString()
+  const upsert = db.prepare(`INSERT INTO keys (key, role, label, email, created_at, active) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(key) DO NOTHING`)
+
+  // Dev key
+  const devKey = process.env.DEV_KEY || `vnh_dev_${randomBytes(20).toString('hex')}`
+  upsert.run(devKey, 'dev', process.env.DEV_LABEL || 'Dev Team', '', now)
+
+  // Doctor keys — supports up to 5 via DOC_KEY, DOC_KEY_2 … DOC_KEY_5
+  const docSlots = [
+    { key: process.env.DOC_KEY,   email: process.env.DOCTOR_EMAIL, label: process.env.DOC_LABEL   || 'Doctor Team' },
+    { key: process.env.DOC_KEY_2, email: process.env.DOC_EMAIL_2,  label: process.env.DOC_LABEL_2 || 'Doctor 2'    },
+    { key: process.env.DOC_KEY_3, email: process.env.DOC_EMAIL_3,  label: process.env.DOC_LABEL_3 || 'Doctor 3'    },
+    { key: process.env.DOC_KEY_4, email: process.env.DOC_EMAIL_4,  label: process.env.DOC_LABEL_4 || 'Doctor 4'    },
+    { key: process.env.DOC_KEY_5, email: process.env.DOC_EMAIL_5,  label: process.env.DOC_LABEL_5 || 'Doctor 5'    },
+  ]
+  docSlots.filter(d => d.key).forEach(d => upsert.run(d.key, 'doctor', d.label, d.email || '', now))
+
+  console.log('\n  === Vianova Keys ===')
+  console.log(`  DEV:    ${devKey}`)
+  docSlots.filter(d => d.key).forEach(d => console.log(`  DOCTOR: ${d.key}  (${d.label})`))
+  console.log()
+})()
 
 // ── GET /api/admin/keys — view all keys (protected by ADMIN_SECRET env var) ───
 app.get('/api/admin/keys', (req, res) => {
