@@ -170,6 +170,16 @@ if (keyCount === 0) {
   console.log('╚══════════════════════════════════════════════════════╝\n')
 }
 
+// ── GET /api/admin/keys — view all keys (protected by ADMIN_SECRET env var) ───
+app.get('/api/admin/keys', (req, res) => {
+  const secret = process.env.ADMIN_SECRET
+  if (!secret || req.query.secret !== secret) {
+    return res.status(403).json({ error: 'Forbidden — set ADMIN_SECRET env var and pass ?secret=YOUR_SECRET' })
+  }
+  const keys = db.prepare('SELECT key, role, label, email, active, created_at FROM keys ORDER BY created_at DESC').all()
+  res.json({ keys })
+})
+
 // log server start
 logUpdate('server_start', 'Vianova server started', { port: process.env.PORT || 3001 })
 
