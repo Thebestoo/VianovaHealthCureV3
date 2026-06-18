@@ -156,7 +156,10 @@ function requireRole(...roles) {
 // ── Seed keys from env vars (upserts on every start) ─────────────────────────
 ;(() => {
   const now = new Date().toISOString()
-  const upsert = db.prepare(`INSERT INTO keys (key, role, label, email, created_at, active) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(key) DO NOTHING`)
+  const upsert = db.prepare(`
+    INSERT INTO keys (key, role, label, email, created_at, active) VALUES (?, ?, ?, ?, ?, 1)
+    ON CONFLICT(key) DO UPDATE SET label=excluded.label, email=excluded.email, active=1
+  `)
 
   // Dev key
   const devKey = process.env.DEV_KEY || `vnh_dev_${randomBytes(20).toString('hex')}`
@@ -170,7 +173,10 @@ function requireRole(...roles) {
     { key: process.env.DOC_KEY_4, email: process.env.DOC_EMAIL_4,  label: process.env.DOC_LABEL_4 || 'Doctor 4'    },
     { key: process.env.DOC_KEY_5, email: process.env.DOC_EMAIL_5,  label: process.env.DOC_LABEL_5 || 'Doctor 5'    },
   ]
-  docSlots.filter(d => d.key).forEach(d => upsert.run(d.key, 'doctor', d.label, d.email || '', now))
+  docSlots.filter(d => d.key).forEach(d => {
+    upsert.run(d.key, 'doctor', d.label, d.email || '', now)
+    console.log(`  DOCTOR: ${d.key} → email: ${d.email || 'NOT SET'}`)
+  })
 
   console.log('\n  === Vianova Keys ===')
   console.log(`  DEV:    ${devKey}`)
