@@ -16,8 +16,8 @@ const { generateCasesReport } = require('./report.cjs')
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const IS_PROD   = process.env.NODE_ENV === 'production'
 
-// Railway mounts a persistent volume at /data — use it in prod, local ./data in dev
-const DATA_DIR  = IS_PROD ? '/data' : join(__dirname, '../data')
+// Use DATA_DIR env var if set (e.g. Railway volume), otherwise write next to server/
+const DATA_DIR  = process.env.DATA_DIR || join(__dirname, '../data')
 const DB_PATH   = join(DATA_DIR, 'vianova.db')
 mkdirSync(DATA_DIR, { recursive: true })
 
