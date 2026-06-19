@@ -288,9 +288,14 @@ function requireRole(...roles) {
 // ── Seed superadmins and doctors ──────────────────────────────────────────────
 ;(() => {
   const now = new Date().toISOString()
+  // Set SUPERADMIN_PASSWORD env var on Render to auto-seed login password
+  const seedPasswordHash = process.env.SUPERADMIN_PASSWORD
+    ? bcrypt.hashSync(process.env.SUPERADMIN_PASSWORD, 10)
+    : ''
   const upsertUser = db.prepare(`
-    INSERT INTO users (id, email, name, role, active, status, password_hash, created_at) VALUES (?, ?, ?, ?, 1, 'active', '', ?)
-    ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, active=1, status='active'
+    INSERT INTO users (id, email, name, role, active, status, password_hash, created_at) VALUES (?, ?, ?, ?, 1, 'active', ?, ?)
+    ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, active=1, status='active',
+      password_hash = CASE WHEN users.password_hash = '' AND excluded.password_hash != '' THEN excluded.password_hash ELSE users.password_hash END
   `)
 
   // Hardcoded superadmins
@@ -299,7 +304,7 @@ function requireRole(...roles) {
     { email: 'emorina@vianova.ai',     name: 'Emorina Salihu', role: 'superadmin' },
   ]
   superadmins.forEach(u => {
-    upsertUser.run(randomUUID(), u.email, u.name, u.role, now)
+    upsertUser.run(randomUUID(), u.email, u.name, u.role, seedPasswordHash, now)
   })
 
   // Doctors from env vars
@@ -311,7 +316,7 @@ function requireRole(...roles) {
     { email: process.env.DOC_EMAIL_5, name: process.env.DOC_NAME_5 },
   ]
   docSlots.filter(d => d.email && d.name).forEach(d => {
-    upsertUser.run(randomUUID(), d.email, d.name, 'doctor', now)
+    upsertUser.run(randomUUID(), d.email, d.name, 'doctor', '', now)
     console.log(`  DOCTOR: ${d.email} (${d.name})`)
   })
 
