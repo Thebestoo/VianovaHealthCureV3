@@ -11,15 +11,45 @@ import { dirname, join } from 'path'
 import { existsSync } from 'fs'
 import Groq from 'groq-sdk'
 import bcrypt from 'bcryptjs'
-import { createClient } from '@libsql/client'
 import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatmentEdited } from './mailer.js'
 
 const require = createRequire(import.meta.url)
 const { generateCasesReport } = require('./report.cjs')
-const db = createClient({
-  url: process.env.TURSO_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-})
+
+// ── Turso HTTP client (native fetch, no library dependency) ───────────────────
+const TURSO_URL   = process.env.TURSO_URL
+const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN
+
+function toArg(v) {
+  if (v === null || v === undefined) return { type: 'null' }
+  if (typeof v === 'boolean') return { type: 'integer', value: v ? '1' : '0' }
+  if (typeof v === 'number') return Number.isInteger(v) ? { type: 'integer', value: String(v) } : { type: 'float', value: v }
+  return { type: 'text', value: String(v) }
+}
+
+const db = {
+  async execute({ sql, args = [] }) {
+    const res = await fetch(`${TURSO_URL}/v2/pipeline`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${TURSO_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ type: 'execute', stmt: { sql, args: args.map(toArg) } }, { type: 'close' }] }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(`Turso HTTP ${res.status}: ${JSON.stringify(data)}`)
+    const result = data.results?.[0]
+    if (result?.type === 'error') throw new Error(result.error?.message || 'Turso query error')
+    const cols = result?.response?.result?.cols?.map(c => c.name) || []
+    const rows = (result?.response?.result?.rows || []).map(row => {
+      const obj = {}
+      cols.forEach((col, i) => {
+        const cell = row[i]
+        obj[col] = cell?.type === 'null' ? null : cell?.type === 'integer' ? Number(cell.value) : (cell?.value ?? null)
+      })
+      return obj
+    })
+    return { rows }
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const IS_PROD   = process.env.NODE_ENV === 'production'
