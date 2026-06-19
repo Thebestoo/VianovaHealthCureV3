@@ -48,6 +48,7 @@ export default function NewCase() {
         if (!parsed) throw new Error('Could not parse this FHIR bundle. Check the file is a valid FHIR R4 Bundle.')
         setFhirData({ ...parsed, _fileName: file.name })
         setFhirFile(file.name)
+        setStep(3) // skip manual entry — FHIR fills patient info & medical history
         const id = parsed.intakeData
         setInfo({
           age:       id.age != null ? String(id.age) : '',
@@ -71,6 +72,7 @@ export default function NewCase() {
     setFhirData(null); setFhirFile(null); setFhirError('')
     setInfo({ age: '', sex: '', free_text: '' })
     setHistory({ known_conditions: [], allergies: [], current_medications: [] })
+    setStep(0)
   }
 
   function onDrop(e) {
@@ -180,7 +182,10 @@ export default function NewCase() {
             )}
 
             {step === 3 && (
-              <StepQuestions answers={answers} setAnswers={setAnswers} />
+              <>
+                {fhirData && <FhirImportedSummary fhirData={fhirData} fhirFile={fhirFile} onClear={clearFhir} />}
+                <StepQuestions answers={answers} setAnswers={setAnswers} />
+              </>
             )}
 
             {step === 4 && (
@@ -219,6 +224,87 @@ export default function NewCase() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+/* ─────────────────────────────────────────────
+   FHIR Imported Summary Banner
+───────────────────────────────────────────── */
+function FhirImportedSummary({ fhirData, fhirFile, onClear }) {
+  const p = fhirData?.patient || {}
+  const vitals = fhirData?.vitals || []
+  const conditions = fhirData?.conditions?.filter(c => c.name) || []
+  const medications = fhirData?.medications?.filter(m => m.name && m.status !== 'stopped' && m.status !== 'cancelled') || []
+  const allergies = fhirData?.allergies?.filter(a => a.substance) || []
+
+  const freshnessColor = (ageDays) => {
+    if (ageDays === null) return '#94a3b8'
+    if (ageDays <= 30) return '#059669'
+    if (ageDays <= 90) return '#d97706'
+    if (ageDays <= 180) return '#ea580c'
+    return '#dc2626'
+  }
+  const freshnessLabel = (ageDays) => {
+    if (ageDays === null) return 'no date'
+    if (ageDays <= 30) return `${ageDays}d ago · current`
+    if (ageDays <= 90) return `${ageDays}d ago · recent`
+    if (ageDays <= 180) return `${ageDays}d ago · stale`
+    if (ageDays <= 365) return `${ageDays}d ago · outdated`
+    return `${ageDays}d ago · historical`
+  }
+
+  return (
+    <div style={{ marginBottom: 20, border: '1.5px solid #0ea5e9', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ background: '#0ea5e9', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontWeight: 600, fontSize: 13 }}>
+          <span>📋</span> FHIR Imported — {fhirFile}
+          {p.fullName && <span style={{ fontWeight: 400, opacity: .85 }}>· {p.fullName}{p.age ? `, ${p.age}y` : ''}{p.gender ? ` (${p.gender})` : ''}</span>}
+        </div>
+        <button onClick={onClear} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 11, padding: '3px 10px', fontWeight: 600 }}>✕ Clear</button>
+      </div>
+      <div style={{ background: '#f0f9ff', padding: '12px 16px', display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 12.5 }}>
+        {/* Vitals */}
+        {vitals.length > 0 && (
+          <div style={{ flex: '1 1 200px' }}>
+            <div style={{ fontWeight: 700, color: '#0284c7', marginBottom: 5, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>Vitals</div>
+            {vitals.map((v, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+                <span style={{ color: '#374151' }}>{v.name}: <strong>{v.value}{v.unit ? ` ${v.unit}` : ''}</strong></span>
+                <span style={{ color: freshnessColor(v.age_days), fontSize: 11, whiteSpace: 'nowrap' }}>{freshnessLabel(v.age_days)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Conditions */}
+        {conditions.length > 0 && (
+          <div style={{ flex: '1 1 180px' }}>
+            <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 5, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>Conditions</div>
+            {conditions.map((c, i) => (
+              <div key={i} style={{ color: '#374151', marginBottom: 2 }}>• {c.name}{c.onset ? <span style={{ color: '#94a3b8', fontSize: 11 }}> · {c.onset.slice(0,10)}</span> : ''}</div>
+            ))}
+          </div>
+        )}
+        {/* Medications */}
+        {medications.length > 0 && (
+          <div style={{ flex: '1 1 180px' }}>
+            <div style={{ fontWeight: 700, color: '#059669', marginBottom: 5, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>Medications</div>
+            {medications.map((m, i) => (
+              <div key={i} style={{ color: '#374151', marginBottom: 2 }}>• {m.name}{m.dosage ? <span style={{ color: '#94a3b8', fontSize: 11 }}> · {m.dosage}</span> : ''}</div>
+            ))}
+          </div>
+        )}
+        {/* Allergies */}
+        {allergies.length > 0 && (
+          <div style={{ flex: '1 1 160px' }}>
+            <div style={{ fontWeight: 700, color: '#dc2626', marginBottom: 5, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>Allergies</div>
+            {allergies.map((a, i) => (
+              <div key={i} style={{ color: '#374151', marginBottom: 2 }}>• {a.substance}{a.reaction ? <span style={{ color: '#94a3b8', fontSize: 11 }}> · {a.reaction}</span> : ''}</div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

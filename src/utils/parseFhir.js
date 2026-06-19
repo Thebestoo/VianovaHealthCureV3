@@ -32,6 +32,16 @@ function calcAge(birthDate) {
  * @param {string} resourceType
  * @returns {object|null}
  */
+
+function calcAgeDays(dateStr) {
+  if (!dateStr) return null;
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return Math.floor((Date.now() - d.getTime()) / 86400000);
+  } catch { return null; }
+}
+
 function getFirst(entries, resourceType) {
   const found = entries.find(e => e?.resource?.resourceType === resourceType);
   return found?.resource ?? null;
@@ -227,7 +237,7 @@ function parseVitals(resources) {
       }
       if (sys !== null || dia !== null) {
         result.push({
-          name: 'Blood pressure',
+          age_days: calcAgeDays(date), name: 'Blood pressure',
           value: `${sys ?? '?'}/${dia ?? '?'}`,
           unit,
           date,
@@ -257,13 +267,13 @@ function parseVitals(resources) {
     const value = obs.valueQuantity?.value ?? obs.valueString ?? null;
     const unit = obs.valueQuantity?.unit ?? null;
 
-    result.push({ name, value, unit, date, loincCode });
+    result.push({ name, value, unit, date, age_days: calcAgeDays(date), loincCode });
   }
 
   // Flush standalone BP components
   if (systolic !== null || diastolic !== null) {
     result.push({
-      name: 'Blood pressure',
+      age_days: calcAgeDays(bpDate), name: 'Blood pressure',
       value: `${systolic ?? '?'}/${diastolic ?? '?'}`,
       unit: 'mmHg',
       date: bpDate,

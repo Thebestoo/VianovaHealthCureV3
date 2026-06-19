@@ -117,7 +117,7 @@ async function keyStats(apiKey, role) {
     const a = JSON.parse(r.analysis)
     if (a.doctor_review?.approved) approved++
     else pending++
-    if (a.red_flags?.emergency_detected) emergency++
+    if ((a.red_flags?.emergency_escalation_required ?? a.red_flags?.emergency_detected)) emergency++
   })
   let doctors = undefined
   if (role === 'superadmin') {
@@ -298,111 +298,57 @@ app.get('/api/admin/keys', async (req, res) => {
 })
 
 // ── system prompt ──────────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are the Cure Analyzer of Vianova Health — a clinical decision-support engine.
-Your single mission: convert one patient's registration data and intake answers into a structured, evidence-grounded DRAFT clinical analysis and suggested treatment plan ("cure") that a licensed physician will review, edit, and approve before any of it reaches the patient.
-You are an assistant to the doctor, never a replacement. You do not issue diagnoses, prescriptions, or final decisions. Every output is a draft pending mandatory human physician approval.
+const SYSTEM_PROMPT = `You are a clinical decision support assistant for Vianova Health.
+Your role is to analyze patient intake data — which may include imported FHIR records — and produce a structured DRAFT clinical analysis for a licensed physician to review.
 
-NON-NEGOTIABLE OPERATING PRINCIPLES:
-1. Evidence from data only. Use only what the patient provided. Never invent symptoms, vitals, history, lab values, durations, medications, or allergies. If you infer something, label it as an inference, not a fact.
-2. Gaps are flagged, never filled. Missing critical information goes in missing_critical_info. Do not guess to complete a picture.
-3. Possibilities, not verdicts. Always produce a ranked differential. Never collapse to one certain diagnosis.
-4. Emergencies first. If any red flag is present, set red_flags.emergency_detected = true and requires_urgent_review = true.
-5. Conservative medication handling. For every drug suggestion: give option, rationale, and cautions; set requires_physician_verification: true. Never present a final dose as a patient instruction. Flag special populations (pediatric, pregnancy, breastfeeding, elderly, renal/hepatic impairment).
-6. Safety cross-checks. Always check stated allergies and current medications for conflicts.
-7. Honest uncertainty. Calibrate confidence_level. Thin or contradictory data => lower confidence.
-8. No scope creep. Stay within clinical-support drafting.
-9. Strict output. Return one valid JSON object and nothing else — no markdown, no fences, no commentary before or after.
-10. Privacy posture. Treat all input as confidential health data.
+CRITICAL RULES — follow every one:
+1. This is a DRAFT for physician review ONLY. It is never a final diagnosis or prescription.
+2. Use ONLY the data provided. Flag any missing information explicitly in missing_critical_info.
+3. Provide DIFFERENTIAL diagnoses ranked by likelihood — never a single certain diagnosis.
+4. Clearly flag ALL red flags and emergency indicators.
+5. For every pharmacological suggestion add: "REQUIRES PHYSICIAN VERIFICATION OF DOSE, CONTRAINDICATIONS, AND INTERACTIONS".
+6. Flag special populations: pediatric (age <18), elderly (age >65), pregnancy-related presentations, renal or hepatic impairment.
+7. Be conservative: when in doubt, recommend investigation rather than treatment.
+8. Emergency cases (emergency_escalation_required = true) must be flagged immediately at the top of the output.
 
-LANGUAGE HANDLING:
-- Input may arrive in Albanian (Kosovo dialect) or English, or a mix. Understand both.
-- All structured/clinical fields for the doctor are in English.
-- patient_summary_draft.text is written in the same language the patient used, in plain, calm, non-alarming wording.
+DATA FRESHNESS — apply to ALL imported FHIR findings (each finding is given with a date and AGE_DAYS):
+9. You are given CURRENT DATE. Judge every dated finding by how old it is. Do NOT assume imported data reflects the patient's present condition.
+10. Classify VOLATILE data (vital signs, lab results, imaging, acute symptoms, current medication lists) by age:
+    - 0–30 days  -> "current"    : use normally.
+    - 31–90 days -> "recent"     : use, but note it may have changed.
+    - 91–180 days-> "stale"      : DO NOT base treatment on it; require a repeat test.
+    - 181–365 days-> "outdated"  : historical context only; repeat test required.
+    - >365 days  -> "historical" : trend/context only; must be re-measured.
+11. Classify DURABLE data (allergies, chronic diagnoses, surgical/family history, immunizations) as durable; flag only if >3 years old AND clinically expected to change.
+12. Any finding with NO date is "undated" -> reliability unknown; add to missing_critical_info.
+13. For EVERY finding that is "stale", "outdated", "historical", or "undated", you MUST add a concrete repeat-test recommendation to retest_required AND to recommended_investigations (urgent if clinically time-sensitive, otherwise routine), naming the exact test and WHY its age makes it unreliable.
+14. Lower the overall confidence score and explain in data_quality_notes whenever the assessment leans on stale/outdated/undated data. If the chief complaint can only be assessed with data older than 90 days, confidence cannot be "high".
+15. NEVER suggest starting or changing a medication based on a lab/vital older than 90 days without first listing the repeat test that must confirm it.
 
-RED-FLAG / EMERGENCY SCREEN: Set emergency if data suggests any of: chest pain with breathlessness/sweating/radiation; signs of stroke; severe or uncontrolled bleeding; difficulty breathing/stridor/blue lips; anaphylaxis; signs of sepsis; suicidal or self-harm intent; severe dehydration in infants/elderly; pregnancy with bleeding or severe abdominal pain; sudden severe abdominal pain; loss of consciousness; seizure; suspected poisoning/overdose.
-
-MEDICATION SAFETY RULES:
-- Prefer non-pharmacological and conservative options first.
-- Always requires_physician_verification: true.
-- Never state a definitive dose as instruction.
-- Explicitly flag pediatric, pregnancy, breastfeeding, elderly, and renal/hepatic cases.
-
-CONFIDENCE CALIBRATION:
-- high: coherent, sufficient data; clear leading possibility.
-- moderate: reasonable picture but with gaps or competing possibilities.
-- low: sparse, vague, or contradictory data.
-
-You receive one JSON object of patient data. Return EXACTLY this JSON structure (no markdown, no fences):
+Return ONLY valid JSON — no markdown, no explanation, no code block — matching this EXACT schema:
 {
-  "schema_version": "1.0",
-  "status_note": "DRAFT — pending physician review. Not for patient use until approved.",
-  "patient_snapshot": {
-    "patient_id": null,
-    "age": null,
-    "sex": null,
-    "known_allergies": [],
-    "current_medications": [],
-    "relevant_history": []
-  },
-  "data_completeness": {
-    "missing_critical_info": [],
-    "notes": ""
-  },
-  "presenting_complaint": "",
-  "structured_symptoms": [
-    { "symptom": "", "onset": "", "duration": "", "severity": "", "location": "", "source_answer": "" }
-  ],
-  "red_flags": {
-    "emergency_detected": false,
-    "indicators": [],
-    "recommended_immediate_action": ""
-  },
-  "differential_assessment": [
-    { "possibility": "", "likelihood": "high | moderate | low", "supporting_findings": [], "findings_against": [] }
-  ],
-  "recommended_investigations": [],
-  "draft_treatment_plan": {
-    "non_pharmacological": [],
-    "pharmacological_suggestions": [
-      {
-        "option": "",
-        "rationale": "",
-        "physician_dose_consideration": "",
-        "cautions": [],
-        "special_population_flags": [],
-        "requires_physician_verification": true
-      }
+  "patient_snapshot": { "age": 0, "sex": "", "known_conditions": [], "allergies": [], "current_medications": [], "special_population_flags": [], "missing_critical_info": [] },
+  "data_recency_assessment": {
+    "current_date": "",
+    "overall_data_freshness": "current",
+    "findings": [
+      { "finding": "", "type": "volatile", "value": "", "recorded_date": "", "age_days": 0, "freshness": "current", "reliable_for_decision": true, "note": "" }
     ],
-    "lifestyle_and_followup": []
+    "summary": ""
   },
-  "allergy_interaction_check": {
-    "potential_conflicts": [],
-    "notes": ""
-  },
-  "patient_summary_draft": {
-    "language": "",
-    "text": ""
-  },
-  "confidence_level": "low | moderate | high",
-  "reasoning_for_doctor": "",
-  "requires_urgent_review": false,
-  "doctor_review": {
-    "status": "PENDING_REVIEW",
-    "approved": false,
-    "edited_by_doctor": false,
-    "doctor_notes": "",
-    "final_approved_cure": null,
-    "reviewed_by": null,
-    "reviewed_at": null
-  },
-  "audit": {
-    "generated_by": "vianova-cure-analyzer",
-    "is_ai_generated": true
-  },
-  "disclaimers": [
-    "AI-generated and unverified. A draft for a licensed physician to review and edit.",
-    "Not a diagnosis and not a prescription. Do not act on it until a doctor has approved it."
-  ]
+  "retest_required": [
+    { "test": "", "reason_stale": "", "last_value": "", "last_date": "", "age_days": 0, "priority": "routine" }
+  ],
+  "presenting_complaint": "",
+  "structured_symptoms": { "primary": "", "associated": [], "onset": "", "duration": "", "severity": "", "character": "", "aggravating_factors": [], "relieving_factors": [] },
+  "red_flags": { "present": false, "items": [], "emergency_escalation_required": false, "escalation_reason": "" },
+  "differential_assessment": [ { "condition": "", "likelihood": "high", "supporting_evidence": [], "against_evidence": [], "based_on_stale_data": false } ],
+  "recommended_investigations": { "urgent": [], "routine": [], "rationale": "" },
+  "draft_treatment_plan": { "non_pharmacological": [], "pharmacological": [ { "drug": "", "class": "", "rationale": "", "caution": "REQUIRES PHYSICIAN VERIFICATION OF DOSE AND CONTRAINDICATIONS", "contraindications_to_check": [] } ], "follow_up": "", "referral_needed": false, "referral_type": "" },
+  "allergy_interaction_check": { "allergy_conflicts_found": false, "conflicts": [], "interaction_risks": [], "notes": "" },
+  "patient_plain_language_summary": "",
+  "confidence": { "level": "moderate", "score": 0.7, "reasoning": "", "data_quality_notes": "" },
+  "doctor_review": { "status": "PENDING_REVIEW", "approved": false, "edited_by_doctor": false, "doctor_notes": "", "final_approved_cure": null, "reviewed_by": null, "reviewed_at": null }
 }`
 
 // ── POST /api/analyze ──────────────────────────────────────────────────────────
@@ -411,6 +357,7 @@ app.post('/api/analyze', auth, async (req, res) => {
     const patientData = req.body
     const caseId = randomUUID()
     patientData.patient_id = patientData.patient_id || caseId
+    patientData.current_date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD for FHIR freshness rules
 
     const message = await client.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -434,11 +381,11 @@ app.post('/api/analyze', auth, async (req, res) => {
     const now = new Date().toISOString()
     await db.execute({ sql: 'INSERT INTO cases (case_id, created_at, patient_input, analysis, owner_key) VALUES (?, ?, ?, ?, ?)', args: [caseId, now, JSON.stringify(patientData), JSON.stringify(analysis), req.apiKey] })
 
-    const isEmergency = analysis.red_flags?.emergency_detected || analysis.requires_urgent_review
+    const isEmergency = (analysis.red_flags?.emergency_escalation_required ?? analysis.red_flags?.emergency_detected) || analysis.requires_urgent_review
     await logUpdate('case_submitted', `New case submitted by ${req.keyLabel} (${patientData.age || '?'}y ${patientData.sex || '?'})${isEmergency ? ' — EMERGENCY' : ''}`, {
       case_id: caseId,
       label: req.keyLabel,
-      confidence: analysis.confidence_level,
+      confidence: (analysis.confidence?.level ?? analysis.confidence_level),
       emergency: isEmergency,
       age: patientData.age,
       sex: patientData.sex,
@@ -451,7 +398,7 @@ app.post('/api/analyze', auth, async (req, res) => {
       caseId, label: req.keyLabel,
       age: patientData.age, sex: patientData.sex,
       complaint: analysis.presenting_complaint,
-      confidence: analysis.confidence_level,
+      confidence: (analysis.confidence?.level ?? analysis.confidence_level),
       emergency: isEmergency,
     }
     // Notify ALL users about the new case
@@ -485,9 +432,9 @@ app.get('/api/cases', auth, async (req, res) => {
       age:                  patient?.age,
       sex:                  patient?.sex,
       presenting_complaint: analysis?.presenting_complaint,
-      confidence_level:     analysis?.confidence_level,
+      confidence_level:     (analysis?.confidence?.level ?? analysis?.confidence_level),
       requires_urgent_review: analysis?.requires_urgent_review,
-      emergency_detected:   analysis?.red_flags?.emergency_detected,
+      emergency_detected:   (analysis?.red_flags?.emergency_escalation_required ?? analysis?.red_flags?.emergency_detected),
       review_status:        analysis?.doctor_review?.status,
       approved:             analysis?.doctor_review?.approved,
       follow_up_date:       row.follow_up_date || null,
@@ -706,8 +653,8 @@ app.get('/api/logs/cases', auth, async (req, res) => {
       sex: patient.sex,
       known_conditions: patient.known_conditions || [],
       presenting_complaint: analysis.presenting_complaint,
-      confidence_level: analysis.confidence_level,
-      emergency_detected: analysis.red_flags?.emergency_detected,
+      confidence_level: (analysis.confidence?.level ?? analysis.confidence_level),
+      emergency_detected: (analysis.red_flags?.emergency_escalation_required ?? analysis.red_flags?.emergency_detected),
       requires_urgent_review: analysis.requires_urgent_review,
       review_status: analysis.doctor_review?.status,
       approved: analysis.doctor_review?.approved,
@@ -724,7 +671,7 @@ app.get('/api/logs/cases', auth, async (req, res) => {
   const byConfidence = { high: 0, moderate: 0, low: 0 }
   cases.forEach(c => {
     if (c.review_status && byStatus[c.review_status] !== undefined) byStatus[c.review_status]++
-    if (c.confidence_level && byConfidence[c.confidence_level] !== undefined) byConfidence[c.confidence_level]++
+    if ((c.confidence?.level ?? c.confidence_level) && byConfidence[(c.confidence?.level ?? c.confidence_level)] !== undefined) byConfidence[(c.confidence?.level ?? c.confidence_level)]++
   })
   res.json({ total: cases.length, by_status: byStatus, by_confidence: byConfidence, cases })
 })
@@ -742,8 +689,8 @@ app.get('/api/logs/cases/report', auth, async (req, res) => {
       sex:                 patient.sex,
       known_conditions:    patient.known_conditions || [],
       presenting_complaint: analysis.presenting_complaint,
-      confidence_level:    analysis.confidence_level,
-      emergency_detected:  analysis.red_flags?.emergency_detected,
+      confidence_level:    (analysis.confidence?.level ?? analysis.confidence_level),
+      emergency_detected:  (analysis.red_flags?.emergency_escalation_required ?? analysis.red_flags?.emergency_detected),
       requires_urgent_review: analysis.requires_urgent_review,
       review_status:       analysis.doctor_review?.status,
       approved:            analysis.doctor_review?.approved,
@@ -762,7 +709,7 @@ app.get('/api/logs/cases/report', auth, async (req, res) => {
   const byConf   = { high: 0, moderate: 0, low: 0 }
   cases.forEach(c => {
     if (c.review_status && byStatus[c.review_status] !== undefined) byStatus[c.review_status]++
-    if (c.confidence_level && byConf[c.confidence_level] !== undefined) byConf[c.confidence_level]++
+    if ((c.confidence?.level ?? c.confidence_level) && byConf[(c.confidence?.level ?? c.confidence_level)] !== undefined) byConf[(c.confidence?.level ?? c.confidence_level)]++
   })
 
   const html = generateCasesReport(cases, {
@@ -804,9 +751,9 @@ app.get('/api/patients/timeline', auth, async (req, res) => {
       case_id: r.case_id,
       created_at: r.created_at,
       presenting_complaint: an.presenting_complaint || '',
-      confidence_level: an.confidence_level || null,
+      confidence_level: (an.confidence?.level ?? an.confidence_level) || null,
       approved: !!an.doctor_review?.approved,
-      emergency_detected: !!an.red_flags?.emergency_detected,
+      emergency_detected: !!(an.red_flags?.emergency_escalation_required ?? an.red_flags?.emergency_detected),
       follow_up_date: r.follow_up_date || null,
     }
   })
@@ -989,7 +936,7 @@ app.patch('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
         } catch {}
         try {
           const an = JSON.parse(c.analysis)
-          confidence = an.confidence_level || ''
+          confidence = (an.confidence?.level ?? an.confidence_level) || ''
           approved = an.doctor_review?.approved ? 'approved' : 'pending'
           emergency = an.red_flags?.emergency_detected ? 'true' : 'false'
         } catch {}
