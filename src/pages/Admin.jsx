@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { ShieldCheck, Plus, Trash2, X, Loader2, ToggleLeft, ToggleRight, Mail, Edit3, Save } from 'lucide-react'
+import { ShieldCheck, Plus, Trash2, X, Loader2, ToggleLeft, ToggleRight, Mail, Edit3, Save, Lock, CheckCircle, XCircle } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
-const EMPTY_FORM = { name: '', email: '', role: 'doctor' }
+const EMPTY_FORM = { name: '', email: '', role: 'doctor', password: '' }
 
 export default function Admin() {
   const { key } = useKey()
@@ -14,10 +14,15 @@ export default function Admin() {
   const [error, setError]         = useState('')
   const [toggling, setToggling]   = useState(null)
   const [deleting, setDeleting]   = useState(null)
+  const [approvingId, setApprovingId] = useState(null)
   // inline notify_email editing
-  const [editNotify, setEditNotify] = useState(null)   // user.id being edited
+  const [editNotify, setEditNotify] = useState(null)
   const [notifyVal, setNotifyVal]   = useState('')
   const [savingNotify, setSavingNotify] = useState(null)
+  // inline password editing
+  const [editPassword, setEditPassword] = useState(null)
+  const [passwordVal, setPasswordVal]   = useState('')
+  const [savingPassword, setSavingPassword] = useState(null)
 
   async function load() {
     setLoading(true)
@@ -34,6 +39,7 @@ export default function Admin() {
   async function handleCreate(e) {
     e.preventDefault()
     if (!form.email.trim() || !form.name.trim()) { setError('Name and email required'); return }
+    if (!form.password.trim()) { setError('Password is required'); return }
     setSaving(true); setError('')
     try {
       const res = await fetch('/api/admin/users', {
@@ -55,7 +61,7 @@ export default function Admin() {
         headers: { 'Content-Type': 'application/json', 'x-api-key': key },
         body: JSON.stringify({ active: !user.active }),
       })
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, active: user.active ? 0 : 1 } : u))
+      await load()
     } catch {}
     setToggling(null)
   }
@@ -68,6 +74,15 @@ export default function Admin() {
       setUsers(prev => prev.filter(u => u.id !== user.id))
     } catch {}
     setDeleting(null)
+  }
+
+  async function handleApprove(user) {
+    setApprovingId(user.id)
+    try {
+      await fetch(`/api/admin/users/${user.id}/approve`, { method: 'POST', headers: { 'x-api-key': key } })
+      await load()
+    } catch {}
+    setApprovingId(null)
   }
 
   async function saveNotifyEmail(userId) {
@@ -84,6 +99,24 @@ export default function Admin() {
     setSavingNotify(null)
   }
 
+  async function savePassword(userId) {
+    if (!passwordVal.trim()) return
+    setSavingPassword(userId)
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/set-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({ password: passwordVal.trim() }),
+      })
+      if (res.ok) {
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, has_password: true } : u))
+        setEditPassword(null)
+        setPasswordVal('')
+      }
+    } catch {}
+    setSavingPassword(null)
+  }
+
   const roleBadge = (role) => {
     const s = role === 'superadmin'
       ? { background: '#f3e8ff', color: '#7c3aed' }
@@ -95,6 +128,21 @@ export default function Admin() {
       </span>
     )
   }
+
+  const statusBadge = (u) => {
+    const status = u.status || 'active'
+    const isActive = u.active === 1 || u.active === true
+    if (!isActive) {
+      return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#f3f4f6', color: '#9ca3af' }}>Inactive</span>
+    }
+    if (status === 'pending') {
+      return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#fef3c7', color: '#d97706' }}>Pending</span>
+    }
+    return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#d1fae5', color: '#059669' }}>Active</span>
+  }
+
+  const pendingUsers = users.filter(u => (u.status === 'pending') && (u.active === 1 || u.active === true))
+  const activeUsers = users.filter(u => !(u.status === 'pending' && (u.active === 1 || u.active === true)))
 
   return (
     <div>
@@ -112,7 +160,7 @@ export default function Admin() {
         {/* Info banner */}
         <div style={{ marginBottom: 20, padding: '12px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, fontSize: 13, color: '#1e40af' }}>
           <Mail size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'text-bottom' }} />
-          <strong>Notification Email:</strong> If a user's login email is a custom domain without mail hosting (e.g. <em>name@vianova.ai</em>), set a <strong>Notification Email</strong> — OTP codes and case alerts will be sent there instead.
+          <strong>Notification Email:</strong> If a user's login email is a custom domain without mail hosting (e.g. <em>name@vianova.ai</em>), set a <strong>Notification Email</strong> — case alerts will be sent there instead.
         </div>
 
         {loading ? (
@@ -121,95 +169,176 @@ export default function Admin() {
             Loading users…
           </div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                  {['Name', 'Login Email', 'Notification Email', 'Role', 'Status', 'Actions'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u, i) => (
-                  <tr key={u.id} style={{ borderBottom: i < users.length - 1 ? '1px solid #f3f4f6' : 'none' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-                    onMouseLeave={e => e.currentTarget.style.background = ''}
-                  >
-                    <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>{u.name}</td>
-                    <td style={{ padding: '12px 14px', color: '#374151' }}>{u.email}</td>
+          <>
+            {/* Pending Approval section */}
+            {pendingUsers.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#d97706', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <ShieldCheck size={16} />
+                  Pending Approval ({pendingUsers.length})
+                </div>
+                <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1.5px solid #fde68a' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                        {['Name', 'Email', 'Role', 'Actions'].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#92400e', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingUsers.map((u, i) => (
+                        <tr key={u.id} style={{ borderBottom: i < pendingUsers.length - 1 ? '1px solid #fef3c7' : 'none' }}>
+                          <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>{u.name}</td>
+                          <td style={{ padding: '12px 14px', color: '#374151' }}>{u.email}</td>
+                          <td style={{ padding: '12px 14px' }}>{roleBadge(u.role)}</td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => handleApprove(u)}
+                                disabled={approvingId === u.id}
+                                style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: '#059669', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                                {approvingId === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={13} />}
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleDelete(u)}
+                                disabled={deleting === u.id}
+                                style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: '#dc2626', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                                {deleting === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <XCircle size={13} />}
+                                Remove
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
-                    {/* Notification email — inline editable */}
-                    <td style={{ padding: '10px 14px', minWidth: 220 }}>
-                      {editNotify === u.id ? (
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          <input
-                            type="text"
-                            value={notifyVal}
-                            onChange={e => setNotifyVal(e.target.value)}
-                            placeholder="real@gmail.com"
-                            style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #0ea5e9', borderRadius: 6, fontSize: 12, outline: 'none' }}
-                            onKeyDown={e => { if (e.key === 'Enter') saveNotifyEmail(u.id); if (e.key === 'Escape') setEditNotify(null) }}
-                            autoFocus
-                          />
-                          <button onClick={() => saveNotifyEmail(u.id)} disabled={savingNotify === u.id}
-                            style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: '#0ea5e9', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
-                            {savingNotify === u.id ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={11} />}
-                          </button>
-                          <button onClick={() => setEditNotify(null)}
-                            style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: '#f3f4f6', cursor: 'pointer' }}>
-                            <X size={11} color="#6b7280" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {u.notify_email ? (
-                            <span style={{ fontSize: 12, color: '#059669', fontWeight: 500 }}>{u.notify_email}</span>
-                          ) : (
-                            <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>same as login</span>
-                          )}
-                          <button onClick={() => { setEditNotify(u.id); setNotifyVal(u.notify_email || '') }}
-                            title="Edit notification email"
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#9ca3af', display: 'flex' }}>
-                            <Edit3 size={12} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
+            {/* All users table */}
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                    {['Name', 'Login Email', 'Notification Email', 'Role', 'Password', 'Status', 'Actions'].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeUsers.map((u, i) => (
+                    <tr key={u.id} style={{ borderBottom: i < activeUsers.length - 1 ? '1px solid #f3f4f6' : 'none' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}
+                    >
+                      <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>{u.name}</td>
+                      <td style={{ padding: '12px 14px', color: '#374151' }}>{u.email}</td>
 
-                    <td style={{ padding: '12px 14px' }}>{roleBadge(u.role)}</td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span style={{
-                        display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-                        background: u.active ? '#d1fae5' : '#f3f4f6',
-                        color: u.active ? '#059669' : '#9ca3af',
-                      }}>
-                        {u.active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <button onClick={() => toggleActive(u)} disabled={toggling === u.id} title={u.active ? 'Deactivate' : 'Activate'}
-                          style={{ padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#374151' }}>
-                          {toggling === u.id
-                            ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
-                            : u.active ? <ToggleRight size={14} color="#059669" /> : <ToggleLeft size={14} color="#9ca3af" />}
-                          {u.active ? 'Deactivate' : 'Activate'}
-                        </button>
-                        {u.role !== 'superadmin' && (
-                          <button onClick={() => handleDelete(u)} disabled={deleting === u.id}
-                            style={{ padding: '5px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#dc2626' }}>
-                            {deleting === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={12} />}
-                            Delete
+                      {/* Notification email — inline editable */}
+                      <td style={{ padding: '10px 14px', minWidth: 200 }}>
+                        {editNotify === u.id ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={notifyVal}
+                              onChange={e => setNotifyVal(e.target.value)}
+                              placeholder="real@gmail.com"
+                              style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #0ea5e9', borderRadius: 6, fontSize: 12, outline: 'none' }}
+                              onKeyDown={e => { if (e.key === 'Enter') saveNotifyEmail(u.id); if (e.key === 'Escape') setEditNotify(null) }}
+                              autoFocus
+                            />
+                            <button onClick={() => saveNotifyEmail(u.id)} disabled={savingNotify === u.id}
+                              style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: '#0ea5e9', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
+                              {savingNotify === u.id ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={11} />}
+                            </button>
+                            <button onClick={() => setEditNotify(null)}
+                              style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: '#f3f4f6', cursor: 'pointer' }}>
+                              <X size={11} color="#6b7280" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {u.notify_email ? (
+                              <span style={{ fontSize: 12, color: '#059669', fontWeight: 500 }}>{u.notify_email}</span>
+                            ) : (
+                              <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>same as login</span>
+                            )}
+                            <button onClick={() => { setEditNotify(u.id); setNotifyVal(u.notify_email || '') }}
+                              title="Edit notification email"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#9ca3af', display: 'flex' }}>
+                              <Edit3 size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+
+                      <td style={{ padding: '12px 14px' }}>{roleBadge(u.role)}</td>
+
+                      {/* Password column */}
+                      <td style={{ padding: '10px 14px', minWidth: 160 }}>
+                        {editPassword === u.id ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input
+                              type="password"
+                              value={passwordVal}
+                              onChange={e => setPasswordVal(e.target.value)}
+                              placeholder="New password"
+                              style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #6366f1', borderRadius: 6, fontSize: 12, outline: 'none' }}
+                              onKeyDown={e => { if (e.key === 'Enter') savePassword(u.id); if (e.key === 'Escape') { setEditPassword(null); setPasswordVal('') } }}
+                              autoFocus
+                            />
+                            <button onClick={() => savePassword(u.id)} disabled={savingPassword === u.id || !passwordVal.trim()}
+                              style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: '#6366f1', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
+                              {savingPassword === u.id ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={11} />}
+                            </button>
+                            <button onClick={() => { setEditPassword(null); setPasswordVal('') }}
+                              style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: '#f3f4f6', cursor: 'pointer' }}>
+                              <X size={11} color="#6b7280" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setEditPassword(u.id); setPasswordVal('') }}
+                            title={u.has_password ? 'Change password' : 'Set password'}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center', gap: 5, borderRadius: 6 }}
+                          >
+                            <Lock size={14} color={u.has_password ? '#059669' : '#dc2626'} />
+                            <span style={{ fontSize: 12, color: u.has_password ? '#059669' : '#dc2626', fontWeight: 500 }}>
+                              {u.has_password ? 'Set' : 'Not set'}
+                            </span>
                           </button>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </td>
+
+                      <td style={{ padding: '12px 14px' }}>{statusBadge(u)}</td>
+
+                      <td style={{ padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button onClick={() => toggleActive(u)} disabled={toggling === u.id} title={u.active ? 'Deactivate' : 'Activate'}
+                            style={{ padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#374151' }}>
+                            {toggling === u.id
+                              ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                              : u.active ? <ToggleRight size={14} color="#059669" /> : <ToggleLeft size={14} color="#9ca3af" />}
+                            {u.active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          {u.role !== 'superadmin' && (
+                            <button onClick={() => handleDelete(u)} disabled={deleting === u.id}
+                              style={{ padding: '5px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#dc2626' }}>
+                              {deleting === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={12} />}
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -242,7 +371,14 @@ export default function Admin() {
                 <input type="text" value={form.notify_email || ''} onChange={e => setForm(f => ({ ...f, notify_email: e.target.value }))}
                   placeholder="jane@gmail.com"
                   style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>OTP codes and alerts go here. Leave blank to use login email.</div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Alerts go here. Leave blank to use login email.</div>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Password *</label>
+                <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder="Set initial password"
+                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>The user will need this to sign in. You can change it later.</div>
               </div>
               <div style={{ marginBottom: 18 }}>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Role</label>

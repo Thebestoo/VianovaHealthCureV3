@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { mkdirSync, existsSync } from 'fs'
 import Groq from 'groq-sdk'
+import bcrypt from 'bcryptjs'
 import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatmentEdited } from './mailer.js'
 
 const require = createRequire(import.meta.url)
@@ -111,6 +112,8 @@ try { db.exec(`ALTER TABLE cases ADD COLUMN share_token TEXT`) } catch {}
 // notify_email: where OTPs and notifications are delivered
 // (separate from login email so custom-domain accounts can use a real inbox)
 try { db.exec(`ALTER TABLE users ADD COLUMN notify_email TEXT NOT NULL DEFAULT ''`) } catch {}
+try { db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`) } catch {}
+try { db.exec(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`) } catch {}
 
 const app = express()
 app.use(cors())
@@ -235,6 +238,7 @@ function auth(req, res, next) {
   if (!session || new Date(session.expires_at) < new Date()) return res.status(401).json({ error: 'Session expired' })
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id)
   if (!user || !user.active) return res.status(401).json({ error: 'Account inactive' })
+  if (user.status && user.status !== 'active') return res.status(401).json({ error: 'Account pending approval' })
   req.apiKey   = user.email   // backward compat — owner_key queries use email
   req.keyRole  = user.role
   req.keyLabel = user.name
@@ -285,8 +289,8 @@ function requireRole(...roles) {
 ;(() => {
   const now = new Date().toISOString()
   const upsertUser = db.prepare(`
-    INSERT INTO users (id, email, name, role, active, created_at) VALUES (?, ?, ?, ?, 1, ?)
-    ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, active=1
+    INSERT INTO users (id, email, name, role, active, status, password_hash, created_at) VALUES (?, ?, ?, ?, 1, 'active', '', ?)
+    ON CONFLICT(email) DO UPDATE SET name=excluded.name, role=excluded.role, active=1, status='active'
   `)
 
   // Hardcoded superadmins
@@ -608,61 +612,35 @@ app.patch('/api/cases/:id/review', auth, (req, res) => {
   })
 })
 
-// ── POST /api/auth/request-otp ─────────────────────────────────────────────────
-app.post('/api/auth/request-otp', async (req, res) => {
-  const { email } = req.body
-  if (!email) return res.status(400).json({ error: 'Email required' })
-  const user = db.prepare('SELECT * FROM users WHERE email = ? AND active = 1').get(email.toLowerCase().trim())
-  if (!user) return res.status(404).json({ error: 'No account for this email' })
-  const code = String(Math.floor(100000 + Math.random() * 900000))
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-  db.prepare('INSERT INTO otp_codes (email, code, expires_at, used) VALUES (?, ?, ?, 0)').run(user.email, code, expiresAt)
-  // Respond immediately — don't block on email delivery
-  res.json({ ok: true })
-  // Deliver to notify_email if set, otherwise login email
-  const otpDest = user.notify_email || user.email
-  console.log(`  OTP for ${user.email} → ${otpDest}: ${code}`)
-  sendEmail({
-    to: otpDest,
-    subject: 'Your Vianova Login Code',
-    html: `
-      <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
-        <div style="margin-bottom:24px">
-          <span style="font-size:22px;font-weight:700;color:#0f766e">Vianova Health</span>
-        </div>
-        <h2 style="margin:0 0 8px;color:#111827;font-size:20px">Your login code</h2>
-        <p style="color:#6b7280;margin:0 0 24px;font-size:14px">Use the code below to sign in. It expires in 10 minutes.</p>
-        <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px">
-          <span style="font-size:36px;font-weight:700;letter-spacing:8px;color:#0f766e">${code}</span>
-        </div>
-        <p style="color:#9ca3af;font-size:12px">If you didn't request this, ignore this email.</p>
-      </div>
-    `
-  }).then(r => {
-    if (!r.ok) console.error(`  OTP email failed for ${user.email}:`, r.error)
-  }).catch(err => console.error('  OTP email error:', err.message))
-})
-
-// ── POST /api/auth/verify-otp ──────────────────────────────────────────────────
-app.post('/api/auth/verify-otp', (req, res) => {
-  const { email, code } = req.body
-  if (!email || !code) return res.status(400).json({ error: 'Email and code required' })
+// ── POST /api/auth/login ───────────────────────────────────────────────────────
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' })
   const normalEmail = email.toLowerCase().trim()
-  const otp = db.prepare(
-    'SELECT * FROM otp_codes WHERE email = ? AND code = ? AND used = 0 AND expires_at > ? ORDER BY id DESC LIMIT 1'
-  ).get(normalEmail, code, new Date().toISOString())
-  if (!otp) return res.status(400).json({ error: 'Invalid or expired code' })
-  db.prepare('UPDATE otp_codes SET used = 1 WHERE id = ?').run(otp.id)
   const user = db.prepare('SELECT * FROM users WHERE email = ? AND active = 1').get(normalEmail)
-  if (!user) return res.status(400).json({ error: 'Account not found' })
+  if (!user) return res.status(401).json({ error: 'Invalid email or password' })
+  if (user.status && user.status !== 'active') return res.status(401).json({ error: 'Account pending approval — contact admin' })
+  if (!user.password_hash) return res.status(401).json({ error: 'No password set — contact admin' })
+  const valid = bcrypt.compareSync(password, user.password_hash)
+  if (!valid) return res.status(401).json({ error: 'Invalid email or password' })
   const token = randomBytes(32).toString('hex')
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
   db.prepare('INSERT INTO sessions (token, user_id, user_email, expires_at, created_at) VALUES (?, ?, ?, ?, ?)').run(
     token, user.id, user.email, expiresAt, new Date().toISOString()
   )
   const displayName = user.role === 'doctor' ? `Dr. ${user.name}` : user.name
-  logUpdate('auth_login', `${user.role} "${displayName}" signed in via OTP`, { email: user.email, role: user.role })
+  logUpdate('auth_login', `${user.role} "${displayName}" signed in`, { email: user.email, role: user.role })
   res.json({ token, role: user.role, label: displayName, email: user.email })
+})
+
+// ── POST /api/auth/request-otp (kept for backward compat — no longer used in UI) ─
+app.post('/api/auth/request-otp', async (req, res) => {
+  res.status(410).json({ error: 'OTP login is no longer supported. Use email + password.' })
+})
+
+// ── POST /api/auth/verify-otp (kept for backward compat) ──────────────────────
+app.post('/api/auth/verify-otp', (req, res) => {
+  res.status(410).json({ error: 'OTP login is no longer supported. Use email + password.' })
 })
 
 // ── POST /api/auth/verify — backward compat (session token lookup) ─────────────
@@ -988,37 +966,126 @@ app.get('/api/share/:token', (req, res) => {
 
 // ── Admin routes ───────────────────────────────────────────────────────────────
 app.get('/api/admin/users', auth, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, email, notify_email, name, role, active, created_at FROM users ORDER BY created_at DESC').all()
-  res.json({ users })
+  const users = db.prepare('SELECT id, email, notify_email, name, role, active, status, password_hash, created_at FROM users ORDER BY created_at DESC').all()
+  res.json({
+    users: users.map(u => ({
+      ...u,
+      has_password: !!u.password_hash,
+      password_hash: undefined,
+    }))
+  })
 })
 
 app.post('/api/admin/users', auth, requireAdmin, (req, res) => {
-  const { email, name, role = 'doctor' } = req.body
+  const { email, name, role = 'doctor', password } = req.body
   if (!email || !name) return res.status(400).json({ error: 'email and name required' })
   const normalEmail = email.toLowerCase().trim()
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalEmail)
+  const passwordHash = password ? bcrypt.hashSync(password, 10) : ''
   if (existing) {
     db.prepare('UPDATE users SET name = ?, role = ?, active = 1 WHERE email = ?').run(name, role, normalEmail)
     res.json({ id: existing.id })
   } else {
     const id = randomUUID()
-    db.prepare('INSERT INTO users (id, email, name, role, active, created_at) VALUES (?, ?, ?, ?, 1, ?)').run(
-      id, normalEmail, name, role, new Date().toISOString()
+    db.prepare('INSERT INTO users (id, email, name, role, active, status, password_hash, created_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)').run(
+      id, normalEmail, name, role, 'pending', passwordHash, new Date().toISOString()
     )
     res.json({ id })
   }
 })
 
-app.patch('/api/admin/users/:id', auth, requireAdmin, (req, res) => {
-  const { active, name, role, notify_email } = req.body
+app.patch('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
+  const { active, name, role, notify_email, password, status } = req.body
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
   if (!user) return res.status(404).json({ error: 'User not found' })
   const newName        = name         !== undefined ? name         : user.name
   const newRole        = role         !== undefined ? role         : user.role
   const newActive      = active       !== undefined ? (active ? 1 : 0) : user.active
-  const newNotifyEmail = notify_email !== undefined ? notify_email.toLowerCase().trim() : user.notify_email
-  db.prepare('UPDATE users SET name = ?, role = ?, active = ?, notify_email = ? WHERE id = ?')
-    .run(newName, newRole, newActive, newNotifyEmail, req.params.id)
+  const newNotifyEmail = notify_email !== undefined ? notify_email.toLowerCase().trim() : (user.notify_email || '')
+  const newStatus      = status       !== undefined ? status       : (user.status || 'active')
+  const newPasswordHash = password    !== undefined ? bcrypt.hashSync(password, 10) : user.password_hash
+
+  db.prepare('UPDATE users SET name = ?, role = ?, active = ?, notify_email = ?, status = ?, password_hash = ? WHERE id = ?')
+    .run(newName, newRole, newActive, newNotifyEmail, newStatus, newPasswordHash, req.params.id)
+
+  // Deactivation: if active changed from 1 to 0, export CSV and notify
+  if (user.active === 1 && newActive === 0) {
+    try {
+      // Fetch all cases for this user
+      const cases = db.prepare('SELECT * FROM cases WHERE owner_key = ? ORDER BY created_at ASC').all(user.email)
+      const sessionCount = db.prepare('SELECT COUNT(*) as c FROM sessions WHERE user_id = ?').get(req.params.id)?.c || 0
+      const otpCount = db.prepare('SELECT COUNT(*) as c FROM otp_codes WHERE email = ?').get(user.email)?.c || 0
+
+      // Build CSV
+      const csvRows = ['case_id,created_at,complaint,confidence,status,emergency']
+      cases.forEach(c => {
+        let complaint = '', confidence = '', approved = 'pending', emergency = 'false'
+        try {
+          const pi = JSON.parse(c.patient_input)
+          complaint = pi.complaint || ''
+        } catch {}
+        try {
+          const an = JSON.parse(c.analysis)
+          confidence = an.confidence_level || ''
+          approved = an.doctor_review?.approved ? 'approved' : 'pending'
+          emergency = an.red_flags?.emergency_detected ? 'true' : 'false'
+        } catch {}
+        const esc = s => `"${String(s).replace(/"/g, '""')}"`
+        csvRows.push([esc(c.case_id), esc(c.created_at), esc(complaint), esc(confidence), esc(approved), esc(emergency)].join(','))
+      })
+      const csvString = csvRows.join('\n')
+      const csvBase64 = Buffer.from(csvString).toString('base64')
+
+      const subject = `Account Deactivated — ${user.name} — Full History Export`
+      const html = `
+        <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+          <h2 style="color:#0f172a">Account Deactivated</h2>
+          <p>User <strong>${user.name}</strong> (${user.email}) has been deactivated.</p>
+          <table style="font-size:13px;border-collapse:collapse;width:100%">
+            <tr><td style="color:#64748b;padding:4px 0;width:140px">Total cases</td><td>${cases.length}</td></tr>
+            <tr><td style="color:#64748b;padding:4px 0">Sessions</td><td>${sessionCount}</td></tr>
+            <tr><td style="color:#64748b;padding:4px 0">OTP codes</td><td>${otpCount}</td></tr>
+          </table>
+          <p style="font-size:12px;color:#94a3b8;margin-top:16px">Full case history is attached as a CSV.</p>
+        </div>`
+      const attachments = [{ name: `${user.email}-history.csv`, content: csvBase64 }]
+
+      // Notify superadmins
+      const admins = db.prepare("SELECT email, notify_email FROM users WHERE role = 'superadmin' AND active = 1").all()
+      for (const a of admins) {
+        const dest = a.notify_email || a.email
+        sendEmail({ to: dest, subject, html, attachments }).catch(() => {})
+      }
+      // Also notify the deactivated user
+      const userDest = user.notify_email || user.email
+      if (userDest && !admins.find(a => (a.notify_email || a.email) === userDest)) {
+        sendEmail({ to: userDest, subject, html, attachments }).catch(() => {})
+      }
+
+      // Delete all sessions for user
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(req.params.id)
+    } catch (err) {
+      console.error('Deactivation export error:', err.message)
+    }
+  }
+
+  res.json({ ok: true })
+})
+
+app.post('/api/admin/users/:id/approve', auth, requireAdmin, (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  db.prepare("UPDATE users SET status = 'active' WHERE id = ?").run(req.params.id)
+  res.json({ ok: true })
+})
+
+app.post('/api/admin/users/:id/set-password', auth, requireAdmin, (req, res) => {
+  const { password } = req.body
+  if (!password) return res.status(400).json({ error: 'password required' })
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  const hash = bcrypt.hashSync(password, 10)
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, req.params.id)
   res.json({ ok: true })
 })
 

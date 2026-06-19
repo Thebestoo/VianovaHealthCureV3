@@ -42,24 +42,28 @@ function getGmailTransporter() {
  * Send an email.
  * Returns { ok: true } or { ok: false, error: string }
  */
-export async function sendEmail({ to, subject, html, text }) {
+export async function sendEmail({ to, subject, html, text, attachments }) {
   if (!to) return { ok: false, error: 'No recipient email' }
 
   // ── Brevo (preferred) ──────────────────────────────────────────────────────
   if (BREVO_KEY) {
     try {
+      const body = {
+        sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html || `<p>${text || subject}</p>`,
+      }
+      if (attachments && attachments.length > 0) {
+        body.attachment = attachments
+      }
       const res = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
           'api-key': BREVO_KEY,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({
-          sender: { name: SENDER_NAME, email: SENDER_EMAIL },
-          to: [{ email: to }],
-          subject,
-          htmlContent: html || `<p>${text || subject}</p>`,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
