@@ -11,11 +11,14 @@
 import nodemailer from 'nodemailer'
 import { lookup as dnsLookup } from 'dns'
 
-const RESEND_KEY = process.env.RESEND_API_KEY
+const BREVO_KEY   = process.env.BREVO_API_KEY
+const RESEND_KEY  = process.env.RESEND_API_KEY
 const RESEND_FROM = process.env.RESEND_FROM || 'Vianova Health <onboarding@resend.dev>'
 
 const GMAIL_USER = process.env.GMAIL_USER
 const GMAIL_PASS = process.env.GMAIL_PASS
+const SENDER_NAME  = 'Vianova Health'
+const SENDER_EMAIL = GMAIL_USER || 'vianova.healthtest@gmail.com'
 
 let gmailTransporter = null
 
@@ -42,7 +45,33 @@ function getGmailTransporter() {
 export async function sendEmail({ to, subject, html, text }) {
   if (!to) return { ok: false, error: 'No recipient email' }
 
-  // ── Resend (preferred) ─────────────────────────────────────────────────────
+  // ── Brevo (preferred) ──────────────────────────────────────────────────────
+  if (BREVO_KEY) {
+    try {
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': BREVO_KEY,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+          to: [{ email: to }],
+          subject,
+          htmlContent: html || `<p>${text || subject}</p>`,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        return { ok: false, error: data.message || `Brevo HTTP ${res.status}` }
+      }
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: `Brevo fetch error: ${err.message}` }
+    }
+  }
+
+  // ── Resend (fallback) ──────────────────────────────────────────────────────
   if (RESEND_KEY) {
     try {
       const res = await fetch('https://api.resend.com/emails', {
