@@ -1,26 +1,38 @@
+/**
+ * mailer.js — sends via Resend REST API (HTTPS, no SMTP, no IPv6 issues)
+ * Fallback: nodemailer Gmail if RESEND_API_KEY is not set.
+ *
+ * Required env var:  RESEND_API_KEY=re_xxxxx
+ * Optional from:     RESEND_FROM   (default: onboarding@resend.dev)
+ *
+ * Resend free tier: 3,000 emails/month, 100/day — https://resend.com
+ */
+
 import nodemailer from 'nodemailer'
 import { lookup as dnsLookup } from 'dns'
 
-const USER = process.env.GMAIL_USER
-const PASS = process.env.GMAIL_PASS
+const RESEND_KEY = process.env.RESEND_API_KEY
+const RESEND_FROM = process.env.RESEND_FROM || 'Vianova Health <onboarding@resend.dev>'
 
-let transporter = null
+const GMAIL_USER = process.env.GMAIL_USER
+const GMAIL_PASS = process.env.GMAIL_PASS
 
-function getTransporter() {
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
+let gmailTransporter = null
+
+function getGmailTransporter() {
+  if (!gmailTransporter) {
+    gmailTransporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 587,
-      secure: false,          // STARTTLS on port 587
-      auth: { user: USER, pass: PASS },
+      secure: false,
+      auth: { user: GMAIL_USER, pass: GMAIL_PASS },
       connectionTimeout: 15000,
       greetingTimeout: 15000,
       socketTimeout: 20000,
-      // Force IPv4 socket-level — belt-and-suspenders with setDefaultResultOrder above
       lookup: (hostname, options, cb) => dnsLookup(hostname, { ...options, family: 4 }, cb),
     })
   }
-  return transporter
+  return gmailTransporter
 }
 
 /**
@@ -28,23 +40,48 @@ function getTransporter() {
  * Returns { ok: true } or { ok: false, error: string }
  */
 export async function sendEmail({ to, subject, html, text }) {
-  if (!USER || !PASS || USER === 'your_gmail@gmail.com') {
-    return { ok: false, error: 'Gmail credentials not configured in .env' }
+  if (!to) return { ok: false, error: 'No recipient email' }
+
+  // ── Resend (preferred) ─────────────────────────────────────────────────────
+  if (RESEND_KEY) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RESEND_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: RESEND_FROM,
+          to: [to],
+          subject,
+          html: html || `<p>${text || subject}</p>`,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        return { ok: false, error: data.message || data.error || `Resend HTTP ${res.status}` }
+      }
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: `Resend fetch error: ${err.message}` }
+    }
   }
-  if (!to) {
-    return { ok: false, error: 'No recipient email on this key — add one with: node server/keys.js email <key> <email>' }
+
+  // ── Gmail SMTP fallback ────────────────────────────────────────────────────
+  if (!GMAIL_USER || !GMAIL_PASS) {
+    return { ok: false, error: 'No email provider configured (set RESEND_API_KEY or GMAIL_USER+GMAIL_PASS)' }
   }
   try {
-    await getTransporter().sendMail({
-      from: `"Vianova Health" <${USER}>`,
-      to,
-      subject,
-      html,
+    await getGmailTransporter().sendMail({
+      from: `"Vianova Health" <${GMAIL_USER}>`,
+      to, subject,
+      html: html || `<p>${text || subject}</p>`,
       text: text || subject,
     })
     return { ok: true }
   } catch (err) {
-    transporter = null  // reset so next attempt creates a fresh one
+    gmailTransporter = null   // reset so next attempt creates a fresh transporter
     return { ok: false, error: err.message }
   }
 }
@@ -57,7 +94,6 @@ export function tplNewCase({ caseId, label, age, sex, complaint, confidence, eme
          ⚠ EMERGENCY / URGENT — Immediate review required
        </div>`
     : ''
-
   return {
     subject: emergency
       ? `🚨 EMERGENCY Case Submitted — ${caseId.slice(0, 8)}`
@@ -77,9 +113,6 @@ export function tplNewCase({ caseId, label, age, sex, complaint, confidence, eme
       <tr><td style="padding:8px 0;color:#64748b;">Chief Complaint</td><td>${complaint || '—'}</td></tr>
       <tr><td style="padding:8px 0;color:#64748b;">AI Confidence</td><td><span style="font-weight:600;color:${confidence === 'high' ? '#059669' : confidence === 'moderate' ? '#d97706' : '#dc2626'}">${confidence || '—'}</span></td></tr>
     </table>
-    <div style="margin-top:20px;">
-      <a href="http://localhost:5173/cases/${caseId}" style="background:#0284c7;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">Open Case →</a>
-    </div>
     <div style="margin-top:20px;font-size:11.5px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:12px;">
       AI draft — physician review required before any clinical decision.
     </div>
@@ -110,9 +143,6 @@ export function tplEmergencyAlert({ caseId, label, age, sex, complaint, redFlags
       <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Red Flags</div>
       ${flags.map(f => `<div style="background:#fee2e2;border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:13px;color:#7f1d1d;">• ${f}</div>`).join('')}
     </div>` : ''}
-    <div style="margin-top:20px;">
-      <a href="http://localhost:5173/cases/${caseId}" style="background:#dc2626;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">Review Now →</a>
-    </div>
   </div>
 </div>`,
   }
@@ -139,9 +169,6 @@ export function tplCaseApproved({ caseId, label, age, sex, complaint, approvedBy
       <div style="font-size:12px;font-weight:600;color:#059669;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Approved Treatment Plan</div>
       <div style="font-size:13.5px;color:#0f172a;line-height:1.6;">${treatment}</div>
     </div>` : ''}
-    <div style="margin-top:20px;">
-      <a href="http://localhost:5173/cases/${caseId}" style="background:#059669;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">View Case →</a>
-    </div>
   </div>
 </div>`,
   }
@@ -162,24 +189,9 @@ export function tplTreatmentEdited({ caseId, label, age, sex, oldTreatment, newT
       <tr><td style="padding:8px 0;color:#64748b;width:140px;">Case ID</td><td style="font-family:monospace;color:#0f172a;">${caseId}</td></tr>
       <tr><td style="padding:8px 0;color:#64748b;">Patient</td><td>${age ? age + 'y' : '—'} ${sex || ''}</td></tr>
     </table>
-    ${oldTreatment ? `
-    <div style="margin-top:14px;background:#f1f5f9;border-radius:8px;padding:12px 14px;">
-      <div style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;">Previous</div>
-      <div style="font-size:13px;color:#475569;line-height:1.5;">${oldTreatment}</div>
-    </div>` : ''}
-    ${newTreatment ? `
-    <div style="margin-top:10px;background:#ede9fe;border-radius:8px;padding:12px 14px;">
-      <div style="font-size:11px;font-weight:600;color:#7c3aed;text-transform:uppercase;margin-bottom:4px;">Updated</div>
-      <div style="font-size:13px;color:#0f172a;line-height:1.5;">${newTreatment}</div>
-    </div>` : ''}
-    ${notes ? `
-    <div style="margin-top:10px;background:#f0fdf4;border-radius:8px;padding:12px 14px;">
-      <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;margin-bottom:4px;">Doctor Notes</div>
-      <div style="font-size:13px;color:#0f172a;line-height:1.5;">${notes}</div>
-    </div>` : ''}
-    <div style="margin-top:20px;">
-      <a href="http://localhost:5173/cases/${caseId}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">View Case →</a>
-    </div>
+    ${oldTreatment ? `<div style="margin-top:14px;background:#f1f5f9;border-radius:8px;padding:12px 14px;"><div style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;">Previous</div><div style="font-size:13px;color:#475569;">${oldTreatment}</div></div>` : ''}
+    ${newTreatment ? `<div style="margin-top:10px;background:#ede9fe;border-radius:8px;padding:12px 14px;"><div style="font-size:11px;font-weight:600;color:#7c3aed;text-transform:uppercase;margin-bottom:4px;">Updated</div><div style="font-size:13px;color:#0f172a;">${newTreatment}</div></div>` : ''}
+    ${notes ? `<div style="margin-top:10px;background:#f0fdf4;border-radius:8px;padding:12px 14px;"><div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;margin-bottom:4px;">Doctor Notes</div><div style="font-size:13px;color:#0f172a;">${notes}</div></div>` : ''}
   </div>
 </div>`,
   }
