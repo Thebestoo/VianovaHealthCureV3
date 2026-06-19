@@ -1,4 +1,7 @@
 import 'dotenv/config'
+import { setDefaultResultOrder } from 'dns'
+// Force IPv4 DNS resolution — Render's network blocks outbound IPv6 (ENETUNREACH)
+setDefaultResultOrder('ipv4first')
 import express from 'express'
 import cors from 'cors'
 import { randomUUID, randomBytes } from 'crypto'

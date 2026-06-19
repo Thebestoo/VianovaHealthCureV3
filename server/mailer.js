@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { lookup as dnsLookup } from 'dns'
 
 const USER = process.env.GMAIL_USER
 const PASS = process.env.GMAIL_PASS
@@ -11,11 +12,12 @@ function getTransporter() {
       host: 'smtp.gmail.com',
       port: 587,
       secure: false,          // STARTTLS on port 587
-      family: 4,              // force IPv4 — prevents ENETUNREACH on IPv6-only hosts
       auth: { user: USER, pass: PASS },
       connectionTimeout: 15000,
       greetingTimeout: 15000,
       socketTimeout: 20000,
+      // Force IPv4 socket-level — belt-and-suspenders with setDefaultResultOrder above
+      lookup: (hostname, options, cb) => dnsLookup(hostname, { ...options, family: 4 }, cb),
     })
   }
   return transporter
