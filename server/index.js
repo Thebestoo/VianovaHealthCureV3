@@ -93,8 +93,12 @@ db.exec(`
     name        TEXT NOT NULL,
     dob         TEXT,
     sex         TEXT,
+    mrn         TEXT,
     phone       TEXT,
     conditions  TEXT,
+    medications TEXT,
+    allergies   TEXT,
+    fhir_vitals TEXT,
     notes       TEXT,
     created_at  TEXT NOT NULL
   );
@@ -1033,11 +1037,15 @@ app.get('/api/gen-patients', auth, (req, res) => {
 })
 
 app.post('/api/gen-patients', auth, (req, res) => {
-  const { name, dob, sex, phone, conditions, notes } = req.body
+  const { name, dob, sex, mrn, phone, conditions, medications, allergies, fhir_vitals, notes } = req.body
   if (!name) return res.status(400).json({ error: 'name required' })
   const id = randomUUID()
-  db.prepare('INSERT INTO gen_patients (id, owner_email, name, dob, sex, phone, conditions, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(
-    id, req.apiKey, name, dob || null, sex || null, phone || null, conditions || null, notes || null, new Date().toISOString()
+  db.prepare(`INSERT INTO gen_patients
+    (id, owner_email, name, dob, sex, mrn, phone, conditions, medications, allergies, fhir_vitals, notes, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    id, req.apiKey, name, dob||null, sex||null, mrn||null, phone||null,
+    conditions||null, medications||null, allergies||null, fhir_vitals||null, notes||null,
+    new Date().toISOString()
   )
   res.json({ id })
 })
@@ -1045,11 +1053,14 @@ app.post('/api/gen-patients', auth, (req, res) => {
 app.put('/api/gen-patients/:id', auth, (req, res) => {
   const existing = db.prepare('SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?').get(req.params.id, req.apiKey)
   if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
-  const { name, dob, sex, phone, conditions, notes } = req.body
-  db.prepare('UPDATE gen_patients SET name = ?, dob = ?, sex = ?, phone = ?, conditions = ?, notes = ? WHERE id = ? AND owner_email = ?').run(
-    name || existing.name, dob ?? existing.dob, sex ?? existing.sex,
-    phone ?? existing.phone, conditions ?? existing.conditions,
-    notes ?? existing.notes, req.params.id, req.apiKey
+  const { name, dob, sex, mrn, phone, conditions, medications, allergies, fhir_vitals, notes } = req.body
+  db.prepare(`UPDATE gen_patients SET
+    name=?, dob=?, sex=?, mrn=?, phone=?, conditions=?, medications=?, allergies=?, fhir_vitals=?, notes=?
+    WHERE id=? AND owner_email=?`).run(
+    name||existing.name, dob??existing.dob, sex??existing.sex, mrn??existing.mrn,
+    phone??existing.phone, conditions??existing.conditions, medications??existing.medications,
+    allergies??existing.allergies, fhir_vitals??existing.fhir_vitals, notes??existing.notes,
+    req.params.id, req.apiKey
   )
   res.json({ ok: true })
 })
