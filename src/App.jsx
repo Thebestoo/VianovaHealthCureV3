@@ -8,8 +8,6 @@ import NewCase from './pages/NewCase.jsx'
 import CaseReview from './pages/CaseReview.jsx'
 import Cases from './pages/Cases.jsx'
 import Logs from './pages/Logs.jsx'
-import RPM from './pages/RPM.jsx'
-import CCM from './pages/CCM.jsx'
 import SharedCase from './pages/SharedCase.jsx'
 import Login from './pages/Login.jsx'
 import Patients from './pages/Patients.jsx'
@@ -35,8 +33,6 @@ function AppRoutes() {
             <Route path="/cases" element={<ProtectedRoute><Cases /></ProtectedRoute>} />
             <Route path="/cases/new" element={<ProtectedRoute><NewCase /></ProtectedRoute>} />
             <Route path="/cases/:id" element={<ProtectedRoute><CaseReview /></ProtectedRoute>} />
-            <Route path="/rpm" element={<ProtectedRoute><RPM /></ProtectedRoute>} />
-            <Route path="/ccm" element={<ProtectedRoute><CCM /></ProtectedRoute>} />
             <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />
             <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
