@@ -1007,6 +1007,69 @@ app.delete('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
   res.json({ ok: true })
 })
 
+// ── Mobile-friendly alias routes ──────────────────────────────────────────────
+
+// GET /api/stats — returns case stats for the current user (used by mobile app)
+app.get('/api/stats', auth, async (req, res) => {
+  try {
+    const stats = await keyStats(req.apiKey, req.keyRole)
+    res.json(stats)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/patients — returns gen_patients for the current user
+app.get('/api/patients', auth, async (req, res) => {
+  try {
+    const rows = req.keyRole === 'superadmin'
+      ? (await db.execute({ sql: 'SELECT * FROM gen_patients ORDER BY name', args: [] })).rows
+      : (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE owner_email = ? ORDER BY name', args: [req.apiKey] })).rows
+    res.json(rows)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/cases — mobile shorthand that calls the AI analyze pipeline
+app.post('/api/cases', auth, async (req, res) => {
+  try {
+    const { patientData = {}, complaint } = req.body
+    if (!complaint) return res.status(400).json({ error: 'complaint required' })
+    patientData.current_date = new Date().toISOString().slice(0, 10)
+    patientData.free_text = [patientData.free_text, complaint ? `Chief complaint: ${complaint}` : ''].filter(Boolean).join('\n')
+
+    const message = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 4096,
+      temperature: 0.3,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user',   content: JSON.stringify(patientData) }
+      ],
+      response_format: { type: 'json_object' },
+    })
+
+    let analysis = {}
+    try { analysis = JSON.parse(message.choices[0].message.content) } catch {}
+
+    const caseId = randomUUID()
+    const now = new Date().toISOString()
+    await db.execute({
+      sql: `INSERT INTO cases (case_id, owner_key, owner_label, patient_input, analysis, complaint, age, sex, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+      args: [caseId, req.apiKey, req.keyLabel || req.apiKey, JSON.stringify(patientData), JSON.stringify(analysis), complaint, patientData.age || null, patientData.sex || null, now]
+    })
+
+    const emergency = analysis?.red_flags?.emergency_escalation_required ?? analysis?.red_flags?.emergency_detected
+    const confidence = analysis?.confidence?.level ?? analysis?.confidence_level
+
+    // notify superadmins
+    const admins = (await db.execute({ sql: "SELECT email FROM users WHERE role='superadmin' AND active=1 AND status='active'", args: [] })).rows
+    for (const a of admins) {
+      await notify(a.email, tplNewCase({ caseId, label: req.keyLabel, age: patientData.age, sex: patientData.sex, complaint, confidence, emergency }))
+      if (emergency) await notify(a.email, tplEmergencyAlert({ caseId, label: req.keyLabel, age: patientData.age, sex: patientData.sex, complaint, redFlags: analysis?.red_flags?.flags }))
+    }
+
+    res.json({ case_id: caseId, status: 'pending', analysis })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── gen_patients routes ────────────────────────────────────────────────────────
 app.get('/api/gen-patients', auth, async (req, res) => {
   const rows = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE owner_email = ? ORDER BY name', args: [req.apiKey] })).rows
