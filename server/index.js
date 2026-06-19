@@ -81,6 +81,10 @@ async function initDB() {
     `ALTER TABLE users ADD COLUMN notify_email TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
+    // rename owner_key → owner_email in patient tables if created with old schema
+    `ALTER TABLE gen_patients RENAME COLUMN owner_key TO owner_email`,
+    `ALTER TABLE rpm_patients RENAME COLUMN owner_key TO owner_email`,
+    `ALTER TABLE ccm_patients RENAME COLUMN owner_key TO owner_email`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
