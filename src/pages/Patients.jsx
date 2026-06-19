@@ -76,9 +76,9 @@ export default function Patients() {
         sex:         p.gender ? (p.gender.charAt(0).toUpperCase() + p.gender.slice(1)) : f.sex,
         mrn:         p.mrn   || f.mrn,
         phone:       p.phone || f.phone,
-        conditions:  arrStr(parsed.conditions),
-        medications: arrStr((parsed.medications || []).map(m => m.name || m)),
-        allergies:   arrStr(parsed.allergies),
+        conditions:  arrStr((parsed.conditions  || []).map(c => c.name      || c).filter(Boolean)),
+        medications: arrStr((parsed.medications || []).map(m => m.name      || m).filter(Boolean)),
+        allergies:   arrStr((parsed.allergies   || []).map(a => a.substance || a).filter(Boolean)),
       }))
     } catch (err) { setFhirError(err.message || 'Could not parse FHIR file') }
   }
@@ -292,11 +292,13 @@ export default function Patients() {
                       <AlertTriangle size={13} /> {fhirError}
                     </div>
                   )}
-                  <div style={{ margin: '16px 0 4px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
-                    <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>or fill in manually</span>
-                    <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
-                  </div>
+                  {!fhirData && (
+                    <div style={{ margin: '16px 0 4px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                      <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>or fill in manually</span>
+                      <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                    </div>
+                  )}
                 </div>
               )}
 

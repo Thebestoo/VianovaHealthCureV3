@@ -4,6 +4,19 @@
  * Calculated from FHIR vitals imported into a case.
  */
 
+/** Convert °F to °C if the unit string indicates Fahrenheit. */
+function normalizeTemp(vital) {
+  if (!vital) return null
+  const num = parseFloat(String(vital.value).replace(/[^\d.]/g, ''))
+  if (isNaN(num)) return null
+  const unit = (vital.unit || '').toLowerCase()
+  // 'f' alone or in '[degF]', but not 'fl' or 'fluid'
+  if (/\bf\b|degf|°f/i.test(unit) || (unit === 'f')) {
+    return (num - 32) * 5 / 9
+  }
+  return num
+}
+
 export function calcNEWS2(vitals = [], onSupplementalO2 = false) {
   const find = (name) => {
     const v = vitals.find(v => v.name === name)
@@ -14,7 +27,8 @@ export function calcNEWS2(vitals = [], onSupplementalO2 = false) {
 
   const rr   = find('Respiratory rate')
   const spo2 = find('Oxygen saturation')
-  const temp = find('Body temperature')
+  const tempVital = vitals.find(v => v.name === 'Body temperature')
+  const temp = normalizeTemp(tempVital)
   const hr   = find('Heart rate')
   // BP stored as "134/82" — extract systolic
   const bpRaw = vitals.find(v => v.name === 'Blood pressure')
@@ -125,8 +139,11 @@ export function flagVitals(vitals = []) {
       if (num < 95) flags.push({ vital: 'SpO₂', value: `${num}%`, message: num < 90 ? 'Severe hypoxia' : 'Low oxygen saturation', severity: num < 90 ? 'critical' : 'warning' })
     }
     if (v.name === 'Body temperature') {
-      if (num >= 38.5) flags.push({ vital: 'Temperature', value: `${num}°C`, message: num >= 39.5 ? 'High fever' : 'Fever', severity: num >= 40 ? 'critical' : 'warning' })
-      if (num < 36.0)  flags.push({ vital: 'Temperature', value: `${num}°C`, message: 'Hypothermia', severity: num < 35 ? 'critical' : 'warning' })
+      const tempC = normalizeTemp(v)
+      if (tempC === null) return
+      const displayVal = `${num}${v.unit ? ' ' + v.unit : '°C'}`
+      if (tempC >= 38.5) flags.push({ vital: 'Temperature', value: displayVal, message: tempC >= 39.5 ? 'High fever' : 'Fever', severity: tempC >= 40 ? 'critical' : 'warning' })
+      if (tempC < 36.0)  flags.push({ vital: 'Temperature', value: displayVal, message: 'Hypothermia', severity: tempC < 35 ? 'critical' : 'warning' })
     }
     if (v.name === 'Respiratory rate') {
       if (num > 20) flags.push({ vital: 'Resp. Rate', value: `${num}/min`, message: 'Tachypnoea', severity: num > 25 ? 'critical' : 'warning' })
