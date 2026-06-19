@@ -18,7 +18,7 @@ const RESEND_FROM = process.env.RESEND_FROM || 'Vianova Health <onboarding@resen
 const GMAIL_USER = process.env.GMAIL_USER
 const GMAIL_PASS = process.env.GMAIL_PASS
 const SENDER_NAME  = 'Vianova Health'
-const SENDER_EMAIL = GMAIL_USER || 'vianova.healthtest@gmail.com'
+const SENDER_EMAIL = process.env.BREVO_FROM || GMAIL_USER || 'vianova.healthtest@gmail.com'
 
 let gmailTransporter = null
 
