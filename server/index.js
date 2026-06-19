@@ -1007,6 +1007,9 @@ app.delete('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
   res.json({ ok: true })
 })
 
+// ── Health / ping ──────────────────────────────────────────────────────────────
+app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }))
+
 // ── Mobile-friendly alias routes ──────────────────────────────────────────────
 
 // GET /api/stats — returns case stats for the current user (used by mobile app)
