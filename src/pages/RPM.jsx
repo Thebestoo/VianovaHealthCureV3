@@ -36,11 +36,8 @@ export default function RPM() {
   const [saving, setSaving] = useState(false)
   const [showAddPatient, setShowAddPatient] = useState(false)
   const [newPatient, setNewPatient] = useState({ name: '', dob: '', condition: '' })
-  const [genPatients, setGenPatients] = useState([])   // from Patients page
-  const [enrollMode, setEnrollMode] = useState('pick') // 'pick' | 'manual'
-  const [pickedId, setPickedId] = useState('')
 
-  useEffect(() => { if (key) { loadPatients(); loadGenPatients() } }, [key])
+  useEffect(() => { if (key) loadPatients() }, [key])
   useEffect(() => { if (selected) loadReadings(selected.id) }, [selected])
 
   async function loadPatients() {
@@ -48,14 +45,6 @@ export default function RPM() {
       const r = await fetch('/api/rpm/patients', { headers: { 'x-api-key': key } })
       const d = await r.json()
       setPatients(d.patients || [])
-    } catch {}
-  }
-
-  async function loadGenPatients() {
-    try {
-      const r = await fetch('/api/patients', { headers: { 'x-api-key': key } })
-      const d = await r.json()
-      setGenPatients(d.patients || [])
     } catch {}
   }
 
@@ -85,20 +74,13 @@ export default function RPM() {
   async function addPatient(e) {
     e.preventDefault()
     try {
-      let payload = newPatient
-      if (enrollMode === 'pick' && pickedId) {
-        const gp = genPatients.find(p => String(p.id) === String(pickedId))
-        if (gp) payload = { name: gp.name, dob: gp.dob || '', condition: (gp.conditions || '').split(',')[0]?.trim() || '' }
-      }
       await fetch('/api/rpm/patients', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(newPatient)
       })
       setShowAddPatient(false)
       setNewPatient({ name: '', dob: '', condition: '' })
-      setPickedId('')
-      setEnrollMode('pick')
       loadPatients()
     } catch {}
   }
@@ -329,75 +311,24 @@ export default function RPM() {
 
       {/* Add Patient Modal */}
       {showAddPatient && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-          onClick={e => e.target === e.currentTarget && setShowAddPatient(false)}>
-          <form onSubmit={addPatient} style={{ background: '#fff', borderRadius: 14, padding: '28px 32px', width: 440, maxWidth: '95vw' }}>
-            <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700 }}>Enroll Patient in RPM</h2>
-            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6b7280' }}>Select an existing patient or enter details manually.</p>
-
-            {/* Mode toggle */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-              {['pick', 'manual'].map(m => (
-                <button key={m} type="button" onClick={() => setEnrollMode(m)}
-                  style={{ flex: 1, padding: '8px', borderRadius: 8, border: `2px solid ${enrollMode === m ? '#0ea5e9' : '#e5e7eb'}`,
-                    background: enrollMode === m ? '#eff6ff' : '#fff', fontWeight: 600, fontSize: 13,
-                    color: enrollMode === m ? '#0284c7' : '#6b7280', cursor: 'pointer' }}>
-                  {m === 'pick' ? '📋 Select Existing Patient' : '✏️ Enter Manually'}
-                </button>
-              ))}
-            </div>
-
-            {enrollMode === 'pick' ? (
-              <div style={{ marginBottom: 16 }}>
-                {genPatients.length === 0 ? (
-                  <div style={{ padding: '16px', background: '#f9fafb', borderRadius: 8, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
-                    No patients found in Patients page yet.<br />
-                    <button type="button" onClick={() => setEnrollMode('manual')} style={{ marginTop: 8, background: 'none', border: 'none', color: '#0ea5e9', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                      Enter manually instead →
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
-                    {genPatients.map(p => (
-                      <button key={p.id} type="button" onClick={() => setPickedId(String(p.id))}
-                        style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 8,
-                          border: `2px solid ${pickedId === String(p.id) ? '#0ea5e9' : '#e5e7eb'}`,
-                          background: pickedId === String(p.id) ? '#eff6ff' : '#fff', cursor: 'pointer' }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                          {[p.dob, p.conditions?.split(',')[0]?.trim()].filter(Boolean).join(' · ') || 'No details'}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <form onSubmit={addPatient} style={{ background: '#fff', borderRadius: 14, padding: '28px 32px', width: 400, maxWidth: '95vw' }}>
+            <h2 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700 }}>Enroll Patient in RPM</h2>
+            {[
+              { label: 'Full Name', key: 'name', type: 'text', required: true },
+              { label: 'Date of Birth', key: 'dob', type: 'date', required: false },
+              { label: 'Primary Condition', key: 'condition', type: 'text', required: false },
+            ].map(f => (
+              <div key={f.key} style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>{f.label}</label>
+                <input type={f.type} required={f.required} value={newPatient[f.key]}
+                  onChange={e => setNewPatient(p => ({ ...p, [f.key]: e.target.value }))}
+                  style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
               </div>
-            ) : (
-              <>
-                {[
-                  { label: 'Full Name', key: 'name', type: 'text', required: true },
-                  { label: 'Date of Birth', key: 'dob', type: 'date', required: false },
-                  { label: 'Primary Condition', key: 'condition', type: 'text', required: false },
-                ].map(f => (
-                  <div key={f.key} style={{ marginBottom: 14 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>{f.label}{f.required ? ' *' : ''}</label>
-                    <input type={f.type} required={f.required} value={newPatient[f.key]}
-                      onChange={e => setNewPatient(p => ({ ...p, [f.key]: e.target.value }))}
-                      style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
-                  </div>
-                ))}
-              </>
-            )}
-
+            ))}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-              <button type="button" onClick={() => { setShowAddPatient(false); setPickedId(''); setEnrollMode('pick') }}
-                style={{ padding: '9px 18px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-              <button type="submit"
-                disabled={enrollMode === 'pick' && !pickedId && genPatients.length > 0}
-                style={{ padding: '9px 18px', border: 'none', borderRadius: 8, background: '#0ea5e9', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13,
-                  opacity: (enrollMode === 'pick' && !pickedId && genPatients.length > 0) ? 0.5 : 1 }}>
-                Enroll
-              </button>
+              <button type="button" onClick={() => setShowAddPatient(false)} style={{ padding: '9px 18px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="submit" style={{ padding: '9px 18px', border: 'none', borderRadius: 8, background: '#0ea5e9', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Enroll</button>
             </div>
           </form>
         </div>
