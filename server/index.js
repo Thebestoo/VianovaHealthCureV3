@@ -261,7 +261,7 @@ async function seed() {
   // Hardcoded superadmins
   const superadmins = [
     { email: 'diar.azemi@outlook.com', name: 'Diar Azemi',    role: 'superadmin' },
-    { email: 'emorina@vianova.ai',     name: 'Emorina Salihu', role: 'superadmin' },
+    { email: 'emorina@vianova.ai',     name: 'Eron Morina', role: 'superadmin' },
   ]
   for (const u of superadmins) {
     await db.execute({
