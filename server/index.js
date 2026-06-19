@@ -1027,46 +1027,54 @@ app.get('/api/patients', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// POST /api/cases — mobile shorthand that calls the AI analyze pipeline
+// POST /api/cases — mobile alias for POST /api/analyze (same pipeline)
 app.post('/api/cases', auth, async (req, res) => {
   try {
-    const { patientData = {}, complaint } = req.body
-    if (!complaint) return res.status(400).json({ error: 'complaint required' })
+    const { patientData: pd = {}, complaint } = req.body
+    // Build patientData same way as /api/analyze
+    const patientData = { ...pd }
+    if (complaint) patientData.free_text = [patientData.free_text, `Chief complaint: ${complaint}`].filter(Boolean).join('\n')
+    patientData.patient_id   = patientData.patient_id || randomUUID()
     patientData.current_date = new Date().toISOString().slice(0, 10)
-    patientData.free_text = [patientData.free_text, complaint ? `Chief complaint: ${complaint}` : ''].filter(Boolean).join('\n')
 
     const message = await client.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       max_tokens: 4096,
-      temperature: 0.3,
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user',   content: JSON.stringify(patientData) }
       ],
-      response_format: { type: 'json_object' },
     })
 
-    let analysis = {}
-    try { analysis = JSON.parse(message.choices[0].message.content) } catch {}
+    let analysis
+    try { analysis = JSON.parse(message.choices[0].message.content.trim()) }
+    catch { return res.status(500).json({ error: 'AI returned malformed JSON' }) }
 
     const caseId = randomUUID()
     const now = new Date().toISOString()
+    // Use exact same INSERT as /api/analyze — no extra columns
     await db.execute({
-      sql: `INSERT INTO cases (case_id, owner_key, owner_label, patient_input, analysis, complaint, age, sex, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-      args: [caseId, req.apiKey, req.keyLabel || req.apiKey, JSON.stringify(patientData), JSON.stringify(analysis), complaint, patientData.age || null, patientData.sex || null, now]
+      sql: 'INSERT INTO cases (case_id, created_at, patient_input, analysis, owner_key) VALUES (?, ?, ?, ?, ?)',
+      args: [caseId, now, JSON.stringify(patientData), JSON.stringify(analysis), req.apiKey]
     })
 
-    const emergency = analysis?.red_flags?.emergency_escalation_required ?? analysis?.red_flags?.emergency_detected
-    const confidence = analysis?.confidence?.level ?? analysis?.confidence_level
+    const isEmergency = analysis.red_flags?.emergency_escalation_required ?? analysis.red_flags?.emergency_detected
+    const confidence  = analysis.confidence?.level ?? analysis.confidence_level
 
-    // notify superadmins
+    await logUpdate('case_submitted', `New case submitted by ${req.keyLabel} (${patientData.age || '?'}y ${patientData.sex || '?'})${isEmergency ? ' — EMERGENCY' : ''}`, {
+      case_id: caseId, label: req.keyLabel, confidence, emergency: isEmergency,
+      age: patientData.age, sex: patientData.sex, complaint: analysis.presenting_complaint,
+    })
+
     const admins = (await db.execute({ sql: "SELECT email FROM users WHERE role='superadmin' AND active=1 AND status='active'", args: [] })).rows
     for (const a of admins) {
-      await notify(a.email, tplNewCase({ caseId, label: req.keyLabel, age: patientData.age, sex: patientData.sex, complaint, confidence, emergency }))
-      if (emergency) await notify(a.email, tplEmergencyAlert({ caseId, label: req.keyLabel, age: patientData.age, sex: patientData.sex, complaint, redFlags: analysis?.red_flags?.flags }))
+      await notify(a.email, tplNewCase({ caseId, label: req.keyLabel, age: patientData.age, sex: patientData.sex, complaint: analysis.presenting_complaint, confidence, emergency: isEmergency }))
+      if (isEmergency) await notify(a.email, tplEmergencyAlert({ caseId, label: req.keyLabel, age: patientData.age, sex: patientData.sex, complaint: analysis.presenting_complaint, redFlags: analysis.red_flags?.flags }))
     }
 
-    res.json({ case_id: caseId, status: 'pending', analysis })
+    res.json({ case_id: caseId, analysis })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
