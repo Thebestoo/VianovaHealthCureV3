@@ -69,6 +69,17 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS ccm_patients (id TEXT PRIMARY KEY, owner_email TEXT NOT NULL, name TEXT NOT NULL, dob TEXT, conditions TEXT, created_at TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS ccm_care_plans (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id TEXT NOT NULL, template TEXT NOT NULL, tasks TEXT NOT NULL, goals TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS ccm_checkins (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id TEXT NOT NULL, minutes INTEGER NOT NULL, notes TEXT, checkin_date TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    // feature 5 – care gaps
+    `CREATE TABLE IF NOT EXISTS care_gaps (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, gap_type TEXT NOT NULL, description TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'medium', status TEXT NOT NULL DEFAULT 'open', suppression_reason TEXT, due_date TEXT, outreach_message TEXT, created_at TEXT NOT NULL, closed_at TEXT)`,
+    // feature 8 – lab results
+    `CREATE TABLE IF NOT EXISTS lab_results (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, test_name TEXT NOT NULL, value REAL NOT NULL, unit TEXT, reference_low REAL, reference_high REAL, interpretation TEXT, critical INTEGER NOT NULL DEFAULT 0, delta_flag INTEGER NOT NULL DEFAULT 0, result_date TEXT NOT NULL, ai_summary TEXT, notes TEXT, created_at TEXT NOT NULL)`,
+    // feature 9 – appointments
+    `CREATE TABLE IF NOT EXISTS appointments (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, appointment_type TEXT NOT NULL, appointment_date TEXT NOT NULL, duration_minutes INTEGER NOT NULL DEFAULT 30, provider TEXT, location TEXT, notes TEXT, status TEXT NOT NULL DEFAULT 'scheduled', no_show_risk REAL, reminder_sent INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)`,
+    // feature 10 – discharge summaries
+    `CREATE TABLE IF NOT EXISTS discharge_summaries (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, case_id TEXT, summary TEXT NOT NULL, patient_instructions TEXT, medications_at_discharge TEXT, follow_up_plan TEXT, risk_level TEXT NOT NULL DEFAULT 'low', finalized INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)`,
+    // feature 12 – consents & audit
+    `CREATE TABLE IF NOT EXISTS consents (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, consent_type TEXT NOT NULL, granted INTEGER NOT NULL DEFAULT 1, signed_by TEXT, signed_date TEXT, expires_at TEXT, notes TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_email TEXT NOT NULL, patient_id TEXT, action TEXT NOT NULL, resource_type TEXT, actor TEXT, details TEXT, created_at TEXT NOT NULL)`,
   ]
   for (const sql of stmts) {
     await db.execute({ sql, args: [] })
@@ -1353,6 +1364,536 @@ app.post('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
     args: [req.params.pid, minutes || 0, notes || null, new Date().toISOString(), new Date().toISOString()]
   })
   res.json({ ok: true })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 5 — CARE GAP DETECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/care-gaps', auth, async (req, res) => {
+  const { patient_id, status } = req.query
+  let sql = 'SELECT g.*, p.name as patient_name FROM care_gaps g JOIN gen_patients p ON g.patient_id = p.id WHERE g.owner_email = ?'
+  const args = [req.apiKey]
+  if (patient_id) { sql += ' AND g.patient_id = ?'; args.push(patient_id) }
+  if (status)     { sql += ' AND g.status = ?';     args.push(status) }
+  sql += ' ORDER BY CASE g.priority WHEN \'high\' THEN 0 WHEN \'medium\' THEN 1 ELSE 2 END, g.created_at DESC'
+  const rows = (await db.execute({ sql, args })).rows
+  res.json(rows)
+})
+
+app.post('/api/care-gaps/detect/:patientId', auth, async (req, res) => {
+  const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+  // Calculate age from DOB
+  let age = null
+  if (patient.dob) {
+    const dob = new Date(patient.dob)
+    if (!isNaN(dob)) age = Math.floor((Date.now() - dob) / (365.25 * 24 * 3600 * 1000))
+  }
+
+  const existingGaps = (await db.execute({ sql: "SELECT gap_type FROM care_gaps WHERE patient_id = ? AND status = 'open'", args: [req.params.patientId] })).rows.map(r => r.gap_type)
+
+  const prompt = `You are a clinical quality measure analyst. Analyze this patient and identify preventive care gaps based on USPSTF guidelines.
+
+Patient:
+- Name: ${patient.name}
+- Age: ${age ?? 'unknown'}
+- Sex: ${patient.sex || 'unknown'}
+- Conditions: ${patient.conditions || 'none documented'}
+- Medications: ${patient.medications || 'none documented'}
+
+Already-open gaps (do NOT re-add these): ${existingGaps.join(', ') || 'none'}
+
+Rules:
+- Diabetes/diabetic → A1C monitoring (every 3 months), annual eye exam, annual foot exam, annual nephropathy screening
+- Female age 40–74 → mammogram (every 2 years)
+- Age 45–75 → colorectal cancer screening (every 10 years or annual FIT)
+- Age 18+ with hypertension → annual BP reading
+- Age 65+ → annual flu vaccine, pneumococcal vaccine, shingles vaccine
+- Female age 21–65 → Pap smear (every 3 years or 5 years with HPV co-test)
+- Age 35+ with obesity/overweight → diabetes screening
+- Smoker → lung cancer screening (LDCT), smoking cessation counseling
+- Age 12+ → annual depression screening
+- Any patient → annual medication review
+
+Return ONLY valid JSON array. Each item: {"gap_type":"string","description":"1-sentence description","priority":"high|medium|low","due_date":"YYYY-MM-DD or null","recommended_action":"brief action string"}
+
+Limit to the 5 most clinically important gaps. Return [] if no gaps.`
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      max_tokens: 800,
+    })
+    const text = chat.choices[0].message.content
+    const match = text.match(/\[[\s\S]*\]/)
+    const gaps = match ? JSON.parse(match[0]) : []
+
+    const inserted = []
+    for (const g of gaps) {
+      if (!g.gap_type) continue
+      const id = randomUUID()
+      await db.execute({
+        sql: 'INSERT INTO care_gaps (id, patient_id, owner_email, gap_type, description, priority, due_date, created_at) VALUES (?,?,?,?,?,?,?,?)',
+        args: [id, req.params.patientId, req.apiKey, g.gap_type, g.description, g.priority || 'medium', g.due_date || null, new Date().toISOString()]
+      })
+      inserted.push({ id, ...g })
+    }
+    res.json({ detected: inserted.length, gaps: inserted })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/care-gaps/:id', auth, async (req, res) => {
+  const { status, suppression_reason } = req.body
+  const gap = (await db.execute({ sql: 'SELECT * FROM care_gaps WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+  if (!gap) return res.status(404).json({ error: 'Not found' })
+  const closed_at = (status === 'closed' || status === 'suppressed') ? new Date().toISOString() : null
+  await db.execute({
+    sql: 'UPDATE care_gaps SET status = ?, suppression_reason = ?, closed_at = ? WHERE id = ?',
+    args: [status || gap.status, suppression_reason || gap.suppression_reason, closed_at, req.params.id]
+  })
+  res.json({ ok: true })
+})
+
+app.post('/api/care-gaps/:id/outreach', auth, async (req, res) => {
+  const gap = (await db.execute({
+    sql: 'SELECT g.*, p.name as patient_name, p.language FROM care_gaps g JOIN gen_patients p ON g.patient_id = p.id WHERE g.id = ? AND g.owner_email = ?',
+    args: [req.params.id, req.apiKey]
+  })).rows[0]
+  if (!gap) return res.status(404).json({ error: 'Not found' })
+
+  const lang = gap.language || 'English'
+  const prompt = `Write a concise, friendly patient outreach message for the following care gap.
+
+Patient: ${gap.patient_name}
+Care gap: ${gap.description}
+Priority: ${gap.priority}
+Language preference: ${lang}
+
+Requirements:
+- 3–5 sentences maximum
+- Empathetic, non-alarming tone
+- Include what action the patient should take
+- Suitable for SMS or portal message
+- If language is not English, write in that language
+
+Return only the message text, no subject line.`
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4,
+      max_tokens: 200,
+    })
+    const msg = chat.choices[0].message.content.trim()
+    await db.execute({ sql: 'UPDATE care_gaps SET outreach_message = ? WHERE id = ?', args: [msg, req.params.id] })
+    res.json({ message: msg })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 8 — LAB RESULTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Reference ranges for common tests (age/sex-independent defaults)
+const LAB_REFS = {
+  'glucose': { low: 70, high: 100, unit: 'mg/dL', critical_low: 40, critical_high: 500 },
+  'hba1c': { low: 4, high: 5.7, unit: '%', critical_high: 14 },
+  'creatinine': { low: 0.6, high: 1.2, unit: 'mg/dL', critical_high: 10 },
+  'egfr': { low: 60, high: 120, unit: 'mL/min/1.73m²', critical_low: 15 },
+  'sodium': { low: 136, high: 145, unit: 'mEq/L', critical_low: 120, critical_high: 160 },
+  'potassium': { low: 3.5, high: 5.0, unit: 'mEq/L', critical_low: 2.5, critical_high: 6.5 },
+  'hemoglobin': { low: 12, high: 17.5, unit: 'g/dL', critical_low: 7 },
+  'hematocrit': { low: 36, high: 52, unit: '%', critical_low: 21 },
+  'wbc': { low: 4.5, high: 11, unit: 'K/µL', critical_low: 2, critical_high: 30 },
+  'platelets': { low: 150, high: 400, unit: 'K/µL', critical_low: 50, critical_high: 1000 },
+  'tsh': { low: 0.4, high: 4.0, unit: 'mIU/L', critical_low: 0.1, critical_high: 10 },
+  'ldl': { low: 0, high: 100, unit: 'mg/dL' },
+  'hdl': { low: 40, high: 999, unit: 'mg/dL' },
+  'triglycerides': { low: 0, high: 150, unit: 'mg/dL', critical_high: 1000 },
+  'alt': { low: 0, high: 56, unit: 'U/L', critical_high: 1000 },
+  'ast': { low: 0, high: 40, unit: 'U/L', critical_high: 1000 },
+  'bilirubin': { low: 0, high: 1.2, unit: 'mg/dL', critical_high: 15 },
+  'bnp': { low: 0, high: 100, unit: 'pg/mL', critical_high: 900 },
+  'troponin': { low: 0, high: 0.04, unit: 'ng/mL', critical_high: 0.1 },
+  'psa': { low: 0, high: 4.0, unit: 'ng/mL' },
+  'inr': { low: 0.9, high: 1.1, unit: '', critical_low: 0.5, critical_high: 5 },
+  'calcium': { low: 8.5, high: 10.5, unit: 'mg/dL', critical_low: 6.5, critical_high: 13 },
+}
+
+function interpretLab(testName, value, refLow, refHigh, critLow, critHigh) {
+  const hi = refHigh ?? Infinity
+  const lo = refLow ?? -Infinity
+  const cHi = critHigh ?? Infinity
+  const cLo = critLow ?? -Infinity
+  if (value > cHi || value < cLo) return value > cHi ? 'HH' : 'LL'
+  if (value > hi) return 'H'
+  if (value < lo) return 'L'
+  return 'N'
+}
+
+app.get('/api/labs', auth, async (req, res) => {
+  const { patient_id } = req.query
+  let sql = 'SELECT l.*, p.name as patient_name FROM lab_results l JOIN gen_patients p ON l.patient_id = p.id WHERE l.owner_email = ?'
+  const args = [req.apiKey]
+  if (patient_id) { sql += ' AND l.patient_id = ?'; args.push(patient_id) }
+  sql += ' ORDER BY l.result_date DESC, l.created_at DESC'
+  res.json((await db.execute({ sql, args })).rows)
+})
+
+app.get('/api/labs/trends/:patientId/:testName', auth, async (req, res) => {
+  const rows = (await db.execute({
+    sql: 'SELECT result_date, value, unit, interpretation FROM lab_results WHERE patient_id = ? AND owner_email = ? AND test_name = ? ORDER BY result_date ASC',
+    args: [req.params.patientId, req.apiKey, req.params.testName]
+  })).rows
+  res.json(rows)
+})
+
+app.post('/api/labs', auth, async (req, res) => {
+  const { patient_id, test_name, value, unit, reference_low, reference_high, result_date, notes } = req.body
+  if (!patient_id || !test_name || value == null) return res.status(400).json({ error: 'patient_id, test_name and value required' })
+
+  // Check patient ownership
+  const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+  // Auto-fill reference ranges from built-in lookup
+  const key = test_name.toLowerCase().replace(/\s+/g, '')
+  const ref = LAB_REFS[key] || LAB_REFS[test_name.toLowerCase()] || {}
+  const refLow  = reference_low  ?? ref.low  ?? null
+  const refHigh = reference_high ?? ref.high ?? null
+  const critLow  = ref.critical_low  ?? null
+  const critHigh = ref.critical_high ?? null
+
+  const interp = interpretLab(test_name, parseFloat(value), refLow, refHigh, critLow, critHigh)
+  const critical = (interp === 'HH' || interp === 'LL') ? 1 : 0
+
+  // Delta check vs. most recent prior result
+  const prior = (await db.execute({
+    sql: 'SELECT value FROM lab_results WHERE patient_id = ? AND test_name = ? AND owner_email = ? ORDER BY result_date DESC LIMIT 1',
+    args: [patient_id, test_name, req.apiKey]
+  })).rows[0]
+  const delta_flag = prior && Math.abs((parseFloat(value) - parseFloat(prior.value)) / Math.max(Math.abs(parseFloat(prior.value)), 1)) > 0.5 ? 1 : 0
+
+  // AI summary
+  let ai_summary = null
+  try {
+    const prompt = `Briefly interpret this lab result in 1–2 sentences for a physician (clinical context only, no boilerplate):
+Test: ${test_name} | Value: ${value} ${unit || ''} | Reference: ${refLow ?? '?'}–${refHigh ?? '?'} ${unit || ''} | Interpretation: ${interp}${prior ? ` | Prior value: ${prior.value} ${unit || ''}` : ''}
+Patient: ${patient.name}, age ${patient.dob ? Math.floor((Date.now() - new Date(patient.dob)) / (365.25 * 24 * 3600 * 1000)) : 'unknown'}, ${patient.sex || 'unknown sex'}
+Conditions: ${patient.conditions || 'none'}`
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      max_tokens: 120,
+    })
+    ai_summary = chat.choices[0].message.content.trim()
+  } catch {}
+
+  const id = randomUUID()
+  await db.execute({
+    sql: 'INSERT INTO lab_results (id, patient_id, owner_email, test_name, value, unit, reference_low, reference_high, interpretation, critical, delta_flag, result_date, ai_summary, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    args: [id, patient_id, req.apiKey, test_name, parseFloat(value), unit || null, refLow, refHigh, interp, critical, delta_flag, result_date || new Date().toISOString().slice(0,10), ai_summary, notes || null, new Date().toISOString()]
+  })
+
+  // Auto-close related care gap if it matches
+  await db.execute({
+    sql: "UPDATE care_gaps SET status = 'closed', closed_at = ? WHERE patient_id = ? AND owner_email = ? AND status = 'open' AND (gap_type LIKE ? OR gap_type LIKE ?)",
+    args: [new Date().toISOString(), patient_id, req.apiKey, `%${test_name}%`, `%${key}%`]
+  })
+
+  res.json({ id, interpretation: interp, critical: !!critical, delta_flag: !!delta_flag, ai_summary })
+})
+
+app.delete('/api/labs/:id', auth, async (req, res) => {
+  await db.execute({ sql: 'DELETE FROM lab_results WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })
+  res.json({ ok: true })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 9 — APPOINTMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function noShowRisk(appt) {
+  let risk = 0.15  // baseline
+  const apptDate = new Date(appt.appointment_date)
+  const leadDays = (apptDate - Date.now()) / (24 * 3600 * 1000)
+  if (leadDays > 14) risk += 0.15
+  if (leadDays > 30) risk += 0.10
+  const hour = apptDate.getHours()
+  if (hour >= 15) risk += 0.08   // late afternoon
+  if (hour < 9)   risk += 0.05   // early morning
+  return Math.min(0.95, Math.round(risk * 100) / 100)
+}
+
+app.get('/api/appointments', auth, async (req, res) => {
+  const { patient_id, view } = req.query
+  const now = new Date().toISOString()
+  let sql = 'SELECT a.*, p.name as patient_name FROM appointments a JOIN gen_patients p ON a.patient_id = p.id WHERE a.owner_email = ?'
+  const args = [req.apiKey]
+  if (patient_id) { sql += ' AND a.patient_id = ?'; args.push(patient_id) }
+  if (view === 'upcoming') { sql += ' AND a.appointment_date >= ?'; args.push(now) }
+  if (view === 'past')     { sql += ' AND a.appointment_date < ?';  args.push(now) }
+  sql += ' ORDER BY a.appointment_date ' + (view === 'past' ? 'DESC' : 'ASC')
+  res.json((await db.execute({ sql, args })).rows)
+})
+
+app.post('/api/appointments', auth, async (req, res) => {
+  const { patient_id, appointment_type, appointment_date, duration_minutes, provider, location, notes } = req.body
+  if (!patient_id || !appointment_type || !appointment_date) return res.status(400).json({ error: 'patient_id, appointment_type, appointment_date required' })
+  const patient = (await db.execute({ sql: 'SELECT id FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+  const id = randomUUID()
+  const risk = noShowRisk({ appointment_date })
+  await db.execute({
+    sql: 'INSERT INTO appointments (id, patient_id, owner_email, appointment_type, appointment_date, duration_minutes, provider, location, notes, status, no_show_risk, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+    args: [id, patient_id, req.apiKey, appointment_type, appointment_date, duration_minutes || 30, provider || null, location || null, notes || null, 'scheduled', risk, new Date().toISOString()]
+  })
+  res.json({ id, no_show_risk: risk })
+})
+
+app.put('/api/appointments/:id', auth, async (req, res) => {
+  const appt = (await db.execute({ sql: 'SELECT * FROM appointments WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+  if (!appt) return res.status(404).json({ error: 'Not found' })
+  const { appointment_type, appointment_date, duration_minutes, provider, location, notes, status } = req.body
+  await db.execute({
+    sql: 'UPDATE appointments SET appointment_type=?, appointment_date=?, duration_minutes=?, provider=?, location=?, notes=?, status=? WHERE id=?',
+    args: [appointment_type||appt.appointment_type, appointment_date||appt.appointment_date, duration_minutes||appt.duration_minutes, provider??appt.provider, location??appt.location, notes??appt.notes, status||appt.status, req.params.id]
+  })
+  res.json({ ok: true })
+})
+
+app.delete('/api/appointments/:id', auth, async (req, res) => {
+  await db.execute({ sql: 'DELETE FROM appointments WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })
+  res.json({ ok: true })
+})
+
+app.post('/api/appointments/suggest', auth, async (req, res) => {
+  const { patient_id } = req.body
+  const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+  const gaps = (await db.execute({ sql: "SELECT gap_type, description, priority FROM care_gaps WHERE patient_id = ? AND status = 'open' ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 5", args: [patient_id] })).rows
+
+  const prompt = `Suggest the most appropriate appointment type for this patient.
+Patient: ${patient.name}, ${patient.sex || 'unknown sex'}, conditions: ${patient.conditions || 'none'}
+Open care gaps: ${gaps.map(g => g.gap_type).join(', ') || 'none'}
+Respond with JSON: {"appointment_type":"string","reason":"1 sentence","duration_minutes":number,"urgency":"routine|urgent|same-day"}`
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1, max_tokens: 150,
+    })
+    const m = chat.choices[0].message.content.match(/\{[\s\S]*\}/)
+    res.json(m ? JSON.parse(m[0]) : { appointment_type: 'Follow-up Visit', duration_minutes: 30 })
+  } catch (e) { res.json({ appointment_type: 'Follow-up Visit', duration_minutes: 30 }) }
+})
+
+app.post('/api/appointments/:id/remind', auth, async (req, res) => {
+  const appt = (await db.execute({
+    sql: 'SELECT a.*, p.name as patient_name, p.email as patient_email FROM appointments a JOIN gen_patients p ON a.patient_id = p.id WHERE a.id = ? AND a.owner_email = ?',
+    args: [req.params.id, req.apiKey]
+  })).rows[0]
+  if (!appt) return res.status(404).json({ error: 'Not found' })
+  if (!appt.patient_email) return res.status(400).json({ error: 'Patient has no email on record' })
+
+  const date = new Date(appt.appointment_date).toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  await sendEmail({
+    to: appt.patient_email,
+    subject: `Appointment Reminder: ${appt.appointment_type}`,
+    html: `<p>Dear ${appt.patient_name},</p>
+<p>This is a reminder of your upcoming appointment:</p>
+<ul>
+  <li><strong>Type:</strong> ${appt.appointment_type}</li>
+  <li><strong>Date &amp; Time:</strong> ${date}</li>
+  ${appt.provider ? `<li><strong>Provider:</strong> ${appt.provider}</li>` : ''}
+  ${appt.location ? `<li><strong>Location:</strong> ${appt.location}</li>` : ''}
+  ${appt.duration_minutes ? `<li><strong>Duration:</strong> ${appt.duration_minutes} minutes</li>` : ''}
+</ul>
+<p>Please contact us if you need to reschedule.<br/>Vianova Health</p>`
+  })
+  await db.execute({ sql: 'UPDATE appointments SET reminder_sent = 1 WHERE id = ?', args: [req.params.id] })
+  res.json({ ok: true })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 10 — DISCHARGE SUMMARIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/discharge', auth, async (req, res) => {
+  const { patient_id } = req.query
+  let sql = 'SELECT d.*, p.name as patient_name FROM discharge_summaries d JOIN gen_patients p ON d.patient_id = p.id WHERE d.owner_email = ?'
+  const args = [req.apiKey]
+  if (patient_id) { sql += ' AND d.patient_id = ?'; args.push(patient_id) }
+  sql += ' ORDER BY d.created_at DESC'
+  res.json((await db.execute({ sql, args })).rows)
+})
+
+app.get('/api/discharge/:id', auth, async (req, res) => {
+  const row = (await db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  res.json(row)
+})
+
+app.post('/api/discharge/generate', auth, async (req, res) => {
+  const { patient_id, case_id } = req.body
+  if (!patient_id) return res.status(400).json({ error: 'patient_id required' })
+
+  const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+  let caseData = null
+  if (case_id) {
+    const row = (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ? AND owner_key = ?', args: [case_id, req.apiKey] })).rows[0]
+    if (row) caseData = JSON.parse(row.analysis)
+  }
+
+  let age = null
+  if (patient.dob) {
+    const dob = new Date(patient.dob)
+    if (!isNaN(dob)) age = Math.floor((Date.now() - dob) / (365.25 * 24 * 3600 * 1000))
+  }
+
+  const prompt = `You are a physician generating a structured discharge summary. Return a JSON object with these exact keys.
+
+Patient: ${patient.name}, age ${age ?? 'unknown'}, ${patient.sex || 'unknown sex'}
+Conditions: ${patient.conditions || 'none documented'}
+Medications: ${patient.medications || 'none documented'}
+Allergies: ${patient.allergies || 'none documented'}
+${caseData ? `
+AI Analysis:
+- Diagnosis: ${caseData.most_likely_diagnosis?.[0]?.name || 'see case'}
+- Treatment: ${caseData.recommended_treatment || 'see case'}
+- Red flags: ${caseData.red_flags?.flags?.join(', ') || 'none'}` : ''}
+
+Return ONLY valid JSON:
+{
+  "summary": "3–5 sentence clinical discharge summary in medical prose",
+  "patient_instructions": "3–6 bullet points of plain-language (6th grade) discharge instructions starting with -",
+  "medications_at_discharge": "list the current medications with dosing as a comma-separated string",
+  "follow_up_plan": "specific follow-up steps, e.g. 'Follow up with PCP in 1 week; repeat labs in 2 weeks'",
+  "risk_level": "low|medium|high",
+  "risk_reason": "1 sentence explaining risk level"
+}`
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_tokens: 700,
+    })
+    const m = chat.choices[0].message.content.match(/\{[\s\S]*\}/)
+    if (!m) throw new Error('Invalid AI response')
+    const draft = JSON.parse(m[0])
+
+    const id = randomUUID()
+    await db.execute({
+      sql: 'INSERT INTO discharge_summaries (id, patient_id, owner_email, case_id, summary, patient_instructions, medications_at_discharge, follow_up_plan, risk_level, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      args: [id, patient_id, req.apiKey, case_id || null, draft.summary, draft.patient_instructions, draft.medications_at_discharge, draft.follow_up_plan, draft.risk_level || 'low', new Date().toISOString()]
+    })
+    res.json({ id, ...draft })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.put('/api/discharge/:id', auth, async (req, res) => {
+  const row = (await db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  const { summary, patient_instructions, medications_at_discharge, follow_up_plan, risk_level, finalized } = req.body
+  await db.execute({
+    sql: 'UPDATE discharge_summaries SET summary=?, patient_instructions=?, medications_at_discharge=?, follow_up_plan=?, risk_level=?, finalized=? WHERE id=?',
+    args: [summary??row.summary, patient_instructions??row.patient_instructions, medications_at_discharge??row.medications_at_discharge, follow_up_plan??row.follow_up_plan, risk_level??row.risk_level, finalized??row.finalized, req.params.id]
+  })
+  res.json({ ok: true })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 12 — CONSENT & PRIVACY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function logAudit(ownerEmail, patientId, action, resourceType, actor, details) {
+  await db.execute({
+    sql: 'INSERT INTO audit_events (owner_email, patient_id, action, resource_type, actor, details, created_at) VALUES (?,?,?,?,?,?,?)',
+    args: [ownerEmail, patientId || null, action, resourceType || null, actor || null, details ? JSON.stringify(details) : null, new Date().toISOString()]
+  })
+}
+
+app.get('/api/consents', auth, async (req, res) => {
+  const { patient_id } = req.query
+  let sql = 'SELECT c.*, p.name as patient_name FROM consents c JOIN gen_patients p ON c.patient_id = p.id WHERE c.owner_email = ?'
+  const args = [req.apiKey]
+  if (patient_id) { sql += ' AND c.patient_id = ?'; args.push(patient_id) }
+  sql += ' ORDER BY c.created_at DESC'
+  res.json((await db.execute({ sql, args })).rows)
+})
+
+app.post('/api/consents', auth, async (req, res) => {
+  const { patient_id, consent_type, granted, signed_by, signed_date, expires_at, notes } = req.body
+  if (!patient_id || !consent_type) return res.status(400).json({ error: 'patient_id and consent_type required' })
+  const patient = (await db.execute({ sql: 'SELECT id FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+  const id = randomUUID()
+  await db.execute({
+    sql: 'INSERT INTO consents (id, patient_id, owner_email, consent_type, granted, signed_by, signed_date, expires_at, notes, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    args: [id, patient_id, req.apiKey, consent_type, granted ?? 1, signed_by || null, signed_date || new Date().toISOString().slice(0,10), expires_at || null, notes || null, 'active', new Date().toISOString()]
+  })
+  await logAudit(req.apiKey, patient_id, 'consent_created', 'Consent', req.apiKey, { consent_type, granted })
+  res.json({ id })
+})
+
+app.put('/api/consents/:id', auth, async (req, res) => {
+  const row = (await db.execute({ sql: 'SELECT * FROM consents WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  const { status, notes, expires_at } = req.body
+  await db.execute({
+    sql: 'UPDATE consents SET status=?, notes=?, expires_at=? WHERE id=?',
+    args: [status||row.status, notes??row.notes, expires_at??row.expires_at, req.params.id]
+  })
+  await logAudit(req.apiKey, row.patient_id, 'consent_updated', 'Consent', req.apiKey, { status, new_status: status || row.status })
+  res.json({ ok: true })
+})
+
+// Patient data export (right-to-access)
+app.get('/api/consents/export/:patientId', auth, async (req, res) => {
+  const pid = req.params.patientId
+  const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [pid, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+  const [labs, appts, gaps, consents, discharge] = await Promise.all([
+    db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? AND owner_email = ? ORDER BY result_date DESC', args: [pid, req.apiKey] }),
+    db.execute({ sql: 'SELECT * FROM appointments WHERE patient_id = ? AND owner_email = ? ORDER BY appointment_date DESC', args: [pid, req.apiKey] }),
+    db.execute({ sql: 'SELECT * FROM care_gaps WHERE patient_id = ? AND owner_email = ? ORDER BY created_at DESC', args: [pid, req.apiKey] }),
+    db.execute({ sql: 'SELECT * FROM consents WHERE patient_id = ? AND owner_email = ? ORDER BY created_at DESC', args: [pid, req.apiKey] }),
+    db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE patient_id = ? AND owner_email = ? ORDER BY created_at DESC', args: [pid, req.apiKey] }),
+  ])
+
+  await logAudit(req.apiKey, pid, 'data_export', 'Patient', req.apiKey, { reason: 'right-to-access' })
+
+  res.json({
+    export_date: new Date().toISOString(),
+    patient,
+    lab_results: labs.rows,
+    appointments: appts.rows,
+    care_gaps: gaps.rows,
+    consents: consents.rows,
+    discharge_summaries: discharge.rows,
+  })
+})
+
+app.get('/api/audit-events', auth, async (req, res) => {
+  const { patient_id } = req.query
+  let sql = 'SELECT * FROM audit_events WHERE owner_email = ?'
+  const args = [req.apiKey]
+  if (patient_id) { sql += ' AND patient_id = ?'; args.push(patient_id) }
+  sql += ' ORDER BY created_at DESC LIMIT 200'
+  res.json((await db.execute({ sql, args })).rows)
 })
 
 // ── Serve built frontend (whenever dist/ exists) ──────────────────────────────

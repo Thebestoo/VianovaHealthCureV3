@@ -3,7 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, FolderOpen, PlusCircle, BarChart2,
   HeartPulse, ShieldCheck, Stethoscope, LogOut, Wifi, WifiOff,
-  Users, LogIn, Menu, X
+  Users, LogIn, Menu, X, AlertCircle, FlaskConical, CalendarDays,
+  ClipboardList, ShieldAlert
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
@@ -12,6 +13,11 @@ const NAV_ALL = [
   { label: 'Patients',         icon: Users,           path: '/patients' },
   { label: 'All Cases',        icon: FolderOpen,      path: '/cases' },
   { label: 'New Case',         icon: PlusCircle,      path: '/cases/new' },
+  { label: 'Care Gaps',        icon: AlertCircle,     path: '/care-gaps' },
+  { label: 'Lab Results',      icon: FlaskConical,    path: '/labs' },
+  { label: 'Appointments',     icon: CalendarDays,    path: '/appointments' },
+  { label: 'Discharge',        icon: ClipboardList,   path: '/discharge' },
+  { label: 'Consent',          icon: ShieldAlert,     path: '/consent' },
   { label: 'Logs & Analytics', icon: BarChart2,       path: '/logs' },
 ]
 const NAV_ADMIN = [

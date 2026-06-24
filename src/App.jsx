@@ -12,6 +12,11 @@ import SharedCase from './pages/SharedCase.jsx'
 import Login from './pages/Login.jsx'
 import Patients from './pages/Patients.jsx'
 import Admin from './pages/Admin.jsx'
+import CareGaps from './pages/CareGaps.jsx'
+import Labs from './pages/Labs.jsx'
+import Appointments from './pages/Appointments.jsx'
+import Discharge from './pages/Discharge.jsx'
+import Consent from './pages/Consent.jsx'
 
 function ProtectedRoute({ children }) {
   const { key } = useKey()
@@ -35,6 +40,11 @@ function AppRoutes() {
             <Route path="/cases/:id" element={<ProtectedRoute><CaseReview /></ProtectedRoute>} />
             <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />
             <Route path="/patients" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
+            <Route path="/care-gaps" element={<ProtectedRoute><CareGaps /></ProtectedRoute>} />
+            <Route path="/labs" element={<ProtectedRoute><Labs /></ProtectedRoute>} />
+            <Route path="/appointments" element={<ProtectedRoute><Appointments /></ProtectedRoute>} />
+            <Route path="/discharge" element={<ProtectedRoute><Discharge /></ProtectedRoute>} />
+            <Route path="/consent" element={<ProtectedRoute><Consent /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
           </Routes>
         </Layout>
