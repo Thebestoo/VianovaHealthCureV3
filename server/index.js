@@ -85,6 +85,12 @@ async function initDB() {
     `ALTER TABLE gen_patients RENAME COLUMN owner_key TO owner_email`,
     `ALTER TABLE rpm_patients RENAME COLUMN owner_key TO owner_email`,
     `ALTER TABLE ccm_patients RENAME COLUMN owner_key TO owner_email`,
+    // patient ingestion v2 — new fields
+    `ALTER TABLE gen_patients ADD COLUMN email TEXT`,
+    `ALTER TABLE gen_patients ADD COLUMN address TEXT`,
+    `ALTER TABLE gen_patients ADD COLUMN language TEXT`,
+    `ALTER TABLE gen_patients ADD COLUMN import_source TEXT`,
+    `ALTER TABLE gen_patients ADD COLUMN data_quality_score INTEGER`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -1081,6 +1087,49 @@ app.post('/api/cases', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── patient data helpers ───────────────────────────────────────────────────────
+function normalizePhone(raw) {
+  if (!raw) return null
+  const d = String(raw).replace(/\D/g, '')
+  if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`
+  if (d.length === 11 && d[0] === '1') return `+1 (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`
+  return raw.trim() || null
+}
+function normalizeName(raw) {
+  if (!raw) return null
+  return raw.trim().replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+}
+function normalizeDOB(raw) {
+  if (!raw) return null
+  const s = String(raw).trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (m1) return `${m1[3]}-${m1[1].padStart(2,'0')}-${m1[2].padStart(2,'0')}`
+  const m2 = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (m2) return `${m2[3]}-${m2[2].padStart(2,'0')}-${m2[1].padStart(2,'0')}`
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? s : d.toISOString().slice(0,10)
+}
+function toArrServer(v) {
+  if (!v) return []
+  try { const r = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(r) ? r.filter(Boolean) : r ? [String(r)] : [] }
+  catch { return String(v).split(',').map(s => s.trim()).filter(Boolean) }
+}
+function computeQuality(p) {
+  let s = 0
+  if (p.name?.trim())    s += 20
+  if (p.dob?.trim())     s += 15
+  if (p.sex?.trim())     s += 10
+  if (p.mrn?.trim())     s += 15
+  if (p.phone?.trim())   s += 10
+  if (p.email?.trim())   s += 5
+  if (p.address?.trim()) s += 5
+  if (toArrServer(p.conditions).length)  s += 10
+  if (toArrServer(p.medications).length) s += 5
+  if (toArrServer(p.allergies).length)   s += 5
+  return Math.min(100, s)
+}
+
 // ── gen_patients routes ────────────────────────────────────────────────────────
 app.get('/api/gen-patients', auth, async (req, res) => {
   const rows = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE owner_email = ? ORDER BY name', args: [req.apiKey] })).rows
@@ -1088,25 +1137,138 @@ app.get('/api/gen-patients', auth, async (req, res) => {
 })
 
 app.post('/api/gen-patients', auth, async (req, res) => {
-  const { name, dob, sex, mrn, phone, conditions, medications, allergies, fhir_vitals, notes } = req.body
+  const { name, dob, sex, mrn, phone, email, address, language, conditions, medications, allergies, fhir_vitals, notes, import_source } = req.body
   if (!name) return res.status(400).json({ error: 'name required' })
+
+  // Normalize
+  const nName  = normalizeName(name)
+  const nPhone = normalizePhone(phone)
+  const nDOB   = normalizeDOB(dob)
+
+  // Duplicate check: same MRN or same name+DOB
+  if (mrn) {
+    const dup = (await db.execute({ sql: 'SELECT id FROM gen_patients WHERE owner_email=? AND mrn=?', args: [req.apiKey, mrn.trim()] })).rows[0]
+    if (dup) return res.status(409).json({ error: 'A patient with this MRN already exists', duplicate_id: dup.id })
+  }
+  if (nName && nDOB) {
+    const dup = (await db.execute({ sql: 'SELECT id FROM gen_patients WHERE owner_email=? AND name=? AND dob=?', args: [req.apiKey, nName, nDOB] })).rows[0]
+    if (dup) return res.status(409).json({ error: 'A patient with this name and date of birth already exists', duplicate_id: dup.id })
+  }
+
+  const p = { name: nName, dob: nDOB, sex: sex||null, mrn: mrn?.trim()||null, phone: nPhone, email: email?.trim()||null, address: address?.trim()||null, language: language?.trim()||null, conditions: conditions||null, medications: medications||null, allergies: allergies||null }
+  const quality = computeQuality(p)
   const id = randomUUID()
   await db.execute({
-    sql: `INSERT INTO gen_patients (id, owner_email, name, dob, sex, mrn, phone, conditions, medications, allergies, fhir_vitals, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    args: [id, req.apiKey, name, dob||null, sex||null, mrn||null, phone||null, conditions||null, medications||null, allergies||null, fhir_vitals||null, notes||null, new Date().toISOString()]
+    sql: `INSERT INTO gen_patients (id, owner_email, name, dob, sex, mrn, phone, email, address, language, conditions, medications, allergies, fhir_vitals, notes, import_source, data_quality_score, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [id, req.apiKey, nName, nDOB, sex||null, mrn?.trim()||null, nPhone, email?.trim()||null, address?.trim()||null, language?.trim()||null, conditions||null, medications||null, allergies||null, fhir_vitals||null, notes||null, import_source||'manual', quality, new Date().toISOString()]
   })
-  res.json({ id })
+  res.json({ id, data_quality_score: quality })
 })
 
 app.put('/api/gen-patients/:id', auth, async (req, res) => {
   const existing = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
   if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
-  const { name, dob, sex, mrn, phone, conditions, medications, allergies, fhir_vitals, notes } = req.body
+  const { name, dob, sex, mrn, phone, email, address, language, conditions, medications, allergies, fhir_vitals, notes } = req.body
+  const nName  = name  ? normalizeName(name)  : existing.name
+  const nPhone = normalizePhone(phone ?? existing.phone)
+  const nDOB   = normalizeDOB(dob ?? existing.dob)
+  const p = { name: nName, dob: nDOB, sex: sex??existing.sex, mrn: mrn??existing.mrn, phone: nPhone, email: email??existing.email, address: address??existing.address, language: language??existing.language, conditions: conditions??existing.conditions, medications: medications??existing.medications, allergies: allergies??existing.allergies }
+  const quality = computeQuality(p)
   await db.execute({
-    sql: `UPDATE gen_patients SET name=?, dob=?, sex=?, mrn=?, phone=?, conditions=?, medications=?, allergies=?, fhir_vitals=?, notes=? WHERE id=? AND owner_email=?`,
-    args: [name||existing.name, dob??existing.dob, sex??existing.sex, mrn??existing.mrn, phone??existing.phone, conditions??existing.conditions, medications??existing.medications, allergies??existing.allergies, fhir_vitals??existing.fhir_vitals, notes??existing.notes, req.params.id, req.apiKey]
+    sql: `UPDATE gen_patients SET name=?, dob=?, sex=?, mrn=?, phone=?, email=?, address=?, language=?, conditions=?, medications=?, allergies=?, fhir_vitals=?, notes=?, data_quality_score=? WHERE id=? AND owner_email=?`,
+    args: [nName, nDOB, p.sex, p.mrn, nPhone, p.email, p.address, p.language, p.conditions, p.medications, p.allergies, fhir_vitals??existing.fhir_vitals, notes??existing.notes, quality, req.params.id, req.apiKey]
   })
-  res.json({ ok: true })
+  res.json({ ok: true, data_quality_score: quality })
+})
+
+// AI field mapping for CSV import
+app.post('/api/gen-patients/ai-map-csv', auth, async (req, res) => {
+  const { headers, sample } = req.body
+  if (!headers?.length) return res.status(400).json({ error: 'headers required' })
+  const FIELDS = ['name','dob','sex','mrn','phone','email','address','language','conditions','medications','allergies','notes']
+  const prompt = `You are mapping CSV columns to patient record fields.
+CSV headers: ${JSON.stringify(headers)}
+Sample rows (first 3): ${JSON.stringify(sample?.slice(0,3))}
+
+Map each CSV header to ONE of these patient fields (or null if no match):
+${FIELDS.join(', ')}
+
+Rules:
+- "name", "patient name", "full name", "patient" → name
+- "dob", "date of birth", "birth date", "birthdate" → dob
+- "gender", "sex", "biological sex" → sex
+- "mrn", "patient id", "patient_id", "medical record" → mrn
+- "phone", "telephone", "mobile", "contact" → phone
+- "email", "e-mail" → email
+- "address", "addr", "street", "location" → address
+- "language", "preferred language", "lang" → language
+- "conditions", "diagnosis", "diagnoses", "problems", "icd" → conditions
+- "medications", "meds", "drugs", "prescriptions" → medications
+- "allergies", "allergy" → allergies
+- "notes", "comments", "remarks" → notes
+
+Return ONLY valid JSON array: [{"csv_column":"...","field":"...or null"}]`
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0,
+      max_tokens: 600,
+    })
+    let text = chat.choices[0].message.content.trim()
+    const m = text.match(/\[[\s\S]*\]/)
+    const mapping = m ? JSON.parse(m[0]) : headers.map(h => ({ csv_column: h, field: null }))
+    res.json({ mapping })
+  } catch (e) {
+    // Fallback: return unmapped headers
+    res.json({ mapping: headers.map(h => ({ csv_column: h, field: null })) })
+  }
+})
+
+// Bulk CSV import
+app.post('/api/gen-patients/import', auth, async (req, res) => {
+  const { rows } = req.body   // array of already-mapped patient objects
+  if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'rows required' })
+
+  let imported = 0, duplicates = 0, errors = 0
+  const details = []
+
+  for (const row of rows) {
+    const { name, dob, sex, mrn, phone, email, address, language, conditions, medications, allergies, notes } = row
+    if (!name?.trim()) { errors++; details.push({ name: name||'(blank)', status: 'error', reason: 'Name is required' }); continue }
+
+    const nName  = normalizeName(name)
+    const nPhone = normalizePhone(phone)
+    const nDOB   = normalizeDOB(dob)
+
+    try {
+      // Duplicate check
+      if (mrn?.trim()) {
+        const dup = (await db.execute({ sql: 'SELECT id FROM gen_patients WHERE owner_email=? AND mrn=?', args: [req.apiKey, mrn.trim()] })).rows[0]
+        if (dup) { duplicates++; details.push({ name: nName, status: 'duplicate', reason: 'MRN already exists' }); continue }
+      }
+      if (nName && nDOB) {
+        const dup = (await db.execute({ sql: 'SELECT id FROM gen_patients WHERE owner_email=? AND name=? AND dob=?', args: [req.apiKey, nName, nDOB] })).rows[0]
+        if (dup) { duplicates++; details.push({ name: nName, status: 'duplicate', reason: 'Name + DOB already exists' }); continue }
+      }
+
+      const p = { name: nName, dob: nDOB, sex: sex||null, mrn: mrn?.trim()||null, phone: nPhone, email: email?.trim()||null, address: address?.trim()||null, language: language?.trim()||null, conditions: conditions||null, medications: medications||null, allergies: allergies||null }
+      const quality = computeQuality(p)
+      const id = randomUUID()
+      await db.execute({
+        sql: `INSERT INTO gen_patients (id, owner_email, name, dob, sex, mrn, phone, email, address, language, conditions, medications, allergies, notes, import_source, data_quality_score, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        args: [id, req.apiKey, nName, nDOB, p.sex, p.mrn, nPhone, p.email, p.address, p.language, p.conditions, p.medications, p.allergies, notes||null, 'csv', quality, new Date().toISOString()]
+      })
+      imported++
+      details.push({ name: nName, status: 'imported', data_quality_score: quality })
+    } catch (e) {
+      errors++
+      details.push({ name: nName, status: 'error', reason: e.message })
+    }
+  }
+
+  res.json({ imported, duplicates, errors, total: rows.length, details })
 })
 
 app.delete('/api/gen-patients/:id', auth, async (req, res) => {
