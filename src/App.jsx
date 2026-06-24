@@ -17,6 +17,7 @@ import Labs from './pages/Labs.jsx'
 import Appointments from './pages/Appointments.jsx'
 import Discharge from './pages/Discharge.jsx'
 import Consent from './pages/Consent.jsx'
+import AdverseEvents from './pages/AdverseEvents.jsx'
 
 function ProtectedRoute({ children }) {
   const { key } = useKey()
@@ -45,6 +46,7 @@ function AppRoutes() {
             <Route path="/appointments" element={<ProtectedRoute><Appointments /></ProtectedRoute>} />
             <Route path="/discharge" element={<ProtectedRoute><Discharge /></ProtectedRoute>} />
             <Route path="/consent" element={<ProtectedRoute><Consent /></ProtectedRoute>} />
+            <Route path="/adverse-events" element={<ProtectedRoute><AdverseEvents /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
           </Routes>
         </Layout>

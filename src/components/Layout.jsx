@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FolderOpen, PlusCircle, BarChart2,
   HeartPulse, ShieldCheck, Stethoscope, LogOut, Wifi, WifiOff,
   Users, LogIn, Menu, X, AlertCircle, FlaskConical, CalendarDays,
-  ClipboardList, ShieldAlert
+  ClipboardList, ShieldAlert, AlertOctagon
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
@@ -18,6 +18,7 @@ const NAV_ALL = [
   { label: 'Appointments',     icon: CalendarDays,    path: '/appointments' },
   { label: 'Discharge',        icon: ClipboardList,   path: '/discharge' },
   { label: 'Consent',          icon: ShieldAlert,     path: '/consent' },
+  { label: 'Adverse Events',   icon: AlertOctagon,    path: '/adverse-events' },
   { label: 'Logs & Analytics', icon: BarChart2,       path: '/logs' },
 ]
 const NAV_ADMIN = [

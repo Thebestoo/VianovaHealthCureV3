@@ -80,6 +80,8 @@ async function initDB() {
     // feature 12 – consents & audit
     `CREATE TABLE IF NOT EXISTS consents (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, consent_type TEXT NOT NULL, granted INTEGER NOT NULL DEFAULT 1, signed_by TEXT, signed_date TEXT, expires_at TEXT, notes TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_email TEXT NOT NULL, patient_id TEXT, action TEXT NOT NULL, resource_type TEXT, actor TEXT, details TEXT, created_at TEXT NOT NULL)`,
+    // feature 13 – adverse events & pharmacovigilance
+    `CREATE TABLE IF NOT EXISTS adverse_events (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'moderate', suspected_medication TEXT, description TEXT NOT NULL, detected_at TEXT NOT NULL, detection_method TEXT NOT NULL DEFAULT 'manual', status TEXT NOT NULL DEFAULT 'open', causality TEXT, ai_assessment TEXT, medwatch_draft TEXT, resolved_at TEXT, notes TEXT, created_at TEXT NOT NULL)`,
   ]
   for (const sql of stmts) {
     await db.execute({ sql, args: [] })
@@ -1282,6 +1284,32 @@ app.post('/api/gen-patients/import', auth, async (req, res) => {
   res.json({ imported, duplicates, errors, total: rows.length, details })
 })
 
+// GET /api/cases/by-patient/:patientId — cases linked to a gen_patient
+app.get('/api/cases/by-patient/:patientId', auth, async (req, res) => {
+  try {
+    const like = `%"patient_id":"${req.params.patientId}"%`
+    const rows = (await db.execute({
+      sql: `SELECT case_id, created_at, analysis, patient_input FROM cases WHERE patient_input LIKE ? AND owner_key = ? ORDER BY created_at DESC`,
+      args: [like, req.apiKey]
+    })).rows
+    const cases = rows.map(r => {
+      let analysis = {}; let patient = {}
+      try { analysis = JSON.parse(r.analysis) } catch {}
+      try { patient = JSON.parse(r.patient_input) } catch {}
+      return {
+        id: r.case_id,
+        created_at: r.created_at,
+        chief_complaint: patient.chief_complaint || patient.symptoms || '',
+        status: analysis.status || 'pending',
+        emergency_detected: analysis.emergency_detected || false,
+        requires_urgent_review: analysis.requires_urgent_review || false,
+        top_diagnosis: analysis.diagnoses?.[0]?.name || ''
+      }
+    })
+    res.json(cases)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.delete('/api/gen-patients/:id', auth, async (req, res) => {
   const existing = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
   if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
@@ -1894,6 +1922,162 @@ app.get('/api/audit-events', auth, async (req, res) => {
   if (patient_id) { sql += ' AND patient_id = ?'; args.push(patient_id) }
   sql += ' ORDER BY created_at DESC LIMIT 200'
   res.json((await db.execute({ sql, args })).rows)
+})
+
+// ── ADVERSE EVENTS ────────────────────────────────────────────────────────────
+
+// GET /api/adverse-events
+app.get('/api/adverse-events', auth, async (req, res) => {
+  try {
+    const { patient_id, severity, status } = req.query
+    let sql = 'SELECT a.*, p.name as patient_name FROM adverse_events a JOIN gen_patients p ON a.patient_id = p.id WHERE a.owner_email = ?'
+    const args = [req.apiKey]
+    if (patient_id) { sql += ' AND a.patient_id = ?'; args.push(patient_id) }
+    if (severity) { sql += ' AND a.severity = ?'; args.push(severity) }
+    if (status) { sql += ' AND a.status = ?'; args.push(status) }
+    sql += ' ORDER BY a.created_at DESC'
+    const rows = (await db.execute({ sql, args })).rows
+    res.json(rows)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/adverse-events — manual report
+app.post('/api/adverse-events', auth, async (req, res) => {
+  try {
+    const { patient_id, event_type, severity, suspected_medication, description, detected_at, notes } = req.body
+    if (!patient_id || !event_type || !description) return res.status(400).json({ error: 'patient_id, event_type and description required' })
+    const id = randomUUID()
+    const now = new Date().toISOString()
+    await db.execute({
+      sql: 'INSERT INTO adverse_events (id, patient_id, owner_email, event_type, severity, suspected_medication, description, detected_at, detection_method, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      args: [id, patient_id, req.apiKey, event_type, severity || 'moderate', suspected_medication || null, description, detected_at || now, 'manual', 'open', now]
+    })
+    // AI causality assessment
+    try {
+      const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ?', args: [patient_id] })).rows[0]
+      const meds = patient?.medications ? JSON.parse(patient.medications) : []
+      const prompt = `You are a pharmacovigilance AI. Assess this adverse event report and provide a JSON response.
+
+Patient medications: ${meds.join(', ') || 'unknown'}
+Suspected medication: ${suspected_medication || 'not specified'}
+Event type: ${event_type}
+Severity: ${severity || 'moderate'}
+Description: ${description}
+
+Return JSON with keys:
+- causality: "certain" | "probable" | "possible" | "unlikely" | "unclassified"
+- causality_reasoning: string (1-2 sentences)
+- recommended_action: string (what to do now)
+- medwatch_draft: string (a brief FDA MedWatch-style narrative, 3-4 sentences)
+- signal_strength: "strong" | "moderate" | "weak"`
+
+      const aiRes = await client.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.2
+      })
+      const ai = JSON.parse(aiRes.choices[0].message.content)
+      await db.execute({
+        sql: 'UPDATE adverse_events SET causality = ?, ai_assessment = ?, medwatch_draft = ? WHERE id = ?',
+        args: [ai.causality || null, JSON.stringify(ai), ai.medwatch_draft || null, id]
+      })
+      const updated = (await db.execute({ sql: 'SELECT * FROM adverse_events WHERE id = ?', args: [id] })).rows[0]
+      return res.json({ ...updated, ai_assessment: ai })
+    } catch {}
+    const saved = (await db.execute({ sql: 'SELECT * FROM adverse_events WHERE id = ?', args: [id] })).rows[0]
+    res.json(saved)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/adverse-events/detect/:patientId — AI scan of patient data for signals
+app.post('/api/adverse-events/detect/:patientId', auth, async (req, res) => {
+  try {
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+    const labs = (await db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 20', args: [req.params.patientId] })).rows
+    const existingEvents = (await db.execute({ sql: "SELECT event_type, suspected_medication FROM adverse_events WHERE patient_id = ? AND status = 'open'", args: [req.params.patientId] })).rows
+
+    let meds = []; let conditions = []
+    try { meds = JSON.parse(patient.medications || '[]') } catch {}
+    try { conditions = JSON.parse(patient.conditions || '[]') } catch {}
+
+    const labSummary = labs.map(l => `${l.test_name}: ${l.value} ${l.unit || ''} (${l.interpretation || 'N'}) on ${l.result_date?.slice(0,10)}`).join('\n')
+    const existingSummary = existingEvents.map(e => `${e.event_type} (${e.suspected_medication || 'unknown med'})`).join(', ')
+
+    const prompt = `You are a pharmacovigilance AI. Analyze this patient's data for adverse drug event signals.
+
+Patient: ${patient.name}, ${patient.sex || 'unknown sex'}, DOB: ${patient.dob || 'unknown'}
+Conditions: ${conditions.join(', ') || 'none documented'}
+Current medications: ${meds.join(', ') || 'none documented'}
+Allergies: ${patient.allergies || 'none'}
+
+Recent lab results:
+${labSummary || 'No labs available'}
+
+Already reported open events: ${existingSummary || 'none'}
+
+Identify any potential adverse drug events, drug-lab interactions, or safety signals.
+Return a JSON array of detected signals (empty array if none found). Each signal:
+{
+  "event_type": string (e.g. "Drug-Lab Interaction", "Potential Toxicity", "Hypersensitivity"),
+  "severity": "mild" | "moderate" | "severe" | "life-threatening",
+  "suspected_medication": string or null,
+  "description": string (clear clinical description),
+  "signal_strength": "strong" | "moderate" | "weak",
+  "recommended_action": string
+}
+Only report genuine signals, not already-reported ones. Return [] if no new signals.`
+
+    const aiRes = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.2
+    })
+    let signals = []
+    try {
+      const parsed = JSON.parse(aiRes.choices[0].message.content)
+      signals = Array.isArray(parsed) ? parsed : (parsed.signals || [])
+    } catch {}
+
+    // Auto-create adverse_event records for strong signals
+    const now = new Date().toISOString()
+    const created = []
+    for (const s of signals.filter(s => s.signal_strength === 'strong')) {
+      const id = randomUUID()
+      await db.execute({
+        sql: 'INSERT INTO adverse_events (id, patient_id, owner_email, event_type, severity, suspected_medication, description, detected_at, detection_method, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        args: [id, req.params.patientId, req.apiKey, s.event_type, s.severity, s.suspected_medication || null, s.description, now, 'ai_detected', 'open', now]
+      })
+      created.push(id)
+    }
+
+    res.json({ signals, auto_created: created.length, patient_name: patient.name })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// PATCH /api/adverse-events/:id — update status / resolve
+app.patch('/api/adverse-events/:id', auth, async (req, res) => {
+  try {
+    const { status, notes, causality } = req.body
+    const now = new Date().toISOString()
+    const resolved_at = status === 'resolved' ? now : null
+    await db.execute({
+      sql: 'UPDATE adverse_events SET status = COALESCE(?, status), notes = COALESCE(?, notes), causality = COALESCE(?, causality), resolved_at = COALESCE(?, resolved_at) WHERE id = ? AND owner_email = ?',
+      args: [status || null, notes || null, causality || null, resolved_at, req.params.id, req.apiKey]
+    })
+    const updated = (await db.execute({ sql: 'SELECT * FROM adverse_events WHERE id = ?', args: [req.params.id] })).rows[0]
+    res.json(updated)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// DELETE /api/adverse-events/:id
+app.delete('/api/adverse-events/:id', auth, async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM adverse_events WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ── Serve built frontend (whenever dist/ exists) ──────────────────────────────

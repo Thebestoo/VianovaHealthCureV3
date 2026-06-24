@@ -3,9 +3,10 @@ import {
   Users, Plus, Search, FileJson, FileSpreadsheet, X, Check, User,
   Phone, Calendar, Pill, Heart, AlertTriangle, ChevronDown, ChevronUp,
   Edit3, Trash2, Loader2, Upload, Mail, MapPin, Languages, ArrowRight,
-  CheckCircle2, AlertCircle, SkipForward, RefreshCw
+  CheckCircle2, AlertCircle, SkipForward, RefreshCw, Briefcase
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import { useNavigate } from 'react-router-dom'
 import { parseFhirBundle } from '../utils/parseFhir.js'
 import FhirPreview from '../components/FhirPreview.jsx'
 import {
@@ -64,6 +65,7 @@ const EMPTY = { name: '', dob: '', sex: '', mrn: '', phone: '', email: '', addre
 
 export default function Patients() {
   const { key } = useKey()
+  const navigate = useNavigate()
   const [patients, setPatients]   = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
@@ -73,6 +75,8 @@ export default function Patients() {
   const [deleting, setDeleting]   = useState(null)
   const [saving, setSaving]       = useState(false)
   const [dupWarning, setDupWarning] = useState('')
+  const [patientCases, setPatientCases] = useState({})
+  const [casesLoading, setCasesLoading] = useState({})
 
   // FHIR
   const [fhirData, setFhirData]   = useState(null)
@@ -99,6 +103,19 @@ export default function Patients() {
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => { if (key) load() }, [key])
+
+  async function fetchPatientCases(patientId) {
+    if (patientCases[patientId] !== undefined) return
+    setCasesLoading(l => ({ ...l, [patientId]: true }))
+    try {
+      const r = await fetch(`/api/cases/by-patient/${patientId}`, { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setPatientCases(pc => ({ ...pc, [patientId]: Array.isArray(d) ? d : [] }))
+    } catch {
+      setPatientCases(pc => ({ ...pc, [patientId]: [] }))
+    }
+    setCasesLoading(l => ({ ...l, [patientId]: false }))
+  }
 
   async function load() {
     setLoading(true)
@@ -318,7 +335,7 @@ export default function Patients() {
               return (
                 <div key={p.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
                   <div style={{ padding: '16px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}
-                    onClick={() => setExpanded(isOpen ? null : p.id)}>
+                    onClick={() => { const next = isOpen ? null : p.id; setExpanded(next); if (next) fetchPatientCases(next) }}>
                     <div style={{ width: 42, height: 42, borderRadius: 99, background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <User size={18} color="#2563eb" />
                     </div>
@@ -375,6 +392,71 @@ export default function Patients() {
                         </Sec>
                       )}
                       {p.notes && <Sec icon={<User size={13} color="#6b7280"/>} title="Notes" wide><p style={{ fontSize: 13, color: '#374151', margin: 0, lineHeight: 1.6 }}>{p.notes}</p></Sec>}
+
+                      {/* Linked Cases */}
+                      <div style={{ gridColumn: '1/-1' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Briefcase size={13} color="#7c3aed" />
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>Linked Cases</span>
+                            {patientCases[p.id] && (
+                              <span style={{ background: '#f3f4f6', color: '#374151', borderRadius: 99, padding: '1px 7px', fontSize: 11, fontWeight: 700 }}>
+                                {patientCases[p.id].length}
+                              </span>
+                            )}
+                          </div>
+                          <button onClick={() => navigate('/cases/new')}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 7, border: '1px solid #ddd6fe', background: '#f5f3ff', color: '#7c3aed', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                            <Plus size={12} /> New Case
+                          </button>
+                        </div>
+                        {casesLoading[p.id] ? (
+                          <div style={{ textAlign: 'center', padding: '18px 0', color: '#9ca3af' }}>
+                            <Loader2 size={18} style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }} />
+                          </div>
+                        ) : !patientCases[p.id] || patientCases[p.id].length === 0 ? (
+                          <div style={{ padding: '14px 16px', background: '#f9fafb', borderRadius: 8, border: '1px dashed #e5e7eb', textAlign: 'center' }}>
+                            <span style={{ fontSize: 13, color: '#9ca3af' }}>No cases linked yet — </span>
+                            <button onClick={() => navigate('/cases/new')}
+                              style={{ background: 'none', border: 'none', color: '#7c3aed', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                              + Create Case
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                            {patientCases[p.id].map(c => {
+                              const isEmergency = c.emergency_detected || c.requires_urgent_review
+                              const isApproved  = c.status === 'approved'
+                              const badge = isEmergency
+                                ? { label: 'Emergency', color: '#dc2626', bg: '#fee2e2' }
+                                : isApproved
+                                  ? { label: 'Approved', color: '#059669', bg: '#d1fae5' }
+                                  : { label: 'Pending',  color: '#d97706', bg: '#fef3c7' }
+                              return (
+                                <div key={c.id} onClick={() => navigate(`/cases/${c.id}`)}
+                                  style={{ padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, transition: 'background .15s' }}
+                                  onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                  onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {c.chief_complaint || 'No complaint recorded'}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#6b7280', display: 'flex', gap: 10 }}>
+                                      <span>{new Date(c.created_at).toLocaleDateString()}</span>
+                                      {c.top_diagnosis && <span style={{ fontStyle: 'italic' }}>{c.top_diagnosis}</span>}
+                                    </div>
+                                  </div>
+                                  <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: badge.color, background: badge.bg, flexShrink: 0 }}>
+                                    {badge.label}
+                                  </span>
+                                  <ArrowRight size={13} color="#9ca3af" style={{ flexShrink: 0 }} />
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Quality breakdown */}
                       <Sec icon={<CheckCircle2 size={13} color="#059669"/>} title="Data Quality" wide>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
