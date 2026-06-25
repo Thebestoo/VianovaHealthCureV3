@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useRef, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ChevronRight, ChevronLeft, Send, Check, AlertTriangle,
   FileJson, Upload, X, User, Activity
@@ -12,11 +12,41 @@ const STEPS = ['Import FHIR', 'Patient Info', 'Medical History', 'Intake Questio
 
 export default function NewCase() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { key } = useKey()
   const fileRef  = useRef()
   const [step, setStep]             = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]           = useState('')
+  const [linkedPatientId, setLinkedPatientId] = useState(null)
+  const [linkedPatientName, setLinkedPatientName] = useState('')
+
+  // Pre-fill from linked patient if patient_id query param present
+  useEffect(() => {
+    const pid = searchParams.get('patient_id')
+    if (!pid || !key) return
+    setLinkedPatientId(pid)
+    fetch('/api/gen-patients', { headers: { 'x-api-key': key } })
+      .then(r => r.json())
+      .then(d => {
+        const patient = (d.patients || []).find(p => p.id === pid)
+        if (!patient) return
+        setLinkedPatientName(patient.name || '')
+        let conds = []; let meds = []; let allgs = []
+        try { conds = JSON.parse(patient.conditions || '[]') } catch {}
+        try { meds  = JSON.parse(patient.medications || '[]') } catch {}
+        try { allgs = JSON.parse(patient.allergies   || '[]') } catch { allgs = patient.allergies ? [patient.allergies] : [] }
+        if (patient.dob) {
+          const born = new Date(patient.dob)
+          const age  = Math.floor((Date.now() - born) / (365.25 * 86400000))
+          if (!isNaN(age) && age > 0) setInfo(i => ({ ...i, age: String(age) }))
+        }
+        if (patient.sex) setInfo(i => ({ ...i, sex: patient.sex }))
+        setHistory({ known_conditions: conds, allergies: allgs, current_medications: meds })
+        setStep(1) // skip straight to Patient Info
+      })
+      .catch(() => {})
+  }, [key])
 
   // FHIR
   const [fhirData, setFhirData]   = useState(null)
@@ -102,6 +132,8 @@ export default function NewCase() {
       current_medications: history.current_medications,
       answers:             allAnswers,
       free_text:           info.free_text || undefined,
+      // Link to gen_patient record if coming from patient profile
+      ...(linkedPatientId ? { patient_id: linkedPatientId } : {}),
       // FHIR import data (stored for logs & vitals panel)
       ...(fhirData ? {
         vitals:       fhirData.vitals || [],
@@ -137,6 +169,12 @@ export default function NewCase() {
           </div>
         )}
       </div>
+
+      {linkedPatientName && (
+        <div style={{ margin: '12px 32px 0', padding: '10px 16px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 9, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#166534' }}>
+          <User size={14} /> Creating case for <strong style={{ marginLeft: 3 }}>{linkedPatientName}</strong> — patient data pre-filled
+        </div>
+      )}
 
       <div style={{ padding: '28px 32px', maxWidth: 820 }}>
         {/* step indicator */}

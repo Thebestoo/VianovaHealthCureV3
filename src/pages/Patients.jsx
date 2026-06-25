@@ -405,7 +405,7 @@ export default function Patients() {
                               </span>
                             )}
                           </div>
-                          <button onClick={() => navigate('/cases/new')}
+                          <button onClick={() => navigate(`/cases/new?patient_id=${p.id}`)}
                             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 7, border: '1px solid #ddd6fe', background: '#f5f3ff', color: '#7c3aed', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                             <Plus size={12} /> New Case
                           </button>
@@ -417,7 +417,7 @@ export default function Patients() {
                         ) : !patientCases[p.id] || patientCases[p.id].length === 0 ? (
                           <div style={{ padding: '14px 16px', background: '#f9fafb', borderRadius: 8, border: '1px dashed #e5e7eb', textAlign: 'center' }}>
                             <span style={{ fontSize: 13, color: '#9ca3af' }}>No cases linked yet — </span>
-                            <button onClick={() => navigate('/cases/new')}
+                            <button onClick={() => navigate(`/cases/new?patient_id=${p.id}`)}
                               style={{ background: 'none', border: 'none', color: '#7c3aed', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
                               + Create Case
                             </button>
