@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ChevronRight, ChevronLeft, Send, Check, AlertTriangle,
-  FileJson, Upload, X, User, Activity
+  FileJson, Upload, X, User, Activity, Loader2
 } from 'lucide-react'
 import { parseFhirBundle } from '../utils/parseFhir.js'
 import FhirPreview from '../components/FhirPreview.jsx'
@@ -20,30 +20,62 @@ export default function NewCase() {
   const [error, setError]           = useState('')
   const [linkedPatientId, setLinkedPatientId] = useState(null)
   const [linkedPatientName, setLinkedPatientName] = useState('')
+  const [allPatients, setAllPatients] = useState([])
+  const [patientSearch, setPatientSearch] = useState('')
+  const [existingCases, setExistingCases] = useState(null)   // null=not loaded, []=none
+  const [casesLoading, setCasesLoading] = useState(false)
+
+  // Load all patients for the selector
+  useEffect(() => {
+    if (!key) return
+    fetch('/api/gen-patients', { headers: { 'x-api-key': key } })
+      .then(r => r.json())
+      .then(d => setAllPatients(d.patients || []))
+      .catch(() => {})
+  }, [key])
+
+  function applyPatient(patient) {
+    setLinkedPatientId(patient.id)
+    setLinkedPatientName(patient.name || '')
+    let conds = []; let meds = []; let allgs = []
+    try { conds = JSON.parse(patient.conditions || '[]') } catch {}
+    try { meds  = JSON.parse(patient.medications || '[]') } catch {}
+    try { allgs = JSON.parse(patient.allergies   || '[]') } catch { allgs = patient.allergies ? [patient.allergies] : [] }
+    if (patient.dob) {
+      const born = new Date(patient.dob)
+      const age  = Math.floor((Date.now() - born) / (365.25 * 86400000))
+      if (!isNaN(age) && age > 0) setInfo(i => ({ ...i, age: String(age) }))
+    }
+    if (patient.sex) setInfo(i => ({ ...i, sex: patient.sex }))
+    setHistory({ known_conditions: conds, allergies: allgs, current_medications: meds })
+    setPatientSearch('')
+    // Load their existing cases
+    setExistingCases(null)
+    setCasesLoading(true)
+    fetch(`/api/cases/by-patient/${patient.id}`, { headers: { 'x-api-key': key } })
+      .then(r => r.json())
+      .then(d => setExistingCases(Array.isArray(d) ? d : []))
+      .catch(() => setExistingCases([]))
+      .finally(() => setCasesLoading(false))
+  }
+
+  function clearLinkedPatient() {
+    setLinkedPatientId(null)
+    setLinkedPatientName('')
+    setExistingCases(null)
+    setInfo({ age: '', sex: '', free_text: '' })
+    setHistory({ known_conditions: [], allergies: [], current_medications: [] })
+  }
 
   // Pre-fill from linked patient if patient_id query param present
   useEffect(() => {
     const pid = searchParams.get('patient_id')
     if (!pid || !key) return
-    setLinkedPatientId(pid)
     fetch('/api/gen-patients', { headers: { 'x-api-key': key } })
       .then(r => r.json())
       .then(d => {
         const patient = (d.patients || []).find(p => p.id === pid)
-        if (!patient) return
-        setLinkedPatientName(patient.name || '')
-        let conds = []; let meds = []; let allgs = []
-        try { conds = JSON.parse(patient.conditions || '[]') } catch {}
-        try { meds  = JSON.parse(patient.medications || '[]') } catch {}
-        try { allgs = JSON.parse(patient.allergies   || '[]') } catch { allgs = patient.allergies ? [patient.allergies] : [] }
-        if (patient.dob) {
-          const born = new Date(patient.dob)
-          const age  = Math.floor((Date.now() - born) / (365.25 * 86400000))
-          if (!isNaN(age) && age > 0) setInfo(i => ({ ...i, age: String(age) }))
-        }
-        if (patient.sex) setInfo(i => ({ ...i, sex: patient.sex }))
-        setHistory({ known_conditions: conds, allergies: allgs, current_medications: meds })
-        setStep(1) // skip straight to Patient Info
+        if (patient) { applyPatient(patient); setStep(1) }
       })
       .catch(() => {})
   }, [key])
@@ -170,11 +202,123 @@ export default function NewCase() {
         )}
       </div>
 
-      {linkedPatientName && (
-        <div style={{ margin: '12px 32px 0', padding: '10px 16px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 9, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#166534' }}>
-          <User size={14} /> Creating case for <strong style={{ marginLeft: 3 }}>{linkedPatientName}</strong> — patient data pre-filled
+      {/* ── Patient Selector / Link Panel ── */}
+      <div style={{ margin: '16px 32px 0', background: '#fff', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', background: 'var(--surface)', borderBottom: linkedPatientId || patientSearch ? '1px solid var(--border)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <User size={15} color="var(--primary)" />
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Link to existing patient</span>
+          <span style={{ fontSize: 12, color: 'var(--text2)', marginLeft: 2 }}>— pre-fills the form and checks for duplicate cases</span>
         </div>
-      )}
+
+        {!linkedPatientId ? (
+          <div style={{ padding: '12px 16px', position: 'relative' }}>
+            <input
+              value={patientSearch}
+              onChange={e => setPatientSearch(e.target.value)}
+              placeholder="Search patient by name or MRN…"
+              style={{ width: '100%', padding: '9px 13px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+            />
+            {patientSearch.trim().length >= 1 && (() => {
+              const q = patientSearch.toLowerCase()
+              const filtered = allPatients.filter(p =>
+                p.name?.toLowerCase().includes(q) || p.mrn?.toLowerCase().includes(q)
+              ).slice(0, 6)
+              return filtered.length > 0 ? (
+                <div style={{ position: 'absolute', left: 16, right: 16, top: '100%', zIndex: 99, background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.12)', marginTop: 2, overflow: 'hidden' }}>
+                  {filtered.map(p => (
+                    <button key={p.id} onClick={() => applyPatient(p)}
+                      style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >
+                      <div style={{ width: 32, height: 32, borderRadius: 99, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>
+                        {p.name?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text2)' }}>
+                          {p.dob ? `DOB: ${p.dob}` : ''}{p.mrn ? ` · MRN: ${p.mrn}` : ''}{p.sex ? ` · ${p.sex}` : ''}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ position: 'absolute', left: 16, right: 16, top: '100%', zIndex: 99, background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.12)', marginTop: 2, padding: '12px 16px', fontSize: 13, color: 'var(--text2)' }}>
+                  No patients found
+                </div>
+              )
+            })()}
+          </div>
+        ) : (
+          <div style={{ padding: '12px 16px' }}>
+            {/* Selected patient row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: existingCases !== null || casesLoading ? 12 : 0 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 99, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 14, fontWeight: 700, color: 'var(--primary)' }}>
+                {linkedPatientName?.[0]?.toUpperCase() || '?'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{linkedPatientName}</div>
+                <div style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>✓ Patient data pre-filled</div>
+              </div>
+              <button onClick={clearLinkedPatient} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 7, padding: '4px 10px', fontSize: 12, cursor: 'pointer', color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <X size={12} /> Change
+              </button>
+            </div>
+
+            {/* Existing cases for this patient */}
+            {casesLoading && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text2)', padding: '8px 0' }}>
+                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Checking existing cases…
+              </div>
+            )}
+            {existingCases !== null && existingCases.length > 0 && (
+              <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 9, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+                  <AlertTriangle size={14} color="#d97706" />
+                  <span style={{ fontWeight: 700, fontSize: 13, color: '#92400e' }}>
+                    {existingCases.length} existing case{existingCases.length > 1 ? 's' : ''} found for this patient
+                  </span>
+                  <span style={{ fontSize: 12, color: '#b45309' }}>— do you really need a new one?</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {existingCases.slice(0, 3).map(c => {
+                    const isCrit = c.emergency_detected || c.requires_urgent_review
+                    const statusColor = isCrit ? '#dc2626' : c.status === 'approved' ? '#059669' : '#d97706'
+                    const statusBg    = isCrit ? '#fee2e2' : c.status === 'approved' ? '#d1fae5' : '#fef3c7'
+                    const statusLabel = isCrit ? 'Emergency' : c.status === 'approved' ? 'Approved' : 'Pending'
+                    return (
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#fff', borderRadius: 7, border: '1px solid #fde68a' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {c.chief_complaint || 'No complaint recorded'}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 1 }}>
+                            {c.top_diagnosis && <span>{c.top_diagnosis} · </span>}
+                            {new Date(c.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <span style={{ flexShrink: 0, padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: statusColor, background: statusBg }}>{statusLabel}</span>
+                        <button
+                          onClick={() => navigate(`/cases/${c.id}`)}
+                          style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 7, border: '1px solid var(--border)', background: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: 'var(--primary)' }}>
+                          Open
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: '#b45309' }}>
+                  You can still continue below to create a new case for a different visit.
+                </div>
+              </div>
+            )}
+            {existingCases !== null && existingCases.length === 0 && (
+              <div style={{ fontSize: 12, color: '#059669', padding: '6px 0' }}>✓ No existing cases — safe to create a new one</div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div style={{ padding: '28px 32px', maxWidth: 820 }}>
         {/* step indicator */}
