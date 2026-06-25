@@ -18,6 +18,14 @@ import Appointments from './pages/Appointments.jsx'
 import Discharge from './pages/Discharge.jsx'
 import Consent from './pages/Consent.jsx'
 import AdverseEvents from './pages/AdverseEvents.jsx'
+import PopulationHealth from './pages/PopulationHealth.jsx'
+import NLPNotes from './pages/NLPNotes.jsx'
+import ClinicalDecisions from './pages/ClinicalDecisions.jsx'
+import SDOH from './pages/SDOH.jsx'
+import ChronicDisease from './pages/ChronicDisease.jsx'
+import PatientPortal from './pages/PatientPortal.jsx'
+import Interoperability from './pages/Interoperability.jsx'
+import AuditCompliance from './pages/AuditCompliance.jsx'
 
 function ProtectedRoute({ children }) {
   const { key } = useKey()
@@ -47,6 +55,14 @@ function AppRoutes() {
             <Route path="/discharge" element={<ProtectedRoute><Discharge /></ProtectedRoute>} />
             <Route path="/consent" element={<ProtectedRoute><Consent /></ProtectedRoute>} />
             <Route path="/adverse-events" element={<ProtectedRoute><AdverseEvents /></ProtectedRoute>} />
+            <Route path="/population-health" element={<ProtectedRoute><PopulationHealth /></ProtectedRoute>} />
+            <Route path="/nlp-notes" element={<ProtectedRoute><NLPNotes /></ProtectedRoute>} />
+            <Route path="/clinical-decisions" element={<ProtectedRoute><ClinicalDecisions /></ProtectedRoute>} />
+            <Route path="/sdoh" element={<ProtectedRoute><SDOH /></ProtectedRoute>} />
+            <Route path="/chronic-disease" element={<ProtectedRoute><ChronicDisease /></ProtectedRoute>} />
+            <Route path="/patient-portal" element={<ProtectedRoute><PatientPortal /></ProtectedRoute>} />
+            <Route path="/interoperability" element={<ProtectedRoute><Interoperability /></ProtectedRoute>} />
+            <Route path="/audit-compliance" element={<ProtectedRoute><AuditCompliance /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
           </Routes>
         </Layout>

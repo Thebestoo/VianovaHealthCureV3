@@ -82,6 +82,13 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_email TEXT NOT NULL, patient_id TEXT, action TEXT NOT NULL, resource_type TEXT, actor TEXT, details TEXT, created_at TEXT NOT NULL)`,
     // feature 13 – adverse events & pharmacovigilance
     `CREATE TABLE IF NOT EXISTS adverse_events (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'moderate', suspected_medication TEXT, description TEXT NOT NULL, detected_at TEXT NOT NULL, detection_method TEXT NOT NULL DEFAULT 'manual', status TEXT NOT NULL DEFAULT 'open', causality TEXT, ai_assessment TEXT, medwatch_draft TEXT, resolved_at TEXT, notes TEXT, created_at TEXT NOT NULL)`,
+    // feature 14 – population health
+    `CREATE TABLE IF NOT EXISTS cohorts (id TEXT PRIMARY KEY, owner_email TEXT NOT NULL, name TEXT NOT NULL, description TEXT, criteria TEXT NOT NULL, program_type TEXT, member_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS cohort_members (id INTEGER PRIMARY KEY AUTOINCREMENT, cohort_id TEXT NOT NULL, patient_id TEXT NOT NULL, enrolled_at TEXT NOT NULL, risk_level TEXT, outreach_status TEXT NOT NULL DEFAULT 'pending', UNIQUE(cohort_id, patient_id))`,
+    // feature 17 – SDOH
+    `CREATE TABLE IF NOT EXISTS sdoh_assessments (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, housing TEXT, food_security TEXT, transportation TEXT, financial_strain TEXT, social_isolation TEXT, education TEXT, employment TEXT, safety TEXT, z_codes TEXT, ai_summary TEXT, resources_suggested TEXT, status TEXT NOT NULL DEFAULT 'active', assessed_at TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    // feature 19 – patient portal / chatbot
+    `CREATE TABLE IF NOT EXISTS portal_intakes (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, chief_complaint TEXT, symptoms TEXT, symptom_duration TEXT, pain_scale INTEGER, phq9_score INTEGER, gad7_score INTEGER, phq9_answers TEXT, gad7_answers TEXT, triage_level TEXT, ai_recommendation TEXT, created_at TEXT NOT NULL)`,
   ]
   for (const sql of stmts) {
     await db.execute({ sql, args: [] })
@@ -2077,6 +2084,597 @@ app.delete('/api/adverse-events/:id', auth, async (req, res) => {
   try {
     await db.execute({ sql: 'DELETE FROM adverse_events WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })
     res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── POPULATION HEALTH ─────────────────────────────────────────────────────────
+
+app.get('/api/cohorts', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({ sql: 'SELECT * FROM cohorts WHERE owner_email = ? ORDER BY created_at DESC', args: [req.userEmail] })).rows
+    res.json(rows)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/cohorts', auth, async (req, res) => {
+  try {
+    const { name, description, criteria, program_type } = req.body
+    if (!name || !criteria) return res.status(400).json({ error: 'name and criteria required' })
+    const id = randomUUID(); const now = new Date().toISOString()
+    await db.execute({ sql: 'INSERT INTO cohorts (id, owner_email, name, description, criteria, program_type, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)', args: [id, req.userEmail, name, description || '', JSON.stringify(criteria), program_type || null, now, now] })
+    res.json({ id, name })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/cohorts/:id', auth, async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM cohort_members WHERE cohort_id = ?', args: [req.params.id] })
+    await db.execute({ sql: 'DELETE FROM cohorts WHERE id = ? AND owner_email = ?', args: [req.params.id, req.userEmail] })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Auto-enroll matching patients into cohort
+app.post('/api/cohorts/:id/enroll', auth, async (req, res) => {
+  try {
+    const cohort = (await db.execute({ sql: 'SELECT * FROM cohorts WHERE id = ? AND owner_email = ?', args: [req.params.id, req.userEmail] })).rows[0]
+    if (!cohort) return res.status(404).json({ error: 'Cohort not found' })
+    const criteria = typeof cohort.criteria === 'string' ? JSON.parse(cohort.criteria) : cohort.criteria
+    const patients = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE owner_email = ?', args: [req.userEmail] })).rows
+
+    const matches = []
+    for (const p of patients) {
+      let conds = []; let meds = []
+      try { conds = JSON.parse(p.conditions || '[]') } catch {}
+      try { meds = JSON.parse(p.medications || '[]') } catch {}
+      const condStr = conds.join(' ').toLowerCase()
+      const medStr = meds.join(' ').toLowerCase()
+      let match = false
+      if (criteria.condition_keywords?.length) {
+        match = criteria.condition_keywords.some(k => condStr.includes(k.toLowerCase()))
+      }
+      if (!match && criteria.medication_keywords?.length) {
+        match = criteria.medication_keywords.some(k => medStr.includes(k.toLowerCase()))
+      }
+      if (!match && criteria.program_type) {
+        const prog = criteria.program_type.toLowerCase()
+        match = condStr.includes(prog) || medStr.includes(prog)
+      }
+      if (match) matches.push(p)
+    }
+
+    const now = new Date().toISOString(); let enrolled = 0; let skipped = 0
+    for (const p of matches) {
+      try {
+        await db.execute({ sql: 'INSERT OR IGNORE INTO cohort_members (cohort_id, patient_id, enrolled_at, risk_level, outreach_status) VALUES (?,?,?,?,?)', args: [cohort.id, p.id, now, null, 'pending'] })
+        enrolled++
+      } catch { skipped++ }
+    }
+    await db.execute({ sql: 'UPDATE cohorts SET member_count = (SELECT COUNT(*) FROM cohort_members WHERE cohort_id = ?), updated_at = ? WHERE id = ?', args: [cohort.id, now, cohort.id] })
+    res.json({ enrolled, skipped, total_matches: matches.length, patient_names: matches.slice(0,5).map(p => p.name) })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Get cohort members
+app.get('/api/cohorts/:id/members', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({
+      sql: 'SELECT cm.*, p.name, p.dob, p.sex, p.conditions, p.medications, p.mrn FROM cohort_members cm JOIN gen_patients p ON cm.patient_id = p.id WHERE cm.cohort_id = ? ORDER BY cm.enrolled_at DESC',
+      args: [req.params.id]
+    })).rows
+    res.json(rows)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// AI risk stratification for cohort members
+app.post('/api/cohorts/:id/stratify', auth, async (req, res) => {
+  try {
+    const members = (await db.execute({
+      sql: 'SELECT cm.*, p.name, p.dob, p.conditions, p.medications, p.allergies FROM cohort_members cm JOIN gen_patients p ON cm.patient_id = p.id WHERE cm.cohort_id = ?',
+      args: [req.params.id]
+    })).rows
+
+    if (!members.length) return res.json({ stratified: 0 })
+    const cohort = (await db.execute({ sql: 'SELECT * FROM cohorts WHERE id = ?', args: [req.params.id] })).rows[0]
+
+    const prompt = `You are a population health AI. Stratify these patients by risk level for the ${cohort?.name || 'program'} program.
+
+Patients:
+${members.map((m, i) => `${i+1}. ${m.name} | Conditions: ${m.conditions || 'none'} | Medications: ${m.medications || 'none'}`).join('\n')}
+
+Return JSON: { "stratification": [ { "patient_id": "...", "risk_level": "high"|"medium"|"low", "reason": "brief reason" } ] }`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const { stratification = [] } = JSON.parse(aiRes.choices[0].message.content)
+
+    for (const s of stratification) {
+      await db.execute({ sql: 'UPDATE cohort_members SET risk_level = ? WHERE cohort_id = ? AND patient_id = ?', args: [s.risk_level, req.params.id, s.patient_id] })
+    }
+    res.json({ stratified: stratification.length, breakdown: stratification.reduce((a, s) => { a[s.risk_level] = (a[s.risk_level]||0)+1; return a }, {}) })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Generate AI outreach message for cohort member
+app.post('/api/cohorts/:cohortId/members/:patientId/outreach', auth, async (req, res) => {
+  try {
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ?', args: [req.params.patientId] })).rows[0]
+    const cohort = (await db.execute({ sql: 'SELECT * FROM cohorts WHERE id = ?', args: [req.params.cohortId] })).rows[0]
+    if (!patient || !cohort) return res.status(404).json({ error: 'Not found' })
+
+    const prompt = `Write a brief, empathetic patient outreach message for a ${cohort.name} program.
+Patient: ${patient.name}, Conditions: ${patient.conditions || 'not documented'}
+Message should: introduce the program, explain benefits, ask patient to schedule an appointment.
+Keep it under 120 words. Plain language. Return JSON: { "message": "..." }`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.5 })
+    const { message } = JSON.parse(aiRes.choices[0].message.content)
+    await db.execute({ sql: "UPDATE cohort_members SET outreach_status = 'sent' WHERE cohort_id = ? AND patient_id = ?", args: [req.params.cohortId, req.params.patientId] })
+    res.json({ message, patient_name: patient.name })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── NLP / CLINICAL NOTES ──────────────────────────────────────────────────────
+
+app.post('/api/nlp/extract', auth, async (req, res) => {
+  try {
+    const { note_text, patient_id } = req.body
+    if (!note_text) return res.status(400).json({ error: 'note_text required' })
+
+    const prompt = `You are a clinical NLP system. Extract structured data from this clinical note.
+
+Note:
+${note_text.slice(0, 3000)}
+
+Return JSON:
+{
+  "conditions": [{"name": "...", "status": "present"|"absent"|"historical"|"possible", "confidence": 0.0-1.0}],
+  "medications": [{"name": "...", "dose": "...", "route": "...", "frequency": "...", "confidence": 0.0-1.0}],
+  "symptoms": [{"name": "...", "status": "present"|"absent"|"resolved", "onset": "...", "confidence": 0.0-1.0}],
+  "allergies": [{"substance": "...", "reaction": "...", "confidence": 0.0-1.0}],
+  "vitals": {"bp": "...", "hr": "...", "temp": "...", "rr": "...", "spo2": "..."},
+  "lab_values": [{"test": "...", "value": "...", "unit": "...", "date": "..."}],
+  "procedures": [{"name": "...", "date": "...", "confidence": 0.0-1.0}],
+  "note_type": "SOAP"|"discharge"|"consult"|"nursing"|"other",
+  "acuity": "low"|"medium"|"high"|"critical",
+  "summary": "1-2 sentence clinical summary"
+}`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const extracted = JSON.parse(aiRes.choices[0].message.content)
+    res.json({ extracted, patient_id: patient_id || null })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/nlp/deidentify', auth, async (req, res) => {
+  try {
+    const { note_text } = req.body
+    if (!note_text) return res.status(400).json({ error: 'note_text required' })
+
+    const prompt = `De-identify this clinical note by replacing all PHI with placeholders.
+Replace: patient names → [PATIENT], provider names → [PROVIDER], dates → [DATE], MRN/IDs → [ID], phone numbers → [PHONE], addresses → [ADDRESS], facility names → [FACILITY].
+Return JSON: { "deidentified_text": "...", "phi_found": ["list of PHI types found"] }`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: `${prompt}\n\nNote:\n${note_text.slice(0, 3000)}` }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const result = JSON.parse(aiRes.choices[0].message.content)
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Apply extracted data to a patient record
+app.post('/api/nlp/apply/:patientId', auth, async (req, res) => {
+  try {
+    const { extracted } = req.body
+    if (!extracted) return res.status(400).json({ error: 'extracted data required' })
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.userEmail] })).rows[0]
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+    let conds = []; let meds = []; let allgs = []
+    try { conds = JSON.parse(patient.conditions || '[]') } catch {}
+    try { meds = JSON.parse(patient.medications || '[]') } catch {}
+    try { allgs = JSON.parse(patient.allergies || '[]') } catch { allgs = patient.allergies ? [patient.allergies] : [] }
+
+    const newConds = (extracted.conditions || []).filter(c => c.status === 'present' && c.confidence >= 0.7).map(c => c.name).filter(n => !conds.includes(n))
+    const newMeds = (extracted.medications || []).filter(m => m.confidence >= 0.7).map(m => m.dose ? `${m.name} ${m.dose}` : m.name).filter(n => !meds.includes(n))
+    const newAllgs = (extracted.allergies || []).filter(a => a.confidence >= 0.7).map(a => a.substance).filter(n => !allgs.includes(n))
+
+    const updConds = [...conds, ...newConds]; const updMeds = [...meds, ...newMeds]; const updAllgs = [...allgs, ...newAllgs]
+    await db.execute({ sql: 'UPDATE gen_patients SET conditions = ?, medications = ?, allergies = ? WHERE id = ?', args: [JSON.stringify(updConds), JSON.stringify(updMeds), JSON.stringify(updAllgs), req.params.patientId] })
+    res.json({ added_conditions: newConds, added_medications: newMeds, added_allergies: newAllgs })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── CLINICAL DECISION SUPPORT ─────────────────────────────────────────────────
+
+// Full patient CDS check
+app.post('/api/cds/patient/:patientId', auth, async (req, res) => {
+  try {
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.userEmail] })).rows[0]
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+    const labs = (await db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 10', args: [req.params.patientId] })).rows
+    const gaps = (await db.execute({ sql: "SELECT * FROM care_gaps WHERE patient_id = ? AND status = 'open'", args: [req.params.patientId] })).rows
+    const appts = (await db.execute({ sql: "SELECT * FROM appointments WHERE patient_id = ? AND status = 'scheduled' ORDER BY appointment_date ASC LIMIT 3", args: [req.params.patientId] })).rows
+
+    let conds = []; let meds = []; let allgs = []
+    try { conds = JSON.parse(patient.conditions || '[]') } catch {}
+    try { meds = JSON.parse(patient.medications || '[]') } catch {}
+    try { allgs = JSON.parse(patient.allergies || '[]') } catch {}
+
+    const prompt = `You are a clinical decision support AI. Analyze this patient and return evidence-based recommendations.
+
+Patient: ${patient.name}, DOB: ${patient.dob}, Sex: ${patient.sex}
+Conditions: ${conds.join(', ') || 'none'}
+Medications: ${meds.join(', ') || 'none'}
+Allergies: ${allgs.join(', ') || 'none'}
+Recent labs: ${labs.map(l => `${l.test_name}: ${l.value} ${l.unit||''} (${l.interpretation||'N'})`).join(', ') || 'none'}
+Open care gaps: ${gaps.map(g => g.gap_type).join(', ') || 'none'}
+Upcoming appointments: ${appts.map(a => `${a.appointment_type} on ${a.appointment_date?.slice(0,10)}`).join(', ') || 'none'}
+
+Return JSON:
+{
+  "cards": [
+    {
+      "id": "unique_string",
+      "indicator": "info"|"warning"|"critical",
+      "title": "short title",
+      "detail": "explanation",
+      "category": "screening"|"medication"|"lab"|"care_gap"|"risk"|"follow_up",
+      "action": "suggested action text or null"
+    }
+  ],
+  "risk_score": 0-100,
+  "risk_label": "low"|"moderate"|"high"|"critical",
+  "summary": "one sentence overall assessment"
+}`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const result = JSON.parse(aiRes.choices[0].message.content)
+    res.json({ ...result, patient_name: patient.name, generated_at: new Date().toISOString() })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Medication safety check
+app.post('/api/cds/medication-check', auth, async (req, res) => {
+  try {
+    const { patient_id, new_medication, new_dose } = req.body
+    if (!patient_id || !new_medication) return res.status(400).json({ error: 'patient_id and new_medication required' })
+
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ?', args: [patient_id] })).rows[0]
+    let meds = []; let allgs = []; let conds = []
+    try { meds = JSON.parse(patient?.medications || '[]') } catch {}
+    try { allgs = JSON.parse(patient?.allergies || '[]') } catch {}
+    try { conds = JSON.parse(patient?.conditions || '[]') } catch {}
+
+    const prompt = `You are a clinical pharmacist AI. Check this new medication for safety issues.
+
+Patient conditions: ${conds.join(', ') || 'unknown'}
+Current medications: ${meds.join(', ') || 'none'}
+Known allergies: ${allgs.join(', ') || 'none'}
+New medication: ${new_medication}${new_dose ? ` ${new_dose}` : ''}
+
+Return JSON:
+{
+  "safe": true|false,
+  "alerts": [{ "type": "DDI"|"allergy"|"dose"|"contraindication", "severity": "low"|"moderate"|"high"|"critical", "message": "...", "recommendation": "..." }],
+  "formulary_alternatives": ["alternative1", "alternative2"],
+  "overall_recommendation": "proceed"|"caution"|"do_not_prescribe"
+}`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const result = JSON.parse(aiRes.choices[0].message.content)
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── SDOH ──────────────────────────────────────────────────────────────────────
+
+app.get('/api/sdoh', auth, async (req, res) => {
+  try {
+    const { patient_id } = req.query
+    let sql = 'SELECT s.*, p.name as patient_name FROM sdoh_assessments s JOIN gen_patients p ON s.patient_id = p.id WHERE s.owner_email = ?'
+    const args = [req.userEmail]
+    if (patient_id) { sql += ' AND s.patient_id = ?'; args.push(patient_id) }
+    sql += ' ORDER BY s.created_at DESC'
+    res.json((await db.execute({ sql, args })).rows)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/sdoh', auth, async (req, res) => {
+  try {
+    const { patient_id, housing, food_security, transportation, financial_strain, social_isolation, education, employment, safety } = req.body
+    if (!patient_id) return res.status(400).json({ error: 'patient_id required' })
+
+    const id = randomUUID(); const now = new Date().toISOString()
+    const answers = { housing, food_security, transportation, financial_strain, social_isolation, education, employment, safety }
+
+    const prompt = `Map these SDOH screening responses to ICD-10 Z-codes and suggest community resources.
+
+Responses: ${JSON.stringify(answers)}
+
+Return JSON:
+{
+  "z_codes": ["Z59.x description", ...],
+  "risk_domains": ["housing", "food", ...],
+  "summary": "brief clinical summary of social needs",
+  "resources": [{"category": "...", "name": "...", "action": "..."}],
+  "priority": "low"|"moderate"|"high"
+}`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const ai = JSON.parse(aiRes.choices[0].message.content)
+
+    await db.execute({
+      sql: 'INSERT INTO sdoh_assessments (id, patient_id, owner_email, housing, food_security, transportation, financial_strain, social_isolation, education, employment, safety, z_codes, ai_summary, resources_suggested, status, assessed_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      args: [id, patient_id, req.userEmail, housing||null, food_security||null, transportation||null, financial_strain||null, social_isolation||null, education||null, employment||null, safety||null, JSON.stringify(ai.z_codes||[]), ai.summary||null, JSON.stringify(ai.resources||[]), 'active', now, now]
+    })
+
+    const saved = (await db.execute({ sql: 'SELECT * FROM sdoh_assessments WHERE id = ?', args: [id] })).rows[0]
+    res.json({ ...saved, ai })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/sdoh/:id', auth, async (req, res) => {
+  try {
+    await db.execute({ sql: 'UPDATE sdoh_assessments SET status = COALESCE(?, status) WHERE id = ? AND owner_email = ?', args: [req.body.status || null, req.params.id, req.userEmail] })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── CHRONIC DISEASE MANAGEMENT ────────────────────────────────────────────────
+
+app.post('/api/chronic-disease/analyze/:patientId', auth, async (req, res) => {
+  try {
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.userEmail] })).rows[0]
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+    const labs = (await db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 30', args: [req.params.patientId] })).rows
+    let conds = []; let meds = []
+    try { conds = JSON.parse(patient.conditions || '[]') } catch {}
+    try { meds = JSON.parse(patient.medications || '[]') } catch {}
+
+    const labStr = labs.map(l => `${l.test_name}: ${l.value} ${l.unit||''} (${l.interpretation||'N'}) ${l.result_date?.slice(0,10)}`).join('\n')
+
+    const prompt = `You are a chronic disease management AI. Analyze this patient's data and generate a disease management report.
+
+Patient: ${patient.name}, DOB: ${patient.dob}, Sex: ${patient.sex}
+Conditions: ${conds.join(', ') || 'none documented'}
+Medications: ${meds.join(', ') || 'none documented'}
+
+Recent lab results:
+${labStr || 'No labs available'}
+
+Identify which chronic disease programs apply (Diabetes, Heart Failure, COPD, CKD, Hypertension) and analyze each.
+
+Return JSON:
+{
+  "programs": [
+    {
+      "condition": "Diabetes"|"Heart Failure"|"COPD"|"CKD"|"Hypertension"|"Other",
+      "status": "well_controlled"|"suboptimal"|"uncontrolled"|"at_risk",
+      "key_metrics": [{"name": "...", "value": "...", "status": "ok"|"warning"|"critical"}],
+      "alerts": [{"severity": "info"|"warning"|"critical", "message": "..."}],
+      "recommendations": ["recommendation 1", "recommendation 2"],
+      "next_actions": ["action 1", "action 2"],
+      "goals": [{"goal": "...", "target": "...", "current": "...", "met": true|false}]
+    }
+  ],
+  "overall_status": "stable"|"worsening"|"improving"|"critical",
+  "priority_action": "most urgent thing to do now"
+}`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const result = JSON.parse(aiRes.choices[0].message.content)
+    res.json({ ...result, patient_name: patient.name, generated_at: new Date().toISOString() })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── PATIENT PORTAL ────────────────────────────────────────────────────────────
+
+app.get('/api/portal/intakes', auth, async (req, res) => {
+  try {
+    const { patient_id } = req.query
+    let sql = 'SELECT pi.*, p.name as patient_name FROM portal_intakes pi JOIN gen_patients p ON pi.patient_id = p.id WHERE pi.owner_email = ?'
+    const args = [req.userEmail]
+    if (patient_id) { sql += ' AND pi.patient_id = ?'; args.push(patient_id) }
+    sql += ' ORDER BY pi.created_at DESC'
+    res.json((await db.execute({ sql, args })).rows)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/portal/intake', auth, async (req, res) => {
+  try {
+    const { patient_id, chief_complaint, symptoms, symptom_duration, pain_scale, phq9_answers, gad7_answers } = req.body
+    if (!patient_id || !chief_complaint) return res.status(400).json({ error: 'patient_id and chief_complaint required' })
+
+    const phq9Score = phq9_answers ? phq9_answers.reduce((s, v) => s + (parseInt(v) || 0), 0) : null
+    const gad7Score = gad7_answers ? gad7_answers.reduce((s, v) => s + (parseInt(v) || 0), 0) : null
+
+    const prompt = `You are a medical triage AI. Assess this patient intake and provide a triage recommendation.
+
+Chief complaint: ${chief_complaint}
+Symptoms: ${Array.isArray(symptoms) ? symptoms.join(', ') : (symptoms || 'not specified')}
+Duration: ${symptom_duration || 'not specified'}
+Pain scale: ${pain_scale != null ? pain_scale + '/10' : 'not rated'}
+PHQ-9 score: ${phq9Score != null ? `${phq9Score}/27` : 'not completed'}
+GAD-7 score: ${gad7Score != null ? `${gad7Score}/21` : 'not completed'}
+
+Return JSON:
+{
+  "triage_level": "self_care"|"routine"|"urgent"|"emergency",
+  "triage_color": "green"|"yellow"|"orange"|"red",
+  "recommendation": "what the patient should do",
+  "care_instructions": "brief self-care or pre-visit instructions",
+  "red_flags": ["any concerning symptoms to watch for"],
+  "mental_health_flag": true|false,
+  "mental_health_note": "note if PHQ-9 or GAD-7 scores indicate concern or null"
+}`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const ai = JSON.parse(aiRes.choices[0].message.content)
+
+    const id = randomUUID(); const now = new Date().toISOString()
+    await db.execute({
+      sql: 'INSERT INTO portal_intakes (id, patient_id, owner_email, chief_complaint, symptoms, symptom_duration, pain_scale, phq9_score, gad7_score, phq9_answers, gad7_answers, triage_level, ai_recommendation, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      args: [id, patient_id, req.userEmail, chief_complaint, JSON.stringify(symptoms||[]), symptom_duration||null, pain_scale||null, phq9Score, gad7Score, JSON.stringify(phq9_answers||[]), JSON.stringify(gad7_answers||[]), ai.triage_level, JSON.stringify(ai), now]
+    })
+
+    res.json({ id, ...ai, phq9_score: phq9Score, gad7_score: gad7Score })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Chatbot message endpoint
+app.post('/api/portal/chat', auth, async (req, res) => {
+  try {
+    const { message, context, patient_id } = req.body
+    if (!message) return res.status(400).json({ error: 'message required' })
+
+    let patientCtx = ''
+    if (patient_id) {
+      const p = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ?', args: [patient_id] })).rows[0]
+      if (p) {
+        let conds = []; let meds = []
+        try { conds = JSON.parse(p.conditions || '[]') } catch {}
+        try { meds = JSON.parse(p.medications || '[]') } catch {}
+        patientCtx = `Patient: ${p.name} | Conditions: ${conds.join(', ')||'none'} | Medications: ${meds.join(', ')||'none'}`
+      }
+    }
+
+    const sysPrompt = `You are a helpful medical assistant AI for Vianova Health. You help patients understand their health, explain lab results in plain language, answer general health questions, and guide them on when to seek care.${patientCtx ? `\n${patientCtx}` : ''}
+Rules: Never diagnose. Always recommend seeing a doctor for serious symptoms. Be warm, clear, and use plain language.`
+
+    const history = Array.isArray(context) ? context.slice(-8) : []
+    const messages = [{ role: 'system', content: sysPrompt }, ...history, { role: 'user', content: message }]
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages, temperature: 0.5, max_tokens: 400 })
+    res.json({ reply: aiRes.choices[0].message.content })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── INTEROPERABILITY ──────────────────────────────────────────────────────────
+
+// Complete patient record as structured bundle
+app.get('/api/patients/:patientId/complete-record', auth, async (req, res) => {
+  try {
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.userEmail] })).rows[0]
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+    const [labs, gaps, appts, discharge, consents, sdoh, adverse, intakes] = await Promise.all([
+      db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC', args: [req.params.patientId] }),
+      db.execute({ sql: 'SELECT * FROM care_gaps WHERE patient_id = ? ORDER BY created_at DESC', args: [req.params.patientId] }),
+      db.execute({ sql: 'SELECT * FROM appointments WHERE patient_id = ? ORDER BY appointment_date DESC', args: [req.params.patientId] }),
+      db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE patient_id = ? ORDER BY created_at DESC', args: [req.params.patientId] }),
+      db.execute({ sql: 'SELECT * FROM consents WHERE patient_id = ? ORDER BY created_at DESC', args: [req.params.patientId] }),
+      db.execute({ sql: 'SELECT * FROM sdoh_assessments WHERE patient_id = ? ORDER BY created_at DESC LIMIT 1', args: [req.params.patientId] }),
+      db.execute({ sql: 'SELECT * FROM adverse_events WHERE patient_id = ? ORDER BY created_at DESC', args: [req.params.patientId] }),
+      db.execute({ sql: 'SELECT * FROM portal_intakes WHERE patient_id = ? ORDER BY created_at DESC LIMIT 5', args: [req.params.patientId] }),
+    ])
+
+    res.json({
+      patient,
+      summary: {
+        lab_results: labs.rows.length,
+        care_gaps: gaps.rows.filter(g => g.status === 'open').length,
+        appointments: appts.rows.filter(a => a.status === 'scheduled').length,
+        adverse_events: adverse.rows.filter(a => a.status === 'open').length,
+      },
+      resources: {
+        lab_results: labs.rows,
+        care_gaps: gaps.rows,
+        appointments: appts.rows,
+        discharge_summaries: discharge.rows,
+        consents: consents.rows,
+        sdoh_assessment: sdoh.rows[0] || null,
+        adverse_events: adverse.rows,
+        portal_intakes: intakes.rows,
+      },
+      exported_at: new Date().toISOString()
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Terminology mapping
+app.post('/api/terminology/map', auth, async (req, res) => {
+  try {
+    const { terms, target_system } = req.body
+    if (!terms?.length) return res.status(400).json({ error: 'terms array required' })
+
+    const prompt = `Map these clinical terms to standardized codes.
+Terms: ${terms.join(', ')}
+Target system: ${target_system || 'SNOMED CT, LOINC, and RxNorm as appropriate'}
+
+Return JSON: { "mappings": [ { "original_term": "...", "code": "...", "display": "...", "system": "SNOMED CT"|"LOINC"|"RxNorm"|"ICD-10", "confidence": 0.0-1.0 } ] }`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const result = JSON.parse(aiRes.choices[0].message.content)
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── AUDIT & COMPLIANCE ────────────────────────────────────────────────────────
+
+app.get('/api/compliance/audit-log', auth, async (req, res) => {
+  try {
+    const { days = 30, patient_id } = req.query
+    const since = new Date(Date.now() - days * 86400000).toISOString()
+    let sql = 'SELECT * FROM audit_events WHERE owner_email = ? AND created_at >= ?'
+    const args = [req.userEmail, since]
+    if (patient_id) { sql += ' AND patient_id = ?'; args.push(patient_id) }
+    sql += ' ORDER BY created_at DESC LIMIT 500'
+    const rows = (await db.execute({ sql, args })).rows
+    res.json(rows)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/compliance/analyze-audit', auth, async (req, res) => {
+  try {
+    const since = new Date(Date.now() - 7 * 86400000).toISOString()
+    const events = (await db.execute({ sql: 'SELECT action, resource_type, patient_id, created_at FROM audit_events WHERE owner_email = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 200', args: [req.userEmail, since] })).rows
+
+    if (!events.length) return res.json({ anomalies: [], summary: 'No audit events in last 7 days.', risk_level: 'low' })
+
+    const summary = events.reduce((acc, e) => { acc[e.action] = (acc[e.action]||0)+1; return acc }, {})
+
+    const prompt = `Analyze these audit log events for anomalies, unusual patterns, or compliance concerns.
+
+Event summary (last 7 days): ${JSON.stringify(summary)}
+Total events: ${events.length}
+Unique patients accessed: ${new Set(events.map(e => e.patient_id).filter(Boolean)).size}
+
+Return JSON:
+{
+  "anomalies": [{"type": "...", "description": "...", "severity": "low"|"medium"|"high"}],
+  "compliance_score": 0-100,
+  "risk_level": "low"|"medium"|"high",
+  "summary": "brief overall assessment",
+  "recommendations": ["recommendation 1"]
+}`
+
+    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const result = JSON.parse(aiRes.choices[0].message.content)
+    res.json({ ...result, event_count: events.length, period_days: 7 })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/compliance/report', auth, async (req, res) => {
+  try {
+    const patients = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM gen_patients WHERE owner_email = ?', args: [req.userEmail] })).rows[0]?.c || 0
+    const consents = (await db.execute({ sql: "SELECT COUNT(*) as c FROM consents WHERE owner_email = ? AND status = 'active'", args: [req.userEmail] })).rows[0]?.c || 0
+    const expiredConsents = (await db.execute({ sql: "SELECT COUNT(*) as c FROM consents WHERE owner_email = ? AND expires_at < ? AND status = 'active'", args: [req.userEmail, new Date().toISOString()] })).rows[0]?.c || 0
+    const auditEvents7d = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM audit_events WHERE owner_email = ? AND created_at >= ?', args: [req.userEmail, new Date(Date.now() - 7*86400000).toISOString()] })).rows[0]?.c || 0
+    const openAdverse = (await db.execute({ sql: "SELECT COUNT(*) as c FROM adverse_events WHERE owner_email = ? AND status = 'open'", args: [req.userEmail] })).rows[0]?.c || 0
+    const openCareGaps = (await db.execute({ sql: "SELECT COUNT(*) as c FROM care_gaps WHERE owner_email = ? AND status = 'open'", args: [req.userEmail] })).rows[0]?.c || 0
+
+    res.json({
+      generated_at: new Date().toISOString(),
+      metrics: { patients, active_consents: consents, expired_consents: expiredConsents, audit_events_7d: auditEvents7d, open_adverse_events: openAdverse, open_care_gaps: openCareGaps },
+      compliance_checks: [
+        { check: 'Patient consent coverage', status: patients > 0 && consents >= patients * 0.8 ? 'pass' : 'review', detail: `${consents}/${patients} patients have active consent` },
+        { check: 'Expired consents', status: expiredConsents === 0 ? 'pass' : 'fail', detail: `${expiredConsents} consents have expired` },
+        { check: 'Adverse event tracking', status: openAdverse === 0 ? 'pass' : 'review', detail: `${openAdverse} open adverse events` },
+        { check: 'Audit logging active', status: auditEvents7d > 0 ? 'pass' : 'review', detail: `${auditEvents7d} events logged in last 7 days` },
+        { check: 'Care gap management', status: openCareGaps < 10 ? 'pass' : 'review', detail: `${openCareGaps} open care gaps` },
+      ]
+    })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

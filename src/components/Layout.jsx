@@ -4,7 +4,8 @@ import {
   LayoutDashboard, FolderOpen, PlusCircle, BarChart2,
   HeartPulse, ShieldCheck, Stethoscope, LogOut, Wifi, WifiOff,
   Users, LogIn, Menu, X, AlertCircle, FlaskConical, CalendarDays,
-  ClipboardList, ShieldAlert, AlertOctagon
+  ClipboardList, ShieldAlert, AlertOctagon, Users2, FileText,
+  Lightbulb, Home, Activity, MessageSquare, GitMerge, ClipboardCheck
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
@@ -19,6 +20,14 @@ const NAV_ALL = [
   { label: 'Discharge',        icon: ClipboardList,   path: '/discharge' },
   { label: 'Consent',          icon: ShieldAlert,     path: '/consent' },
   { label: 'Adverse Events',   icon: AlertOctagon,    path: '/adverse-events' },
+  { label: 'Population Health',icon: Users2,          path: '/population-health' },
+  { label: 'NLP Notes',        icon: FileText,        path: '/nlp-notes' },
+  { label: 'Clinical Decisions',icon: Lightbulb,      path: '/clinical-decisions' },
+  { label: 'SDOH',             icon: Home,            path: '/sdoh' },
+  { label: 'Chronic Disease',  icon: Activity,        path: '/chronic-disease' },
+  { label: 'Patient Portal',   icon: MessageSquare,   path: '/patient-portal' },
+  { label: 'Interoperability', icon: GitMerge,        path: '/interoperability' },
+  { label: 'Audit & Compliance',icon: ClipboardCheck, path: '/audit-compliance' },
   { label: 'Logs & Analytics', icon: BarChart2,       path: '/logs' },
 ]
 const NAV_ADMIN = [
