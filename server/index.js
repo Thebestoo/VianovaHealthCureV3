@@ -2091,7 +2091,7 @@ app.delete('/api/adverse-events/:id', auth, async (req, res) => {
 
 app.get('/api/cohorts', auth, async (req, res) => {
   try {
-    const rows = (await db.execute({ sql: 'SELECT * FROM cohorts WHERE owner_email = ? ORDER BY created_at DESC', args: [req.userEmail] })).rows
+    const rows = (await db.execute({ sql: 'SELECT * FROM cohorts WHERE owner_email = ? ORDER BY created_at DESC', args: [req.apiKey] })).rows
     res.json(rows)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2101,7 +2101,7 @@ app.post('/api/cohorts', auth, async (req, res) => {
     const { name, description, criteria, program_type } = req.body
     if (!name || !criteria) return res.status(400).json({ error: 'name and criteria required' })
     const id = randomUUID(); const now = new Date().toISOString()
-    await db.execute({ sql: 'INSERT INTO cohorts (id, owner_email, name, description, criteria, program_type, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)', args: [id, req.userEmail, name, description || '', JSON.stringify(criteria), program_type || null, now, now] })
+    await db.execute({ sql: 'INSERT INTO cohorts (id, owner_email, name, description, criteria, program_type, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)', args: [id, req.apiKey, name, description || '', JSON.stringify(criteria), program_type || null, now, now] })
     res.json({ id, name })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2109,7 +2109,7 @@ app.post('/api/cohorts', auth, async (req, res) => {
 app.delete('/api/cohorts/:id', auth, async (req, res) => {
   try {
     await db.execute({ sql: 'DELETE FROM cohort_members WHERE cohort_id = ?', args: [req.params.id] })
-    await db.execute({ sql: 'DELETE FROM cohorts WHERE id = ? AND owner_email = ?', args: [req.params.id, req.userEmail] })
+    await db.execute({ sql: 'DELETE FROM cohorts WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2117,10 +2117,10 @@ app.delete('/api/cohorts/:id', auth, async (req, res) => {
 // Auto-enroll matching patients into cohort
 app.post('/api/cohorts/:id/enroll', auth, async (req, res) => {
   try {
-    const cohort = (await db.execute({ sql: 'SELECT * FROM cohorts WHERE id = ? AND owner_email = ?', args: [req.params.id, req.userEmail] })).rows[0]
+    const cohort = (await db.execute({ sql: 'SELECT * FROM cohorts WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
     if (!cohort) return res.status(404).json({ error: 'Cohort not found' })
     const criteria = typeof cohort.criteria === 'string' ? JSON.parse(cohort.criteria) : cohort.criteria
-    const patients = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE owner_email = ?', args: [req.userEmail] })).rows
+    const patients = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE owner_email = ?', args: [req.apiKey] })).rows
 
     const matches = []
     for (const p of patients) {
@@ -2265,7 +2265,7 @@ app.post('/api/nlp/apply/:patientId', auth, async (req, res) => {
   try {
     const { extracted } = req.body
     if (!extracted) return res.status(400).json({ error: 'extracted data required' })
-    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.userEmail] })).rows[0]
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
     if (!patient) return res.status(404).json({ error: 'Patient not found' })
 
     let conds = []; let meds = []; let allgs = []
@@ -2288,7 +2288,7 @@ app.post('/api/nlp/apply/:patientId', auth, async (req, res) => {
 // Full patient CDS check
 app.post('/api/cds/patient/:patientId', auth, async (req, res) => {
   try {
-    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.userEmail] })).rows[0]
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
     if (!patient) return res.status(404).json({ error: 'Patient not found' })
 
     const labs = (await db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 10', args: [req.params.patientId] })).rows
@@ -2372,7 +2372,7 @@ app.get('/api/sdoh', auth, async (req, res) => {
   try {
     const { patient_id } = req.query
     let sql = 'SELECT s.*, p.name as patient_name FROM sdoh_assessments s JOIN gen_patients p ON s.patient_id = p.id WHERE s.owner_email = ?'
-    const args = [req.userEmail]
+    const args = [req.apiKey]
     if (patient_id) { sql += ' AND s.patient_id = ?'; args.push(patient_id) }
     sql += ' ORDER BY s.created_at DESC'
     res.json((await db.execute({ sql, args })).rows)
@@ -2405,7 +2405,7 @@ Return JSON:
 
     await db.execute({
       sql: 'INSERT INTO sdoh_assessments (id, patient_id, owner_email, housing, food_security, transportation, financial_strain, social_isolation, education, employment, safety, z_codes, ai_summary, resources_suggested, status, assessed_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      args: [id, patient_id, req.userEmail, housing||null, food_security||null, transportation||null, financial_strain||null, social_isolation||null, education||null, employment||null, safety||null, JSON.stringify(ai.z_codes||[]), ai.summary||null, JSON.stringify(ai.resources||[]), 'active', now, now]
+      args: [id, patient_id, req.apiKey, housing||null, food_security||null, transportation||null, financial_strain||null, social_isolation||null, education||null, employment||null, safety||null, JSON.stringify(ai.z_codes||[]), ai.summary||null, JSON.stringify(ai.resources||[]), 'active', now, now]
     })
 
     const saved = (await db.execute({ sql: 'SELECT * FROM sdoh_assessments WHERE id = ?', args: [id] })).rows[0]
@@ -2415,7 +2415,7 @@ Return JSON:
 
 app.patch('/api/sdoh/:id', auth, async (req, res) => {
   try {
-    await db.execute({ sql: 'UPDATE sdoh_assessments SET status = COALESCE(?, status) WHERE id = ? AND owner_email = ?', args: [req.body.status || null, req.params.id, req.userEmail] })
+    await db.execute({ sql: 'UPDATE sdoh_assessments SET status = COALESCE(?, status) WHERE id = ? AND owner_email = ?', args: [req.body.status || null, req.params.id, req.apiKey] })
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2424,7 +2424,7 @@ app.patch('/api/sdoh/:id', auth, async (req, res) => {
 
 app.post('/api/chronic-disease/analyze/:patientId', auth, async (req, res) => {
   try {
-    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.userEmail] })).rows[0]
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
     if (!patient) return res.status(404).json({ error: 'Patient not found' })
 
     const labs = (await db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 30', args: [req.params.patientId] })).rows
@@ -2474,7 +2474,7 @@ app.get('/api/portal/intakes', auth, async (req, res) => {
   try {
     const { patient_id } = req.query
     let sql = 'SELECT pi.*, p.name as patient_name FROM portal_intakes pi JOIN gen_patients p ON pi.patient_id = p.id WHERE pi.owner_email = ?'
-    const args = [req.userEmail]
+    const args = [req.apiKey]
     if (patient_id) { sql += ' AND pi.patient_id = ?'; args.push(patient_id) }
     sql += ' ORDER BY pi.created_at DESC'
     res.json((await db.execute({ sql, args })).rows)
@@ -2515,7 +2515,7 @@ Return JSON:
     const id = randomUUID(); const now = new Date().toISOString()
     await db.execute({
       sql: 'INSERT INTO portal_intakes (id, patient_id, owner_email, chief_complaint, symptoms, symptom_duration, pain_scale, phq9_score, gad7_score, phq9_answers, gad7_answers, triage_level, ai_recommendation, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      args: [id, patient_id, req.userEmail, chief_complaint, JSON.stringify(symptoms||[]), symptom_duration||null, pain_scale||null, phq9Score, gad7Score, JSON.stringify(phq9_answers||[]), JSON.stringify(gad7_answers||[]), ai.triage_level, JSON.stringify(ai), now]
+      args: [id, patient_id, req.apiKey, chief_complaint, JSON.stringify(symptoms||[]), symptom_duration||null, pain_scale||null, phq9Score, gad7Score, JSON.stringify(phq9_answers||[]), JSON.stringify(gad7_answers||[]), ai.triage_level, JSON.stringify(ai), now]
     })
 
     res.json({ id, ...ai, phq9_score: phq9Score, gad7_score: gad7Score })
@@ -2555,7 +2555,7 @@ Rules: Never diagnose. Always recommend seeing a doctor for serious symptoms. Be
 // Complete patient record as structured bundle
 app.get('/api/patients/:patientId/complete-record', auth, async (req, res) => {
   try {
-    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.userEmail] })).rows[0]
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
     if (!patient) return res.status(404).json({ error: 'Patient not found' })
 
     const [labs, gaps, appts, discharge, consents, sdoh, adverse, intakes] = await Promise.all([
@@ -2617,7 +2617,7 @@ app.get('/api/compliance/audit-log', auth, async (req, res) => {
     const { days = 30, patient_id } = req.query
     const since = new Date(Date.now() - days * 86400000).toISOString()
     let sql = 'SELECT * FROM audit_events WHERE owner_email = ? AND created_at >= ?'
-    const args = [req.userEmail, since]
+    const args = [req.apiKey, since]
     if (patient_id) { sql += ' AND patient_id = ?'; args.push(patient_id) }
     sql += ' ORDER BY created_at DESC LIMIT 500'
     const rows = (await db.execute({ sql, args })).rows
@@ -2628,7 +2628,7 @@ app.get('/api/compliance/audit-log', auth, async (req, res) => {
 app.post('/api/compliance/analyze-audit', auth, async (req, res) => {
   try {
     const since = new Date(Date.now() - 7 * 86400000).toISOString()
-    const events = (await db.execute({ sql: 'SELECT action, resource_type, patient_id, created_at FROM audit_events WHERE owner_email = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 200', args: [req.userEmail, since] })).rows
+    const events = (await db.execute({ sql: 'SELECT action, resource_type, patient_id, created_at FROM audit_events WHERE owner_email = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 200', args: [req.apiKey, since] })).rows
 
     if (!events.length) return res.json({ anomalies: [], summary: 'No audit events in last 7 days.', risk_level: 'low' })
 
@@ -2657,12 +2657,12 @@ Return JSON:
 
 app.get('/api/compliance/report', auth, async (req, res) => {
   try {
-    const patients = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM gen_patients WHERE owner_email = ?', args: [req.userEmail] })).rows[0]?.c || 0
-    const consents = (await db.execute({ sql: "SELECT COUNT(*) as c FROM consents WHERE owner_email = ? AND status = 'active'", args: [req.userEmail] })).rows[0]?.c || 0
-    const expiredConsents = (await db.execute({ sql: "SELECT COUNT(*) as c FROM consents WHERE owner_email = ? AND expires_at < ? AND status = 'active'", args: [req.userEmail, new Date().toISOString()] })).rows[0]?.c || 0
-    const auditEvents7d = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM audit_events WHERE owner_email = ? AND created_at >= ?', args: [req.userEmail, new Date(Date.now() - 7*86400000).toISOString()] })).rows[0]?.c || 0
-    const openAdverse = (await db.execute({ sql: "SELECT COUNT(*) as c FROM adverse_events WHERE owner_email = ? AND status = 'open'", args: [req.userEmail] })).rows[0]?.c || 0
-    const openCareGaps = (await db.execute({ sql: "SELECT COUNT(*) as c FROM care_gaps WHERE owner_email = ? AND status = 'open'", args: [req.userEmail] })).rows[0]?.c || 0
+    const patients = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM gen_patients WHERE owner_email = ?', args: [req.apiKey] })).rows[0]?.c || 0
+    const consents = (await db.execute({ sql: "SELECT COUNT(*) as c FROM consents WHERE owner_email = ? AND status = 'active'", args: [req.apiKey] })).rows[0]?.c || 0
+    const expiredConsents = (await db.execute({ sql: "SELECT COUNT(*) as c FROM consents WHERE owner_email = ? AND expires_at < ? AND status = 'active'", args: [req.apiKey, new Date().toISOString()] })).rows[0]?.c || 0
+    const auditEvents7d = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM audit_events WHERE owner_email = ? AND created_at >= ?', args: [req.apiKey, new Date(Date.now() - 7*86400000).toISOString()] })).rows[0]?.c || 0
+    const openAdverse = (await db.execute({ sql: "SELECT COUNT(*) as c FROM adverse_events WHERE owner_email = ? AND status = 'open'", args: [req.apiKey] })).rows[0]?.c || 0
+    const openCareGaps = (await db.execute({ sql: "SELECT COUNT(*) as c FROM care_gaps WHERE owner_email = ? AND status = 'open'", args: [req.apiKey] })).rows[0]?.c || 0
 
     res.json({
       generated_at: new Date().toISOString(),
