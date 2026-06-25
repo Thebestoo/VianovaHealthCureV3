@@ -110,6 +110,8 @@ export default function SDOH() {
   const [expandedSummary, setExpandedSummary] = useState({})
   const [expandedResources, setExpandedResources] = useState({})
   const [resolving, setResolving] = useState({})
+  const [apiError, setApiError] = useState(null)
+  const [saveError, setSaveError] = useState(null)
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -125,12 +127,14 @@ export default function SDOH() {
 
   async function loadAssessments() {
     setLoading(true)
+    setApiError(null)
     try {
       const qs = patientFilter ? `?patient_id=${patientFilter}` : ''
       const r = await fetch(`/api/sdoh${qs}`, { headers: { 'x-api-key': key } })
       const d = await r.json()
-      setAssessments(Array.isArray(d) ? d : [])
-    } catch {}
+      if (!r.ok) { setApiError(d.error || 'Failed to load assessments'); setAssessments([]) }
+      else setAssessments(Array.isArray(d) ? d : [])
+    } catch (e) { setApiError(e.message) }
     setLoading(false)
   }
 
@@ -153,18 +157,20 @@ export default function SDOH() {
     e.preventDefault()
     if (!form.patient_id) return
     setSaving(true)
+    setSaveError(null)
     try {
-      const body = { ...form }
-      delete body.patient_id
-      await fetch('/api/sdoh', {
+      const { patient_id, ...domains } = form
+      const r = await fetch('/api/sdoh', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify({ patient_id: form.patient_id, ...body })
+        body: JSON.stringify({ patient_id, ...domains })
       })
+      const d = await r.json()
+      if (!r.ok) { setSaveError(d.error || 'Save failed'); setSaving(false); return }
       setShowModal(false)
       setForm(EMPTY_FORM)
       loadAssessments()
-    } catch {}
+    } catch (e) { setSaveError(e.message) }
     setSaving(false)
   }
 
@@ -238,6 +244,12 @@ export default function SDOH() {
           )}
         </div>
 
+        {apiError && (
+          <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10, fontSize: 13, color: '#b91c1c', display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ fontWeight: 700 }}>API Error:</span> {apiError}
+            <button onClick={loadAssessments} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 10px', fontSize: 12, cursor: 'pointer', color: '#b91c1c' }}>Retry</button>
+          </div>
+        )}
         {loading ? (
           <div style={{ textAlign: 'center', padding: 80, color: 'var(--text3)' }}>
             <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px', display: 'block', color: 'var(--primary)' }} />
@@ -413,6 +425,11 @@ export default function SDOH() {
                 ))}
               </div>
 
+              {saveError && (
+                <div style={{ marginBottom: 14, padding: '10px 14px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#b91c1c' }}>
+                  {saveError}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary btn-sm">Cancel</button>
                 <button type="submit" disabled={saving || !form.patient_id} className="btn btn-primary btn-sm">

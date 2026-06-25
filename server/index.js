@@ -91,7 +91,7 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS portal_intakes (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, chief_complaint TEXT, symptoms TEXT, symptom_duration TEXT, pain_scale INTEGER, phq9_score INTEGER, gad7_score INTEGER, phq9_answers TEXT, gad7_answers TEXT, triage_level TEXT, ai_recommendation TEXT, created_at TEXT NOT NULL)`,
   ]
   for (const sql of stmts) {
-    await db.execute({ sql, args: [] })
+    try { await db.execute({ sql, args: [] }) } catch (e) { console.warn('initDB stmt skipped:', e.message) }
   }
   // migrations for old columns — ignore errors if already exist
   const migrations = [
