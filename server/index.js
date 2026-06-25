@@ -2184,7 +2184,7 @@ ${members.map((m, i) => `${i+1}. ${m.name} | Conditions: ${m.conditions || 'none
 
 Return JSON: { "stratification": [ { "patient_id": "...", "risk_level": "high"|"medium"|"low", "reason": "brief reason" } ] }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const { stratification = [] } = JSON.parse(aiRes.choices[0].message.content)
 
     for (const s of stratification) {
@@ -2206,7 +2206,7 @@ Patient: ${patient.name}, Conditions: ${patient.conditions || 'not documented'}
 Message should: introduce the program, explain benefits, ask patient to schedule an appointment.
 Keep it under 120 words. Plain language. Return JSON: { "message": "..." }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.5 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.5 })
     const { message } = JSON.parse(aiRes.choices[0].message.content)
     await db.execute({ sql: "UPDATE cohort_members SET outreach_status = 'sent' WHERE cohort_id = ? AND patient_id = ?", args: [req.params.cohortId, req.params.patientId] })
     res.json({ message, patient_name: patient.name })
@@ -2239,7 +2239,7 @@ Return JSON:
   "summary": "1-2 sentence clinical summary"
 }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
     const extracted = JSON.parse(aiRes.choices[0].message.content)
     res.json({ extracted, patient_id: patient_id || null })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2254,7 +2254,7 @@ app.post('/api/nlp/deidentify', auth, async (req, res) => {
 Replace: patient names → [PATIENT], provider names → [PROVIDER], dates → [DATE], MRN/IDs → [ID], phone numbers → [PHONE], addresses → [ADDRESS], facility names → [FACILITY].
 Return JSON: { "deidentified_text": "...", "phi_found": ["list of PHI types found"] }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: `${prompt}\n\nNote:\n${note_text.slice(0, 3000)}` }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: `${prompt}\n\nNote:\n${note_text.slice(0, 3000)}` }], response_format: { type: 'json_object' }, temperature: 0.1 })
     const result = JSON.parse(aiRes.choices[0].message.content)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2327,7 +2327,7 @@ Return JSON:
   "summary": "one sentence overall assessment"
 }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const result = JSON.parse(aiRes.choices[0].message.content)
     res.json({ ...result, patient_name: patient.name, generated_at: new Date().toISOString() })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2360,7 +2360,7 @@ Return JSON:
   "overall_recommendation": "proceed"|"caution"|"do_not_prescribe"
 }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
     const result = JSON.parse(aiRes.choices[0].message.content)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2400,7 +2400,7 @@ Return JSON:
   "priority": "low"|"moderate"|"high"
 }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const ai = JSON.parse(aiRes.choices[0].message.content)
 
     await db.execute({
@@ -2462,7 +2462,7 @@ Return JSON:
   "priority_action": "most urgent thing to do now"
 }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const result = JSON.parse(aiRes.choices[0].message.content)
     res.json({ ...result, patient_name: patient.name, generated_at: new Date().toISOString() })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2509,7 +2509,7 @@ Return JSON:
   "mental_health_note": "note if PHQ-9 or GAD-7 scores indicate concern or null"
 }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const ai = JSON.parse(aiRes.choices[0].message.content)
 
     const id = randomUUID(); const now = new Date().toISOString()
@@ -2545,7 +2545,7 @@ Rules: Never diagnose. Always recommend seeing a doctor for serious symptoms. Be
     const history = Array.isArray(context) ? context.slice(-8) : []
     const messages = [{ role: 'system', content: sysPrompt }, ...history, { role: 'user', content: message }]
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages, temperature: 0.5, max_tokens: 400 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages, temperature: 0.5, max_tokens: 400 })
     res.json({ reply: aiRes.choices[0].message.content })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2604,7 +2604,7 @@ Target system: ${target_system || 'SNOMED CT, LOINC, and RxNorm as appropriate'}
 
 Return JSON: { "mappings": [ { "original_term": "...", "code": "...", "display": "...", "system": "SNOMED CT"|"LOINC"|"RxNorm"|"ICD-10", "confidence": 0.0-1.0 } ] }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
     const result = JSON.parse(aiRes.choices[0].message.content)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -2649,7 +2649,7 @@ Return JSON:
   "recommendations": ["recommendation 1"]
 }`
 
-    const aiRes = await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const result = JSON.parse(aiRes.choices[0].message.content)
     res.json({ ...result, event_count: events.length, period_days: 7 })
   } catch (e) { res.status(500).json({ error: e.message }) }
