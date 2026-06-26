@@ -75,7 +75,9 @@ export default function Layout({ children }) {
       <aside className="sidebar">
         <div className="sidebar-logo">
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <HeartPulse size={22} color="#fff" />
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 12px rgba(255,255,255,.15)' }}>
+              <HeartPulse size={20} color="#fff" />
+            </div>
             <div>
               <div className="brand">Vianova Health</div>
               <div className="tagline">Cure Analyzer System</div>
@@ -138,6 +140,7 @@ export default function Layout({ children }) {
         <nav className="sidebar-nav">
           {NAV.map(({ label: lbl, icon: Icon, path }) => (
             <button key={path} className={`nav-item ${isActive(path) ? 'active' : ''}`} onClick={() => navigate(path)}>
+              {isActive(path) && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: '#fff', borderRadius: '0 3px 3px 0', opacity: .9 }} />}
               <Icon size={16} />{lbl}
             </button>
           ))}
@@ -148,7 +151,7 @@ export default function Layout({ children }) {
             <ShieldCheck size={13} color="rgba(255,255,255,.45)" />
             <p>AI draft — physician review required</p>
           </div>
-          <p>v1.0 · llama-3.3-70b</p>
+          <p>v2.0 · llama-3.3-70b</p>
         </div>
       </aside>
 
