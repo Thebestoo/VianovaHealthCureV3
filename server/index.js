@@ -2478,6 +2478,77 @@ Return JSON:
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── CDS: Drug-Drug Interaction checker (no patient required) ─────────────────
+app.post('/api/cds/ddi-check', auth, aiLimiter, async (req, res) => {
+  try {
+    const { medications } = req.body
+    if (!medications || !Array.isArray(medications) || medications.length < 2)
+      return res.status(400).json({ error: 'Provide at least 2 medications as an array' })
+
+    const prompt = `You are a clinical pharmacist AI. Analyze all pairwise drug-drug interactions between these medications.
+
+Medications: ${medications.join(', ')}
+
+Return JSON:
+{
+  "interactions": [
+    {
+      "drug_a": "name",
+      "drug_b": "name",
+      "severity": "none"|"minor"|"moderate"|"major"|"contraindicated",
+      "mechanism": "brief mechanism",
+      "clinical_effect": "what happens clinically",
+      "management": "what the clinician should do"
+    }
+  ],
+  "high_risk_pairs": ["drug_a + drug_b", ...],
+  "overall_risk": "low"|"moderate"|"high"|"critical",
+  "summary": "overall 1-2 sentence clinical summary"
+}`
+
+    const aiRes = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+    })
+    res.json(JSON.parse(aiRes.choices[0].message.content))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── CDS: Clinical guideline lookup ────────────────────────────────────────────
+app.post('/api/cds/guidelines', auth, aiLimiter, async (req, res) => {
+  try {
+    const { condition, patient_context } = req.body
+    if (!condition) return res.status(400).json({ error: 'condition required' })
+
+    const prompt = `You are a clinical guidelines expert. Provide evidence-based management guidelines for the following condition.
+
+Condition: ${condition}
+${patient_context ? `Patient context: ${patient_context}` : ''}
+
+Return JSON:
+{
+  "condition": "standardised condition name",
+  "guideline_source": "e.g. AHA/ACC 2023, USPSTF 2022",
+  "first_line_treatments": [{ "treatment": "name", "evidence_level": "A"|"B"|"C", "notes": "brief" }],
+  "monitoring": ["what to monitor and how often"],
+  "targets": [{ "parameter": "e.g. HbA1c", "target": "< 7%", "notes": "" }],
+  "red_flags": ["list of warning signs requiring urgent escalation"],
+  "patient_education": ["key points to tell the patient"],
+  "follow_up": "recommended follow-up interval"
+}`
+
+    const aiRes = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+    })
+    res.json(JSON.parse(aiRes.choices[0].message.content))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── SDOH ──────────────────────────────────────────────────────────────────────
 
 app.get('/api/sdoh', auth, async (req, res) => {
