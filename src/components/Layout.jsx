@@ -9,30 +9,57 @@ import {
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
-const NAV_ALL = [
-  { label: 'Dashboard',        icon: LayoutDashboard, path: '/dashboard' },
-  { label: 'Patients',         icon: Users,           path: '/patients' },
-  { label: 'All Cases',        icon: FolderOpen,      path: '/cases' },
-  { label: 'New Case',         icon: PlusCircle,      path: '/cases/new' },
-  { label: 'Care Gaps',        icon: AlertCircle,     path: '/care-gaps' },
-  { label: 'Lab Results',      icon: FlaskConical,    path: '/labs' },
-  { label: 'Appointments',     icon: CalendarDays,    path: '/appointments' },
-  { label: 'Discharge',        icon: ClipboardList,   path: '/discharge' },
-  { label: 'Consent',          icon: ShieldAlert,     path: '/consent' },
-  { label: 'Adverse Events',   icon: AlertOctagon,    path: '/adverse-events' },
-  { label: 'Population Health',icon: Users2,          path: '/population-health' },
-  { label: 'NLP Notes',        icon: FileText,        path: '/nlp-notes' },
-  { label: 'Clinical Decisions',icon: Lightbulb,      path: '/clinical-decisions' },
-  { label: 'SDOH',             icon: Home,            path: '/sdoh' },
-  { label: 'Chronic Disease',  icon: Activity,        path: '/chronic-disease' },
-  { label: 'Patient Portal',   icon: MessageSquare,   path: '/patient-portal' },
-  { label: 'Interoperability', icon: GitMerge,        path: '/interoperability' },
-  { label: 'Audit & Compliance',icon: ClipboardCheck, path: '/audit-compliance' },
-  { label: 'Logs & Analytics', icon: BarChart2,       path: '/logs' },
+const NAV_GROUPS = [
+  {
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+      { label: 'Patients',  icon: Users,           path: '/patients'  },
+      { label: 'All Cases', icon: FolderOpen,      path: '/cases'     },
+      { label: 'New Case',  icon: PlusCircle,      path: '/cases/new' },
+    ],
+  },
+  {
+    title: 'Clinical Workflow',
+    items: [
+      { label: 'Care Gaps',      icon: AlertCircle,  path: '/care-gaps'    },
+      { label: 'Lab Results',    icon: FlaskConical, path: '/labs'         },
+      { label: 'Appointments',   icon: CalendarDays, path: '/appointments' },
+      { label: 'Discharge',      icon: ClipboardList,path: '/discharge'    },
+      { label: 'Consent',        icon: ShieldAlert,  path: '/consent'      },
+      { label: 'Adverse Events', icon: AlertOctagon, path: '/adverse-events' },
+    ],
+  },
+  {
+    title: 'Intelligence',
+    items: [
+      { label: 'Population Health',  icon: Users2,       path: '/population-health'  },
+      { label: 'NLP Notes',          icon: FileText,     path: '/nlp-notes'          },
+      { label: 'Clinical Decisions', icon: Lightbulb,    path: '/clinical-decisions' },
+      { label: 'SDOH',               icon: Home,         path: '/sdoh'               },
+      { label: 'Chronic Disease',    icon: Activity,     path: '/chronic-disease'    },
+    ],
+  },
+  {
+    title: 'Operations',
+    items: [
+      { label: 'Patient Portal',    icon: MessageSquare, path: '/patient-portal'    },
+      { label: 'Interoperability',  icon: GitMerge,      path: '/interoperability'  },
+      { label: 'Audit & Compliance',icon: ClipboardCheck,path: '/audit-compliance'  },
+      { label: 'Logs & Analytics',  icon: BarChart2,     path: '/logs'              },
+    ],
+  },
 ]
+
+const NAV_ALL   = NAV_GROUPS
 const NAV_ADMIN = [
-  ...NAV_ALL,
-  { label: 'Admin',            icon: ShieldCheck,     path: '/admin' },
+  ...NAV_GROUPS.slice(0, -1),
+  {
+    title: 'Operations',
+    items: [
+      ...NAV_GROUPS[3].items,
+      { label: 'Admin', icon: ShieldCheck, path: '/admin' },
+    ],
+  },
 ]
 
 // Bottom tab bar shows only the most important 5 items on mobile
@@ -52,7 +79,8 @@ export default function Layout({ children }) {
 
   const isConnected  = !!key
   const isSuperAdmin = role === 'superadmin'
-  const NAV          = isSuperAdmin ? NAV_ADMIN : NAV_ALL
+  const NAV_GROUPS_ACTIVE = isSuperAdmin ? NAV_ADMIN : NAV_ALL
+  const NAV_FLAT     = NAV_GROUPS_ACTIVE.flatMap(g => g.items)
   const BOTTOM       = isSuperAdmin ? [...BOTTOM_NAV, { label: 'Admin', icon: ShieldCheck, path: '/admin' }] : BOTTOM_NAV
 
   function handleDisconnect() {
@@ -138,11 +166,27 @@ export default function Layout({ children }) {
         </div>
 
         <nav className="sidebar-nav">
-          {NAV.map(({ label: lbl, icon: Icon, path }) => (
-            <button key={path} className={`nav-item ${isActive(path) ? 'active' : ''}`} onClick={() => navigate(path)}>
-              {isActive(path) && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: '#fff', borderRadius: '0 3px 3px 0', opacity: .9 }} />}
-              <Icon size={16} />{lbl}
-            </button>
+          {NAV_GROUPS_ACTIVE.map((group, gi) => (
+            <div key={gi}>
+              {group.title && (
+                <div style={{
+                  padding: '14px 16px 6px',
+                  fontSize: 10, fontWeight: 700,
+                  color: 'rgba(255,255,255,.3)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '.1em',
+                  ...(gi > 0 && { borderTop: '1px solid rgba(255,255,255,.08)', marginTop: 4, paddingTop: 16 }),
+                }}>
+                  {group.title}
+                </div>
+              )}
+              {group.items.map(({ label: lbl, icon: Icon, path }) => (
+                <button key={path} className={`nav-item ${isActive(path) ? 'active' : ''}`} onClick={() => navigate(path)}>
+                  {isActive(path) && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: '#fff', borderRadius: '0 3px 3px 0', opacity: .9 }} />}
+                  <Icon size={16} />{lbl}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -194,10 +238,26 @@ export default function Layout({ children }) {
           )}
           {/* nav links */}
           <nav style={{ padding: '10px 12px' }}>
-            {NAV.map(({ label: lbl, icon: Icon, path }) => (
-              <button key={path} className={`nav-item-mobile ${isActive(path) ? 'active' : ''}`} onClick={() => navTo(path)}>
-                <Icon size={18} />{lbl}
-              </button>
+            {NAV_GROUPS_ACTIVE.map((group, gi) => (
+              <div key={gi}>
+                {group.title && (
+                  <div style={{
+                    padding: '10px 8px 4px',
+                    fontSize: 10, fontWeight: 700,
+                    color: 'var(--text2)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '.1em',
+                    ...(gi > 0 && { borderTop: '1px solid var(--border)', marginTop: 4 }),
+                  }}>
+                    {group.title}
+                  </div>
+                )}
+                {group.items.map(({ label: lbl, icon: Icon, path }) => (
+                  <button key={path} className={`nav-item-mobile ${isActive(path) ? 'active' : ''}`} onClick={() => navTo(path)}>
+                    <Icon size={18} />{lbl}
+                  </button>
+                ))}
+              </div>
             ))}
           </nav>
         </div>
