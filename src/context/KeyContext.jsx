@@ -84,6 +84,14 @@ export function KeyProvider({ children }) {
   }, [])
 
   const disconnect = useCallback(() => {
+    // Revoke the session server-side before clearing localStorage
+    const token = localStorage.getItem(LS_KEY)
+    if (token) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'x-api-key': token },
+      }).catch(() => {})
+    }
     localStorage.removeItem(LS_KEY)
     localStorage.removeItem(LS_ROLE)
     localStorage.removeItem(LS_LABEL)

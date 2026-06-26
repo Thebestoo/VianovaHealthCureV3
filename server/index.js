@@ -4,7 +4,9 @@ import { setDefaultResultOrder } from 'dns'
 setDefaultResultOrder('ipv4first')
 import express from 'express'
 import cors from 'cors'
-import { randomUUID, randomBytes } from 'crypto'
+import helmet from 'helmet'
+import { rateLimit } from 'express-rate-limit'
+import { randomUUID, randomBytes, timingSafeEqual } from 'crypto'
 import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
@@ -118,8 +120,99 @@ async function initDB() {
 }
 
 const app = express()
-app.use(cors())
-app.use(express.json())
+
+// ── Trust proxy (Render sits behind a load-balancer) ─────────────────────────
+app.set('trust proxy', 1)
+
+// ── Security headers via Helmet ───────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:     ["'self'"],
+      scriptSrc:      ["'self'", "'unsafe-inline'"],          // Vite inlines scripts in dev
+      styleSrc:       ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc:        ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc:         ["'self'", 'data:', 'https:'],
+      connectSrc:     ["'self'", 'https://api.groq.com'],
+      frameSrc:       ["'none'"],
+      objectSrc:      ["'none'"],
+      upgradeInsecureRequests: IS_PROD ? [] : null,
+    },
+  },
+  crossOriginEmbedderPolicy: false,   // some browsers block CDN fonts otherwise
+  hsts: IS_PROD ? { maxAge: 63072000, includeSubDomains: true, preload: true } : false,
+}))
+
+// ── CORS — only allow the known frontend origin ───────────────────────────────
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',').map(s => s.trim()).filter(Boolean)
+
+app.use(cors({
+  origin(origin, cb) {
+    // Allow server-to-server (no origin) and listed origins; block everything else in prod
+    if (!origin || !IS_PROD || ALLOWED_ORIGINS.length === 0) return cb(null, true)
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true)
+    cb(new Error(`CORS: origin ${origin} not allowed`))
+  },
+  methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'x-api-key', 'Authorization'],
+  credentials: true,
+  maxAge:      86400,
+}))
+
+// ── Body parsing — cap JSON payload at 256 KB ─────────────────────────────────
+app.use(express.json({ limit: '256kb' }))
+
+// ── Rate limiters ─────────────────────────────────────────────────────────────
+// Strict limiter for auth endpoints (login / OTP)
+const authLimiter = rateLimit({
+  windowMs:         15 * 60 * 1000,  // 15 min window
+  max:              10,               // 10 attempts per IP
+  standardHeaders:  'draft-7',
+  legacyHeaders:    false,
+  message:          { error: 'Too many login attempts. Please wait 15 minutes and try again.' },
+  skipSuccessfulRequests: true,
+})
+
+// General API limiter — generous but caps scraping / runaway loops
+const apiLimiter = rateLimit({
+  windowMs:        60 * 1000,   // 1 min
+  max:             120,         // 120 req/min per IP
+  standardHeaders: 'draft-7',
+  legacyHeaders:   false,
+  message:         { error: 'Rate limit exceeded. Please slow down.' },
+})
+
+// AI endpoints are expensive — tighter cap
+const aiLimiter = rateLimit({
+  windowMs:        60 * 1000,
+  max:             20,
+  standardHeaders: 'draft-7',
+  legacyHeaders:   false,
+  message:         { error: 'AI rate limit reached. Please wait before making more AI requests.' },
+})
+
+app.use('/api/auth', authLimiter)
+app.use('/api',      apiLimiter)
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+// Constant-time token comparison to prevent timing attacks
+function safeEqual(a, b) {
+  try {
+    return timingSafeEqual(Buffer.from(String(a)), Buffer.from(String(b)))
+  } catch { return false }
+}
+
+// Sanitise a free-text string — strip null bytes, control chars, oversized input
+function sanitise(val, maxLen = 2000) {
+  if (val == null) return val
+  return String(val).replace(/\0/g, '').replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').slice(0, maxLen)
+}
+
+// Simple email shape check
+function validEmail(e) {
+  return typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim())
+}
 
 const client = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
@@ -378,7 +471,7 @@ Return ONLY valid JSON — no markdown, no explanation, no code block — matchi
 }`
 
 // ── POST /api/analyze ──────────────────────────────────────────────────────────
-app.post('/api/analyze', auth, async (req, res) => {
+app.post('/api/analyze', auth, aiLimiter, async (req, res) => {
   try {
     const patientData = req.body
     const caseId = randomUUID()
@@ -551,21 +644,40 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
 
 // ── POST /api/auth/login ───────────────────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body
+  const { email, password } = req.body ?? {}
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' })
+  if (!validEmail(email))  return res.status(400).json({ error: 'Invalid email format' })
+  if (typeof password !== 'string' || password.length > 256)
+    return res.status(400).json({ error: 'Invalid password' })
+
   const normalEmail = email.toLowerCase().trim()
   const user = (await db.execute({ sql: 'SELECT * FROM users WHERE email = ? AND active = 1', args: [normalEmail] })).rows[0]
-  if (!user) return res.status(401).json({ error: 'Invalid email or password' })
+
+  // Always run bcrypt to prevent user-enumeration via timing
+  const dummyHash = '$2a$12$invalidhashpaddingtomakethisreallylong000000000000000000'
+  const hash = user?.password_hash || dummyHash
+  const valid = bcrypt.compareSync(password, hash)
+
+  if (!user || !valid) return res.status(401).json({ error: 'Invalid email or password' })
   if (user.status && user.status !== 'active') return res.status(401).json({ error: 'Account pending approval — contact admin' })
   if (!user.password_hash) return res.status(401).json({ error: 'No password set — contact admin' })
-  const valid = bcrypt.compareSync(password, user.password_hash)
-  if (!valid) return res.status(401).json({ error: 'Invalid email or password' })
-  const token = randomBytes(32).toString('hex')
+
+  const token     = randomBytes(32).toString('hex')
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-  await db.execute({ sql: 'INSERT INTO sessions (token, user_id, user_email, expires_at, created_at) VALUES (?, ?, ?, ?, ?)', args: [token, user.id, user.email, expiresAt, new Date().toISOString()] })
+  await db.execute({
+    sql:  'INSERT INTO sessions (token, user_id, user_email, expires_at, created_at) VALUES (?, ?, ?, ?, ?)',
+    args: [token, user.id, user.email, expiresAt, new Date().toISOString()],
+  })
   const displayName = user.role === 'doctor' ? `Dr. ${user.name}` : user.name
   await logUpdate('auth_login', `${user.role} "${displayName}" signed in`, { email: user.email, role: user.role })
   res.json({ token, role: user.role, label: displayName, email: user.email })
+})
+
+// ── POST /api/auth/logout — invalidate the session token ─────────────────────
+app.post('/api/auth/logout', async (req, res) => {
+  const token = req.headers['x-api-key'] || req.body?.token
+  if (token) await db.execute({ sql: 'DELETE FROM sessions WHERE token = ?', args: [token] }).catch(() => {})
+  res.json({ ok: true })
 })
 
 // ── POST /api/auth/request-otp (kept for backward compat — no longer used in UI) ─
@@ -1202,7 +1314,7 @@ app.put('/api/gen-patients/:id', auth, async (req, res) => {
 })
 
 // AI field mapping for CSV import
-app.post('/api/gen-patients/ai-map-csv', auth, async (req, res) => {
+app.post('/api/gen-patients/ai-map-csv', auth, aiLimiter, async (req, res) => {
   const { headers, sample } = req.body
   if (!headers?.length) return res.status(400).json({ error: 'headers required' })
   const FIELDS = ['name','dob','sex','mrn','phone','email','address','language','conditions','medications','allergies','notes']
@@ -1416,7 +1528,7 @@ app.get('/api/care-gaps', auth, async (req, res) => {
   res.json(rows)
 })
 
-app.post('/api/care-gaps/detect/:patientId', auth, async (req, res) => {
+app.post('/api/care-gaps/detect/:patientId', auth, aiLimiter, async (req, res) => {
   const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
   if (!patient) return res.status(404).json({ error: 'Patient not found' })
 
@@ -1709,7 +1821,7 @@ app.delete('/api/appointments/:id', auth, async (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/appointments/suggest', auth, async (req, res) => {
+app.post('/api/appointments/suggest', auth, aiLimiter, async (req, res) => {
   const { patient_id } = req.body
   const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows[0]
   if (!patient) return res.status(404).json({ error: 'Patient not found' })
@@ -1998,7 +2110,7 @@ Return JSON with keys:
 })
 
 // POST /api/adverse-events/detect/:patientId — AI scan of patient data for signals
-app.post('/api/adverse-events/detect/:patientId', auth, async (req, res) => {
+app.post('/api/adverse-events/detect/:patientId', auth, aiLimiter, async (req, res) => {
   try {
     const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
     if (!patient) return res.status(404).json({ error: 'Patient not found' })
@@ -2167,7 +2279,7 @@ app.get('/api/cohorts/:id/members', auth, async (req, res) => {
 })
 
 // AI risk stratification for cohort members
-app.post('/api/cohorts/:id/stratify', auth, async (req, res) => {
+app.post('/api/cohorts/:id/stratify', auth, aiLimiter, async (req, res) => {
   try {
     const members = (await db.execute({
       sql: 'SELECT cm.*, p.name, p.dob, p.conditions, p.medications, p.allergies FROM cohort_members cm JOIN gen_patients p ON cm.patient_id = p.id WHERE cm.cohort_id = ?',
@@ -2215,7 +2327,7 @@ Keep it under 120 words. Plain language. Return JSON: { "message": "..." }`
 
 // ── NLP / CLINICAL NOTES ──────────────────────────────────────────────────────
 
-app.post('/api/nlp/extract', auth, async (req, res) => {
+app.post('/api/nlp/extract', auth, aiLimiter, async (req, res) => {
   try {
     const { note_text, patient_id } = req.body
     if (!note_text) return res.status(400).json({ error: 'note_text required' })
@@ -2245,7 +2357,7 @@ Return JSON:
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/nlp/deidentify', auth, async (req, res) => {
+app.post('/api/nlp/deidentify', auth, aiLimiter, async (req, res) => {
   try {
     const { note_text } = req.body
     if (!note_text) return res.status(400).json({ error: 'note_text required' })
@@ -2422,7 +2534,7 @@ app.patch('/api/sdoh/:id', auth, async (req, res) => {
 
 // ── CHRONIC DISEASE MANAGEMENT ────────────────────────────────────────────────
 
-app.post('/api/chronic-disease/analyze/:patientId', auth, async (req, res) => {
+app.post('/api/chronic-disease/analyze/:patientId', auth, aiLimiter, async (req, res) => {
   try {
     const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
     if (!patient) return res.status(404).json({ error: 'Patient not found' })
@@ -2523,7 +2635,7 @@ Return JSON:
 })
 
 // Chatbot message endpoint
-app.post('/api/portal/chat', auth, async (req, res) => {
+app.post('/api/portal/chat', auth, aiLimiter, async (req, res) => {
   try {
     const { message, context, patient_id } = req.body
     if (!message) return res.status(400).json({ error: 'message required' })
@@ -2625,7 +2737,7 @@ app.get('/api/compliance/audit-log', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/compliance/analyze-audit', auth, async (req, res) => {
+app.post('/api/compliance/analyze-audit', auth, aiLimiter, async (req, res) => {
   try {
     const since = new Date(Date.now() - 7 * 86400000).toISOString()
     const events = (await db.execute({ sql: 'SELECT action, resource_type, patient_id, created_at FROM audit_events WHERE owner_email = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 200', args: [req.apiKey, since] })).rows
@@ -2689,6 +2801,23 @@ if (existsSync(DIST)) {
     }
   })
 }
+
+// ── 404 for unknown API routes ────────────────────────────────────────────────
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' })
+})
+
+// ── Global error handler — never leak stack traces to clients ─────────────────
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
+  const id = randomUUID()
+  console.error(`[${id}] Unhandled error on ${req.method} ${req.path}:`, err)
+  logError('unhandled_exception', err.message, `${req.method} ${req.path}`, err.stack).catch(() => {})
+  if (res.headersSent) return
+  // In production never expose internal details
+  const msg = IS_PROD ? `An unexpected error occurred (ref: ${id})` : err.message
+  res.status(500).json({ error: msg })
+})
 
 async function start() {
   await initDB()
