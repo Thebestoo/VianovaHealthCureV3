@@ -2550,55 +2550,42 @@ app.post('/api/cds/patient/:patientId', auth, aiLimiter, async (req, res) => {
     }
 
     // ── AI comprehensive analysis ────────────────────────────────────────────
-    const prompt = `You are a senior clinical decision support AI. Provide a comprehensive analysis for this patient for physician review.
+    const allergyNote = conflicts.length
+      ? 'CONFLICTS: ' + conflicts.map(c => `${c.medication} conflicts with ${c.allergy} allergy`).join('; ')
+      : 'No immediate allergy-medication conflicts detected'
 
-PATIENT DEMOGRAPHICS
-Name: ${patient.name}, Age: ${age ?? 'unknown'}, Sex: ${patient.sex || 'unknown'}, DOB: ${patient.dob || 'unknown'}
+    const prompt = `You are a senior clinical decision support AI. Analyze this patient and return a JSON object for physician review.
 
-VITAL SIGNS
-Heart rate: ${vhr ? vhr + ' bpm' : 'not recorded'}
-Respiratory rate: ${vrr ? vrr + ' breaths/min' : 'not recorded'}
-SpO2: ${vspo2 ? vspo2 + '%' : 'not recorded'}
-Blood pressure: ${vsbp && vdbp ? vsbp + '/' + vdbp + ' mmHg' : vsbp ? vsbp + ' mmHg (systolic only)' : 'not recorded'}
-Temperature: ${vtempF ? vtempF + '°F' : 'not recorded'}
-Weight: ${vwt ? vwt + ' lbs' : 'not recorded'}
-Height: ${vht ? vht + ' inches' : 'not recorded'}
-Pain level: ${vpain != null ? vpain + '/10' : 'not recorded'}
-Blood sugar: ${vbs ? vbs + ' mg/dL' : 'not recorded'}
-NEWS2 score: ${news2.score} (${news2.label})
+PATIENT: ${patient.name}, Age ${age ?? 'unknown'}, ${patient.sex || 'unknown sex'}
+CONDITIONS: ${conds.join(', ') || 'none'}
+MEDICATIONS: ${meds.join(', ') || 'none'}
+ALLERGIES: ${allgs.join(', ') || 'none'}
+VITALS: HR ${vhr || '?'} bpm, RR ${vrr || '?'}/min, SpO2 ${vspo2 || '?'}%, BP ${vsbp || '?'}/${vdbp || '?'} mmHg, Temp ${vtempF || '?'}F, Weight ${vwt || '?'} lbs, Pain ${vpain ?? '?'}/10, Blood sugar ${vbs || '?'} mg/dL
+NEWS2: ${news2.score} (${news2.label})
+LABS: ${labs.length ? labs.slice(0,6).map(l => `${l.test_name} ${l.value}${l.unit||''} (${l.interpretation||'N/A'})`).join(', ') : 'none'}
+CARE GAPS: ${gaps.map(g => g.gap_type).join(', ') || 'none'}
+COMPLAINT: ${presentingComplaint || 'not stated'}
+ADVERSE EVENTS: ${adverse.length ? adverse.map(a => a.event_type).join(', ') : 'none'}
+ALLERGY CHECK: ${allergyNote}
 
-ACTIVE CONDITIONS: ${conds.join(', ') || 'none documented'}
-CURRENT MEDICATIONS: ${meds.join(', ') || 'none documented'}
-KNOWN ALLERGIES: ${allgs.join(', ') || 'none documented'}
-
-RECENT LAB RESULTS:
-${labs.length ? labs.map(l => `- ${l.test_name}: ${l.value} ${l.unit||''} (${l.interpretation||'N/A'}) — ${l.result_date?.slice(0,10)}`).join('\n') : 'No recent labs'}
-
-OPEN CARE GAPS: ${gaps.map(g => g.gap_type + ' (' + g.priority + ')').join(', ') || 'none'}
-
-PRESENTING COMPLAINT: ${presentingComplaint || 'not available'}
-
-ADVERSE EVENTS: ${adverse.length ? adverse.map(a => a.event_type + ' — ' + a.suspected_medication).join(', ') : 'none'}
-
-Return EXACTLY this JSON (no extra keys):
+Return this exact JSON structure:
 {
+  "risk_score": <integer 0-100>,
+  "risk_label": "<low|moderate|high|critical>",
+  "summary": "<2-3 sentence overall assessment>",
   "cards": [
-    { "id": "c1", "indicator": "info"|"warning"|"critical", "title": "...", "detail": "...", "category": "screening"|"medication"|"lab"|"care_gap"|"risk"|"follow_up", "action": "..." }
+    { "id": "<unique>", "indicator": "<info|warning|critical>", "title": "<short>", "detail": "<explanation>", "category": "<screening|medication|lab|care_gap|risk|follow_up>", "action": "<suggested action or null>" }
   ],
-  "risk_score": 0-100,
-  "risk_label": "low"|"moderate"|"high"|"critical",
-  "summary": "2-3 sentence overall clinical assessment",
   "differential": [
-    { "rank": 1, "diagnosis": "...", "probability": "high"|"moderate"|"low", "reasoning": "brief" }
+    { "rank": 1, "diagnosis": "<name>", "probability": "<high|moderate|low>", "reasoning": "<brief>" }
   ],
   "treatment_plan": {
-    "non_pharmacological": ["..."],
-    "pharmacological": ["..."],
-    "investigations": ["..."],
-    "follow_up": "..."
+    "non_pharmacological": ["<item>"],
+    "pharmacological": ["<drug and rationale>"],
+    "investigations": ["<test>"],
+    "follow_up": "<timeframe>"
   },
-  "doctor_summary": "3-5 sentence narrative summary written for a physician, covering key findings, risks, and recommended next steps",
-  "allergy_check": "${conflicts.length ? 'CONFLICTS DETECTED: ' + conflicts.map(c => c.medication + ' conflicts with ' + c.allergy + ' allergy').join('; ') : 'No immediate allergy-medication conflicts detected'}"
+  "doctor_summary": "<3-5 sentence physician narrative covering key findings, risks, and recommended next steps>"
 }`
 
     const aiRes = await client.chat.completions.create({
@@ -2606,6 +2593,7 @@ Return EXACTLY this JSON (no extra keys):
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.2,
+      max_tokens: 2000,
     })
     const aiResult = JSON.parse(aiRes.choices[0].message.content)
 
@@ -2635,10 +2623,17 @@ Return EXACTLY this JSON (no extra keys):
       labs:               labs.slice(0, 8),
       open_gaps:          gaps,
       adverse_events:     adverse,
-      // allergy conflicts
+      // allergy conflicts (rule-based, not AI)
       allergy_conflicts:  conflicts,
-      // AI
-      ...aiResult,
+      allergy_check:      allergyNote,
+      // AI fields — spread last so they override nothing critical
+      cards:              aiResult.cards              || [],
+      risk_score:         aiResult.risk_score         ?? 0,
+      risk_label:         aiResult.risk_label         || 'low',
+      summary:            aiResult.summary            || '',
+      differential:       aiResult.differential       || [],
+      treatment_plan:     aiResult.treatment_plan     || {},
+      doctor_summary:     aiResult.doctor_summary     || '',
       generated_at:       new Date().toISOString(),
     })
   } catch (e) {
