@@ -2398,51 +2398,253 @@ app.post('/api/nlp/apply/:patientId', auth, async (req, res) => {
 // ── CLINICAL DECISION SUPPORT ─────────────────────────────────────────────────
 
 // Full patient CDS check
-app.post('/api/cds/patient/:patientId', auth, async (req, res) => {
+// ── NEWS2 helper ──────────────────────────────────────────────────────────────
+function calcNEWS2(v = {}) {
+  // v: { hr, rr, spo2, sbp, temp_c }
+  let score = 0; const breakdown = {}
+
+  // Respiratory rate
+  const rr = Number(v.rr)
+  if (!isNaN(rr)) {
+    const pts = rr <= 8 ? 3 : rr <= 11 ? 1 : rr <= 20 ? 0 : rr <= 24 ? 2 : 3
+    score += pts; breakdown.rr = pts
+  }
+
+  // SpO2 (scale 1 — no supplemental O2)
+  const spo2 = Number(v.spo2)
+  if (!isNaN(spo2)) {
+    const pts = spo2 <= 91 ? 3 : spo2 <= 93 ? 2 : spo2 <= 95 ? 1 : 0
+    score += pts; breakdown.spo2 = pts
+  }
+
+  // Systolic BP
+  const sbp = Number(v.sbp)
+  if (!isNaN(sbp)) {
+    const pts = sbp <= 90 ? 3 : sbp <= 100 ? 2 : sbp <= 110 ? 1 : sbp <= 219 ? 0 : 3
+    score += pts; breakdown.sbp = pts
+  }
+
+  // Heart rate
+  const hr = Number(v.hr)
+  if (!isNaN(hr)) {
+    const pts = hr <= 40 ? 3 : hr <= 50 ? 1 : hr <= 90 ? 0 : hr <= 110 ? 1 : hr <= 130 ? 2 : 3
+    score += pts; breakdown.hr = pts
+  }
+
+  // Temperature (°C)
+  const temp = Number(v.temp_c)
+  if (!isNaN(temp)) {
+    const pts = temp <= 35.0 ? 3 : temp <= 36.0 ? 1 : temp <= 38.0 ? 0 : temp <= 39.0 ? 1 : 2
+    score += pts; breakdown.temp = pts
+  }
+
+  const label = score === 0 ? 'Low' : score <= 4 ? 'Low' : score <= 6 ? 'Medium' : 'High'
+  const action = score <= 4 ? 'Routine monitoring' : score <= 6 ? 'Increased monitoring' : 'Urgent clinical review'
+  return { score, label, action, breakdown }
+}
+
+// ── POST /api/cds/patient/:patientId ─────────────────────────────────────────
+app.post('/api/cds/patient/:patientId', auth, aiLimiter, async (req, res) => {
   try {
-    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
+    const patient = (await db.execute({
+      sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?',
+      args: [req.params.patientId, req.apiKey],
+    })).rows[0]
     if (!patient) return res.status(404).json({ error: 'Patient not found' })
 
-    const labs = (await db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 10', args: [req.params.patientId] })).rows
-    const gaps = (await db.execute({ sql: "SELECT * FROM care_gaps WHERE patient_id = ? AND status = 'open'", args: [req.params.patientId] })).rows
-    const appts = (await db.execute({ sql: "SELECT * FROM appointments WHERE patient_id = ? AND status = 'scheduled' ORDER BY appointment_date ASC LIMIT 3", args: [req.params.patientId] })).rows
+    // ── Parse stored JSON fields ──────────────────────────────────────────────
+    let conds = [], meds = [], allgs = [], vitals = {}
+    try { conds  = JSON.parse(patient.conditions  || '[]') } catch {}
+    try { meds   = JSON.parse(patient.medications || '[]') } catch {}
+    try { allgs  = JSON.parse(patient.allergies   || '[]') } catch {}
+    try { vitals = JSON.parse(patient.fhir_vitals || '{}') } catch {}
 
-    let conds = []; let meds = []; let allgs = []
-    try { conds = JSON.parse(patient.conditions || '[]') } catch {}
-    try { meds = JSON.parse(patient.medications || '[]') } catch {}
-    try { allgs = JSON.parse(patient.allergies || '[]') } catch {}
+    // ── Parallel DB fetches ───────────────────────────────────────────────────
+    const [labRows, gapRows, apptRows, caseRows, adverseRows] = await Promise.all([
+      db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 15', args: [patient.id] }),
+      db.execute({ sql: "SELECT * FROM care_gaps WHERE patient_id = ? AND status = 'open'", args: [patient.id] }),
+      db.execute({ sql: "SELECT * FROM appointments WHERE patient_id = ? ORDER BY appointment_date DESC LIMIT 10", args: [patient.id] }),
+      db.execute({ sql: "SELECT case_id, created_at, patient_input, analysis FROM cases WHERE patient_input LIKE ? AND owner_key = ? ORDER BY created_at DESC", args: [`%"patient_id":"${patient.id}"%`, req.apiKey] }),
+      db.execute({ sql: "SELECT * FROM adverse_events WHERE patient_id = ? ORDER BY created_at DESC LIMIT 5", args: [patient.id] }),
+    ])
+    const labs     = labRows.rows
+    const gaps     = gapRows.rows
+    const appts    = apptRows.rows
+    const cases    = caseRows.rows
+    const adverse  = adverseRows.rows
 
-    const prompt = `You are a clinical decision support AI. Analyze this patient and return evidence-based recommendations.
+    // ── Build patient history from cases ────────────────────────────────────
+    const history = cases.map(c => {
+      let pi = {}; let an = {}
+      try { pi = JSON.parse(c.patient_input) } catch {}
+      try { an = JSON.parse(c.analysis) }      catch {}
+      return {
+        case_id:          c.case_id,
+        date:             c.created_at?.slice(0, 10),
+        chief_complaint:  pi.chief_complaint || pi.symptoms || 'Unspecified',
+        status:           an.doctor_review?.approved ? 'Approved' : 'Pending',
+        confidence:       an.confidence_level || 'low',
+        top_diagnosis:    an.differential_diagnosis?.[0]?.name || null,
+        is_current:       false,
+      }
+    })
+    // Mark most recent as current
+    if (history.length > 0) history[0].is_current = true
 
-Patient: ${patient.name}, DOB: ${patient.dob}, Sex: ${patient.sex}
-Conditions: ${conds.join(', ') || 'none'}
-Medications: ${meds.join(', ') || 'none'}
-Allergies: ${allgs.join(', ') || 'none'}
-Recent labs: ${labs.map(l => `${l.test_name}: ${l.value} ${l.unit||''} (${l.interpretation||'N'})`).join(', ') || 'none'}
-Open care gaps: ${gaps.map(g => g.gap_type).join(', ') || 'none'}
-Upcoming appointments: ${appts.map(a => `${a.appointment_type} on ${a.appointment_date?.slice(0,10)}`).join(', ') || 'none'}
+    // ── Age calculation ───────────────────────────────────────────────────────
+    let age = null
+    if (patient.dob) {
+      const dob = new Date(patient.dob)
+      const now = new Date()
+      age = now.getFullYear() - dob.getFullYear()
+      if (now < new Date(now.getFullYear(), dob.getMonth(), dob.getDate())) age--
+    }
 
-Return JSON:
+    // ── Extract vitals from fhir_vitals (various key shapes) ────────────────
+    // fhir_vitals may store { heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, weight, height, pain_level, blood_sugar }
+    const vhr   = vitals.heart_rate       || vitals.hr   || null
+    const vrr   = vitals.resp_rate        || vitals.rr   || null
+    const vspo2 = vitals.spo2             || vitals.oxygen_saturation || null
+    const vsbp  = vitals.systolic_bp      || vitals.sbp  || null
+    const vdbp  = vitals.diastolic_bp     || vitals.dbp  || null
+    const vtempF= vitals.temperature      || null                    // stored as °F
+    const vtempC= vtempF != null ? ((vtempF - 32) * 5/9) : null
+    const vwt   = vitals.weight           || null
+    const vht   = vitals.height           || null
+    const vpain = vitals.pain_level       || null
+    const vbs   = vitals.blood_sugar      || null
+
+    // ── NEWS2 calculation ────────────────────────────────────────────────────
+    const news2 = calcNEWS2({ hr: vhr, rr: vrr, spo2: vspo2, sbp: vsbp, temp_c: vtempC })
+    const vitalSources = [vhr, vrr, vspo2, vsbp, vtempF].filter(x => x != null).length
+    const news2Note = `calculated from ${vitalSources} imported vital${vitalSources !== 1 ? 's' : ''}`
+
+    // ── Allergy + medication conflict check (rule-based, instant) ────────────
+    const ALLERGY_MED_MAP = {
+      penicillin: ['amoxicillin','ampicillin','piperacillin','nafcillin'],
+      sulfa:      ['sulfamethoxazole','trimethoprim-sulfamethoxazole','bactrim'],
+      aspirin:    ['aspirin','ibuprofen','naproxen','ketorolac'],
+      nsaids:     ['ibuprofen','naproxen','celecoxib','ketorolac','indomethacin'],
+      codeine:    ['codeine','morphine'],
+    }
+    const conflicts = []
+    allgs.forEach(alg => {
+      const a = alg.toLowerCase()
+      const relatedMeds = ALLERGY_MED_MAP[a] || []
+      meds.forEach(med => {
+        if (relatedMeds.some(rm => med.toLowerCase().includes(rm))) {
+          conflicts.push({ allergy: alg, medication: med })
+        }
+      })
+    })
+
+    // ── Current case data (most recent) for presenting complaint ────────────
+    let presentingComplaint = null
+    let currentAnalysis = null
+    if (cases[0]) {
+      try {
+        const pi = JSON.parse(cases[0].patient_input)
+        presentingComplaint = pi.chief_complaint || pi.symptoms || null
+      } catch {}
+      try { currentAnalysis = JSON.parse(cases[0].analysis) } catch {}
+    }
+
+    // ── AI comprehensive analysis ────────────────────────────────────────────
+    const prompt = `You are a senior clinical decision support AI. Provide a comprehensive analysis for this patient for physician review.
+
+PATIENT DEMOGRAPHICS
+Name: ${patient.name}, Age: ${age ?? 'unknown'}, Sex: ${patient.sex || 'unknown'}, DOB: ${patient.dob || 'unknown'}
+
+VITAL SIGNS
+Heart rate: ${vhr ? vhr + ' bpm' : 'not recorded'}
+Respiratory rate: ${vrr ? vrr + ' breaths/min' : 'not recorded'}
+SpO2: ${vspo2 ? vspo2 + '%' : 'not recorded'}
+Blood pressure: ${vsbp && vdbp ? vsbp + '/' + vdbp + ' mmHg' : vsbp ? vsbp + ' mmHg (systolic only)' : 'not recorded'}
+Temperature: ${vtempF ? vtempF + '°F' : 'not recorded'}
+Weight: ${vwt ? vwt + ' lbs' : 'not recorded'}
+Height: ${vht ? vht + ' inches' : 'not recorded'}
+Pain level: ${vpain != null ? vpain + '/10' : 'not recorded'}
+Blood sugar: ${vbs ? vbs + ' mg/dL' : 'not recorded'}
+NEWS2 score: ${news2.score} (${news2.label})
+
+ACTIVE CONDITIONS: ${conds.join(', ') || 'none documented'}
+CURRENT MEDICATIONS: ${meds.join(', ') || 'none documented'}
+KNOWN ALLERGIES: ${allgs.join(', ') || 'none documented'}
+
+RECENT LAB RESULTS:
+${labs.length ? labs.map(l => `- ${l.test_name}: ${l.value} ${l.unit||''} (${l.interpretation||'N/A'}) — ${l.result_date?.slice(0,10)}`).join('\n') : 'No recent labs'}
+
+OPEN CARE GAPS: ${gaps.map(g => g.gap_type + ' (' + g.priority + ')').join(', ') || 'none'}
+
+PRESENTING COMPLAINT: ${presentingComplaint || 'not available'}
+
+ADVERSE EVENTS: ${adverse.length ? adverse.map(a => a.event_type + ' — ' + a.suspected_medication).join(', ') : 'none'}
+
+Return EXACTLY this JSON (no extra keys):
 {
   "cards": [
-    {
-      "id": "unique_string",
-      "indicator": "info"|"warning"|"critical",
-      "title": "short title",
-      "detail": "explanation",
-      "category": "screening"|"medication"|"lab"|"care_gap"|"risk"|"follow_up",
-      "action": "suggested action text or null"
-    }
+    { "id": "c1", "indicator": "info"|"warning"|"critical", "title": "...", "detail": "...", "category": "screening"|"medication"|"lab"|"care_gap"|"risk"|"follow_up", "action": "..." }
   ],
   "risk_score": 0-100,
   "risk_label": "low"|"moderate"|"high"|"critical",
-  "summary": "one sentence overall assessment"
+  "summary": "2-3 sentence overall clinical assessment",
+  "differential": [
+    { "rank": 1, "diagnosis": "...", "probability": "high"|"moderate"|"low", "reasoning": "brief" }
+  ],
+  "treatment_plan": {
+    "non_pharmacological": ["..."],
+    "pharmacological": ["..."],
+    "investigations": ["..."],
+    "follow_up": "..."
+  },
+  "doctor_summary": "3-5 sentence narrative summary written for a physician, covering key findings, risks, and recommended next steps",
+  "allergy_check": "${conflicts.length ? 'CONFLICTS DETECTED: ' + conflicts.map(c => c.medication + ' conflicts with ' + c.allergy + ' allergy').join('; ') : 'No immediate allergy-medication conflicts detected'}"
 }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
-    const result = JSON.parse(aiRes.choices[0].message.content)
-    res.json({ ...result, patient_name: patient.name, generated_at: new Date().toISOString() })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+    const aiRes = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+    })
+    const aiResult = JSON.parse(aiRes.choices[0].message.content)
+
+    res.json({
+      // patient info
+      patient_name:       patient.name,
+      patient_id:         patient.id,
+      age,
+      sex:                patient.sex,
+      dob:                patient.dob,
+      conditions:         conds,
+      medications:        meds,
+      allergies:          allgs,
+      // vitals
+      vitals: {
+        hr: vhr, rr: vrr, spo2: vspo2, sbp: vsbp, dbp: vdbp,
+        temp_f: vtempF, weight: vwt, height: vht,
+        pain: vpain, blood_sugar: vbs,
+      },
+      // NEWS2
+      news2: { ...news2, note: news2Note },
+      // history
+      case_history:       history,
+      visit_count:        history.length,
+      presenting_complaint: presentingComplaint,
+      // labs, gaps, adverse
+      labs:               labs.slice(0, 8),
+      open_gaps:          gaps,
+      adverse_events:     adverse,
+      // allergy conflicts
+      allergy_conflicts:  conflicts,
+      // AI
+      ...aiResult,
+      generated_at:       new Date().toISOString(),
+    })
+  } catch (e) {
+    console.error('CDS error:', e)
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // Medication safety check
