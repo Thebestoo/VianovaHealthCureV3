@@ -97,6 +97,8 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS portal_intakes (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, chief_complaint TEXT, symptoms TEXT, symptom_duration TEXT, pain_scale INTEGER, phq9_score INTEGER, gad7_score INTEGER, phq9_answers TEXT, gad7_answers TEXT, triage_level TEXT, ai_recommendation TEXT, created_at TEXT NOT NULL)`,
     // feature 14 – billing & coding automation
     `CREATE TABLE IF NOT EXISTS billing_claims (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, case_id TEXT, encounter_date TEXT, status TEXT NOT NULL DEFAULT 'draft', icd_codes TEXT, cpt_codes TEXT, hcpcs_codes TEXT, drg_code TEXT, drg_description TEXT, em_level TEXT, mdm_complexity TEXT, hcc_codes TEXT, total_charges REAL, confidence_scores TEXT, coding_queries TEXT, compliance_flags TEXT, fhir_claim TEXT, scrub_results TEXT, submitted_at TEXT, created_at TEXT NOT NULL)`,
+    // feature 15 – NLP notes
+    `CREATE TABLE IF NOT EXISTS nlp_notes (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, note_type TEXT NOT NULL DEFAULT 'soap', note_text TEXT NOT NULL, deidentified_text TEXT, status TEXT NOT NULL DEFAULT 'pending', entities TEXT, conditions TEXT, medications TEXT, procedures TEXT, allergies TEXT, vitals_extracted TEXT, lab_values_extracted TEXT, family_history TEXT, negations TEXT, temporals TEXT, relations TEXT, assertions TEXT, phenotype_flags TEXT, sentiment TEXT, acuity_score REAL, confidence_scores TEXT, fhir_resources TEXT, created_at TEXT NOT NULL, processed_at TEXT)`,
   ]
   for (const sql of stmts) {
     try { await db.execute({ sql, args: [] }) } catch (e) { console.warn('initDB stmt skipped:', e.message) }
@@ -147,6 +149,9 @@ async function initDB() {
     // feature 14 – billing & coding
     `ALTER TABLE billing_claims ADD COLUMN diagnosis_codes_confirmed INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE billing_claims ADD COLUMN claim_notes TEXT`,
+    // feature 15 – NLP notes
+    `ALTER TABLE nlp_notes ADD COLUMN note_title TEXT`,
+    `ALTER TABLE nlp_notes ADD COLUMN word_count INTEGER`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -3912,6 +3917,198 @@ if (existsSync(DIST)) {
     }
   })
 }
+
+// ── Feature 15: Clinical NLP Engine ──────────────────────────────────────────
+
+// GET /api/nlp-notes — list notes with patient name
+app.get('/api/nlp-notes', auth, async (req, res) => {
+  try {
+    const { patient_id, status } = req.query
+    let sql = `SELECT n.*, p.name as patient_name FROM nlp_notes n LEFT JOIN gen_patients p ON CAST(n.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE n.owner_email = ?`
+    const args = [req.apiKey]
+    if (patient_id) { sql += ' AND n.patient_id = ?'; args.push(patient_id) }
+    if (status) { sql += ' AND n.status = ?'; args.push(status) }
+    sql += ' ORDER BY n.created_at DESC'
+    res.json({ notes: (await db.execute({ sql, args })).rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/nlp-notes/stats
+app.get('/api/nlp-notes/stats', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({ sql: `SELECT status, phenotype_flags, patient_id FROM nlp_notes WHERE owner_email = ?`, args: [req.apiKey] })).rows
+    const total = rows.length
+    const processed = rows.filter(r => r.status === 'processed').length
+    const pending = rows.filter(r => r.status === 'pending').length
+    const patients_analyzed = new Set(rows.map(r => r.patient_id)).size
+    let phenotypes_found = 0
+    const phenoSet = new Set()
+    for (const r of rows) {
+      if (r.phenotype_flags) {
+        try { const arr = JSON.parse(r.phenotype_flags); if (Array.isArray(arr)) arr.forEach(p => phenoSet.add(p)) } catch {}
+      }
+    }
+    phenotypes_found = phenoSet.size
+    res.json({ total, processed, pending, phenotypes_found, patients_analyzed })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/nlp-notes/phenotypes — aggregate phenotype counts
+app.get('/api/nlp-notes/phenotypes', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({ sql: `SELECT phenotype_flags FROM nlp_notes WHERE owner_email = ? AND status = 'processed'`, args: [req.apiKey] })).rows
+    const counts = {}
+    for (const r of rows) {
+      if (r.phenotype_flags) {
+        try {
+          const arr = JSON.parse(r.phenotype_flags)
+          if (Array.isArray(arr)) arr.forEach(p => { counts[p] = (counts[p] || 0) + 1 })
+        } catch {}
+      }
+    }
+    const result = Object.entries(counts).map(([phenotype, count]) => ({ phenotype, count })).sort((a, b) => b.count - a.count)
+    res.json({ phenotypes: result })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/nlp-notes/:id — single note
+app.get('/api/nlp-notes/:id', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({ sql: `SELECT n.*, p.name as patient_name FROM nlp_notes n LEFT JOIN gen_patients p ON CAST(n.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE n.id = ? AND n.owner_email = ?`, args: [req.params.id, req.apiKey] })).rows
+    if (!rows.length) return res.status(404).json({ error: 'Not found' })
+    res.json({ note: rows[0] })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/nlp-notes/process — main NLP pipeline
+app.post('/api/nlp-notes/process', auth, aiLimiter, async (req, res) => {
+  try {
+    const { patient_id, note_type = 'soap', note_title = '', note_text } = req.body
+    if (!patient_id || !note_text) return res.status(400).json({ error: 'patient_id and note_text required' })
+    const word_count = note_text.split(/\s+/).filter(Boolean).length
+
+    // Step 1: NLP extraction
+    const nlpResp = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      response_format: { type: 'json_object' },
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: `You are a clinical NLP engine. Analyze the following clinical note and extract structured data.\n\nNote type: ${note_type}\nNote text: ${note_text}\n\nReturn JSON with EXACTLY these keys:\n{\n  "entities": [{ "text": "string", "type": "disease|symptom|medication|procedure|anatomy|dosage|lab_value|vital", "negated": false, "assertion": "present|absent|possible|historical|family", "confidence": 0.9 }],\n  "conditions": [{ "name": "string", "icd10_hint": "string or null", "assertion": "present|absent|possible|historical", "onset": "string or null", "severity": "mild|moderate|severe|null" }],\n  "medications": [{ "name": "string", "dose": "string or null", "route": "string or null", "frequency": "string or null", "status": "active|discontinued|ordered" }],\n  "procedures": [{ "name": "string", "cpt_hint": "string or null", "date": "string or null", "status": "performed|planned|cancelled" }],\n  "allergies": [{ "substance": "string", "reaction": "string or null", "severity": "mild|moderate|severe|null" }],\n  "vitals_extracted": { "bp": "string or null", "hr": "string or null", "temp": "string or null", "rr": "string or null", "spo2": "string or null", "weight": "string or null", "height": "string or null" },\n  "lab_values_extracted": [{ "test": "string", "value": "string", "unit": "string or null", "interpretation": "normal|high|low|critical|null" }],\n  "family_history": [{ "relation": "string", "condition": "string" }],\n  "negations": ["list of negated clinical concepts"],\n  "temporals": [{ "entity": "string", "time_expression": "string", "type": "onset|duration|resolved|historical" }],\n  "relations": [{ "subject": "string", "predicate": "prescribed_for|caused_by|treats|associated_with", "object": "string" }],\n  "assertions": { "present": [], "absent": [], "possible": [], "historical": [], "family": [] },\n  "phenotype_flags": ["diabetes", "hypertension"],\n  "sentiment": "positive|neutral|negative|concerning",\n  "acuity_score": 5,\n  "confidence_scores": { "overall": 0.9, "entities": 0.9, "negation": 0.85, "temporal": 0.8 },\n  "coding_queries": ["any clinical details that need physician clarification"]\n}`
+      }]
+    })
+    let extracted = {}
+    try { extracted = JSON.parse(nlpResp.choices[0].message.content) } catch {}
+
+    // Step 2: De-identification — regex pass first
+    let deidentified_text = note_text
+    deidentified_text = deidentified_text.replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, '[DATE]')
+    deidentified_text = deidentified_text.replace(/\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b/g, '[PHONE]')
+    deidentified_text = deidentified_text.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]')
+    deidentified_text = deidentified_text.replace(/\bMRN[:\s#]*\d+/gi, '[MRN]')
+    deidentified_text = deidentified_text.replace(/\b(age[d]?\s+)?(9[1-9]|[1-9]\d{2,})\s*(year[s]?(\s*old)?|yo|y\/o)?/gi, '[AGE>90]')
+    try {
+      const deidResp = await client.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        response_format: { type: 'json_object' },
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: `De-identify this clinical note by replacing: patient names, provider names, facility names, addresses, phone numbers, dates (replace with relative terms like 'Day 1', 'Week 3'), MRNs, and any other PHI. Return JSON: { "deidentified_text": "string" }\n\nNote:\n${deidentified_text}`
+        }]
+      })
+      const deidParsed = JSON.parse(deidResp.choices[0].message.content)
+      if (deidParsed.deidentified_text) deidentified_text = deidParsed.deidentified_text
+    } catch {}
+
+    // Step 3: Build FHIR resources
+    const fhir_resources = []
+    const vitals = extracted.vitals_extracted || {}
+    const vitalKeys = ['bp', 'hr', 'temp', 'rr', 'spo2', 'weight', 'height']
+    const vitalNames = { bp: 'Blood Pressure', hr: 'Heart Rate', temp: 'Temperature', rr: 'Respiratory Rate', spo2: 'SpO2', weight: 'Weight', height: 'Height' }
+    for (const k of vitalKeys) {
+      if (vitals[k] && vitals[k] !== 'null' && vitals[k] !== null) {
+        fhir_resources.push({ resourceType: 'Observation', status: 'final', code: { text: vitalNames[k] }, valueString: vitals[k], subject: { reference: `Patient/${patient_id}` } })
+      }
+    }
+    for (const c of (extracted.conditions || [])) {
+      if (c.assertion === 'present') {
+        fhir_resources.push({ resourceType: 'Condition', clinicalStatus: { coding: [{ code: 'active' }] }, code: { text: c.name, coding: c.icd10_hint ? [{ system: 'http://hl7.org/fhir/sid/icd-10', code: c.icd10_hint }] : undefined }, subject: { reference: `Patient/${patient_id}` } })
+      }
+    }
+    for (const m of (extracted.medications || [])) {
+      if (m.status === 'active') {
+        fhir_resources.push({ resourceType: 'MedicationStatement', status: 'active', medicationCodeableConcept: { text: m.name }, subject: { reference: `Patient/${patient_id}` }, dosage: m.dose ? [{ text: [m.dose, m.route, m.frequency].filter(Boolean).join(' ') }] : undefined })
+      }
+    }
+    for (const a of (extracted.allergies || [])) {
+      fhir_resources.push({ resourceType: 'AllergyIntolerance', code: { text: a.substance }, reaction: a.reaction ? [{ description: a.reaction }] : undefined, patient: { reference: `Patient/${patient_id}` } })
+    }
+    fhir_resources.push({ resourceType: 'DocumentReference', status: 'current', type: { text: note_type }, subject: { reference: `Patient/${patient_id}` }, content: [{ attachment: { contentType: 'text/plain', title: note_title || note_type } }] })
+
+    // Insert record
+    const id = randomUUID()
+    const now = new Date().toISOString()
+    await db.execute({
+      sql: `INSERT INTO nlp_notes (id, patient_id, owner_email, note_type, note_title, note_text, deidentified_text, status, entities, conditions, medications, procedures, allergies, vitals_extracted, lab_values_extracted, family_history, negations, temporals, relations, assertions, phenotype_flags, sentiment, acuity_score, confidence_scores, fhir_resources, word_count, created_at, processed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [
+        id, patient_id, req.apiKey, note_type, note_title, note_text, deidentified_text, 'processed',
+        JSON.stringify(extracted.entities || []),
+        JSON.stringify(extracted.conditions || []),
+        JSON.stringify(extracted.medications || []),
+        JSON.stringify(extracted.procedures || []),
+        JSON.stringify(extracted.allergies || []),
+        JSON.stringify(extracted.vitals_extracted || {}),
+        JSON.stringify(extracted.lab_values_extracted || []),
+        JSON.stringify(extracted.family_history || []),
+        JSON.stringify(extracted.negations || []),
+        JSON.stringify(extracted.temporals || []),
+        JSON.stringify(extracted.relations || []),
+        JSON.stringify(extracted.assertions || {}),
+        JSON.stringify(extracted.phenotype_flags || []),
+        extracted.sentiment || null,
+        extracted.acuity_score != null ? extracted.acuity_score : null,
+        JSON.stringify(extracted.confidence_scores || {}),
+        JSON.stringify(fhir_resources),
+        word_count, now, now
+      ]
+    })
+    const rows = (await db.execute({ sql: `SELECT n.*, p.name as patient_name FROM nlp_notes n LEFT JOIN gen_patients p ON CAST(n.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE n.id = ?`, args: [id] })).rows
+    res.json({ note: rows[0] })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/nlp-notes/deidentify-batch — bulk de-id
+app.post('/api/nlp-notes/deidentify-batch', auth, aiLimiter, async (req, res) => {
+  try {
+    const { note_ids = [] } = req.body
+    if (!note_ids.length) return res.json({ updated: 0 })
+    let updated = 0
+    for (const nid of note_ids) {
+      const rows = (await db.execute({ sql: `SELECT * FROM nlp_notes WHERE id = ? AND owner_email = ?`, args: [nid, req.apiKey] })).rows
+      if (!rows.length) continue
+      const note = rows[0]
+      let deidentified_text = note.note_text
+      deidentified_text = deidentified_text.replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, '[DATE]')
+      deidentified_text = deidentified_text.replace(/\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b/g, '[PHONE]')
+      deidentified_text = deidentified_text.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]')
+      deidentified_text = deidentified_text.replace(/\bMRN[:\s#]*\d+/gi, '[MRN]')
+      try {
+        const deidResp = await client.chat.completions.create({
+          model: 'llama-3.3-70b-versatile',
+          response_format: { type: 'json_object' },
+          max_tokens: 500,
+          messages: [{ role: 'user', content: `De-identify this clinical note by replacing: patient names, provider names, facility names, addresses, phone numbers, dates, MRNs, and any other PHI. Return JSON: { "deidentified_text": "string" }\n\nNote:\n${deidentified_text}` }]
+        })
+        const p = JSON.parse(deidResp.choices[0].message.content)
+        if (p.deidentified_text) deidentified_text = p.deidentified_text
+      } catch {}
+      await db.execute({ sql: `UPDATE nlp_notes SET deidentified_text = ? WHERE id = ?`, args: [deidentified_text, nid] })
+      updated++
+    }
+    res.json({ updated })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
 
 // ── 404 for unknown API routes ────────────────────────────────────────────────
 app.use('/api/*', (req, res) => {
