@@ -87,6 +87,7 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS consent_audit_events (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, event_type TEXT NOT NULL, actor TEXT, resource_accessed TEXT, consent_id TEXT, violation INTEGER NOT NULL DEFAULT 0, severity TEXT NOT NULL DEFAULT 'info', detail TEXT, fhir_audit_event TEXT, created_at TEXT NOT NULL)`,
     // feature 13 – adverse events & pharmacovigilance
     `CREATE TABLE IF NOT EXISTS adverse_events (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'moderate', suspected_medication TEXT, description TEXT NOT NULL, detected_at TEXT NOT NULL, detection_method TEXT NOT NULL DEFAULT 'manual', status TEXT NOT NULL DEFAULT 'open', causality TEXT, ai_assessment TEXT, medwatch_draft TEXT, resolved_at TEXT, notes TEXT, created_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS safety_signals (id TEXT PRIMARY KEY, owner_email TEXT NOT NULL, signal_type TEXT NOT NULL, medication TEXT NOT NULL, event_type TEXT NOT NULL, case_count INTEGER NOT NULL DEFAULT 1, expected_count REAL, ror REAL, prr REAL, signal_strength TEXT, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active')`,
     // feature 14 – population health
     `CREATE TABLE IF NOT EXISTS cohorts (id TEXT PRIMARY KEY, owner_email TEXT NOT NULL, name TEXT NOT NULL, description TEXT, criteria TEXT NOT NULL, program_type TEXT, member_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS cohort_members (id INTEGER PRIMARY KEY AUTOINCREMENT, cohort_id TEXT NOT NULL, patient_id TEXT NOT NULL, enrolled_at TEXT NOT NULL, risk_level TEXT, outreach_status TEXT NOT NULL DEFAULT 'pending', UNIQUE(cohort_id, patient_id))`,
@@ -127,6 +128,20 @@ async function initDB() {
     `ALTER TABLE discharge_summaries ADD COLUMN transmission_acknowledged INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE discharge_summaries ADD COLUMN receiving_provider TEXT`,
     `ALTER TABLE discharge_summaries ADD COLUMN language TEXT NOT NULL DEFAULT 'English'`,
+    // feature 13 – adverse events new columns
+    `ALTER TABLE adverse_events ADD COLUMN suspected_medication_dose TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN onset_date TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN lab_trigger TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN lab_value TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN lab_threshold TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN outcome TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN actions_taken TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN fhir_adverse_event TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN medwatch_sections TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN reported_to_fda INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE adverse_events ADD COLUMN reported_to_fda_at TEXT`,
+    `ALTER TABLE adverse_events ADD COLUMN near_miss INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE adverse_events ADD COLUMN root_cause TEXT`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -2351,6 +2366,168 @@ app.delete('/api/adverse-events/:id', auth, async (req, res) => {
   try {
     await db.execute({ sql: 'DELETE FROM adverse_events WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })
     res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── FEATURE 13 ENHANCED ROUTES ────────────────────────────────────────────────
+
+function buildFhirAdverseEvent(ae, patient) {
+  return {
+    resourceType: 'AdverseEvent',
+    id: ae.id,
+    status: 'completed',
+    actuality: 'actual',
+    category: [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/adverse-event-category', code: ae.event_type }] }],
+    event: { coding: [{ system: 'http://snomed.info/sct', display: ae.description }] },
+    subject: { reference: `Patient/${ae.patient_id}`, display: patient?.name || ae.patient_id },
+    date: ae.detected_at,
+    seriousness: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/adverse-event-seriousness', code: ae.severity }] },
+    suspectEntity: [{ instance: { reference: `Medication/${ae.suspected_medication}`, display: ae.suspected_medication }, causality: [{ assessment: { coding: [{ display: ae.causality || 'unknown' }] } }] }],
+    outcome: { coding: [{ display: ae.outcome || 'unknown' }] }
+  }
+}
+
+function detectLabSignals(labs, medications) {
+  const meds = (Array.isArray(medications) ? medications : []).map(m => m.toLowerCase())
+  const signals = []
+  const hasMed = (...names) => names.some(n => meds.some(m => m.includes(n.toLowerCase())))
+
+  for (const lab of labs) {
+    const name = (lab.test_name || '').toLowerCase()
+    const val = parseFloat(lab.value)
+    if (isNaN(val)) continue
+
+    if ((name.includes('potassium') || name === 'k+' || name === 'k') && val > 5.5 && hasMed('digoxin')) {
+      signals.push({ signal_type: 'digoxin_toxicity', medication: 'digoxin', lab_trigger: lab.test_name, lab_value: String(val), lab_threshold: '5.5', severity: 'high', description: `Elevated potassium (${val} mEq/L > 5.5) with concurrent digoxin — risk of digoxin toxicity` })
+    }
+    if (name.includes('inr') && val > 3.5 && hasMed('warfarin')) {
+      signals.push({ signal_type: 'warfarin_over_anticoagulation', medication: 'warfarin', lab_trigger: lab.test_name, lab_value: String(val), lab_threshold: '3.5', severity: 'high', description: `Supratherapeutic INR (${val} > 3.5) with warfarin — bleeding risk` })
+    }
+    if ((name.includes('creatinine') && !name.includes('urine')) && val > 2.0 && hasMed('nsaid', 'ibuprofen', 'naproxen', 'metformin')) {
+      signals.push({ signal_type: 'ade_renal', medication: hasMed('metformin') ? 'metformin' : 'NSAID', lab_trigger: lab.test_name, lab_value: String(val), lab_threshold: '2.0', severity: 'moderate', description: `Elevated creatinine (${val} mg/dL > 2.0) with NSAID/metformin — renal toxicity risk` })
+    }
+    if ((name.includes('glucose') || name === 'bg') && val < 60 && hasMed('insulin')) {
+      signals.push({ signal_type: 'hypoglycemia', medication: 'insulin', lab_trigger: lab.test_name, lab_value: String(val), lab_threshold: '60', severity: 'high', description: `Critical hypoglycemia (${val} mg/dL < 60) with insulin therapy` })
+    }
+    if ((name.includes('alt') || name.includes('ast') || name.includes('sgot') || name.includes('sgpt')) && val > 120 && hasMed('statin', 'atorvastatin', 'simvastatin', 'rosuvastatin', 'lovastatin')) {
+      signals.push({ signal_type: 'statin_hepatotoxicity', medication: 'statin', lab_trigger: lab.test_name, lab_value: String(val), lab_threshold: '120', severity: 'moderate', description: `Elevated hepatic enzyme (${lab.test_name}: ${val} U/L > 3x ULN) with statin — hepatotoxicity concern` })
+    }
+    if ((name.includes('platelet') || name === 'plt') && val < 50000 && hasMed('heparin')) {
+      signals.push({ signal_type: 'hit_suspected', medication: 'heparin', lab_trigger: lab.test_name, lab_value: String(val), lab_threshold: '50000', severity: 'high', description: `Thrombocytopenia (platelets ${val} < 50,000) with heparin — suspected HIT (Heparin-Induced Thrombocytopenia)` })
+    }
+  }
+  return signals
+}
+
+// GET /api/adverse-events/stats
+app.get('/api/adverse-events/stats', auth, async (req, res) => {
+  try {
+    const total = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM adverse_events WHERE owner_email = ?', args: [req.apiKey] })).rows[0]?.c || 0
+    const open = (await db.execute({ sql: "SELECT COUNT(*) as c FROM adverse_events WHERE owner_email = ? AND status = 'open'", args: [req.apiKey] })).rows[0]?.c || 0
+    const serious = (await db.execute({ sql: "SELECT COUNT(*) as c FROM adverse_events WHERE owner_email = ? AND (severity = 'high' OR severity = 'life_threatening' OR severity = 'severe' OR severity = 'life-threatening')", args: [req.apiKey] })).rows[0]?.c || 0
+    const near_miss = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM adverse_events WHERE owner_email = ? AND near_miss = 1', args: [req.apiKey] })).rows[0]?.c || 0
+    const fda_reported = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM adverse_events WHERE owner_email = ? AND reported_to_fda = 1', args: [req.apiKey] })).rows[0]?.c || 0
+    const signals = (await db.execute({ sql: "SELECT COUNT(*) as c FROM safety_signals WHERE owner_email = ? AND status = 'active'", args: [req.apiKey] })).rows[0]?.c || 0
+    res.json({ total, open, serious, near_miss, fda_reported, signals })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/adverse-events/signals
+app.get('/api/adverse-events/signals', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({ sql: 'SELECT * FROM safety_signals WHERE owner_email = ? ORDER BY case_count DESC', args: [req.apiKey] })).rows
+    res.json({ signals: rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/adverse-events/aggregate — disproportionality analysis
+app.post('/api/adverse-events/aggregate', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({
+      sql: `SELECT suspected_medication, event_type, COUNT(*) as cnt FROM adverse_events WHERE owner_email = ? AND suspected_medication IS NOT NULL GROUP BY suspected_medication, event_type HAVING cnt >= 2`,
+      args: [req.apiKey]
+    })).rows
+    const total = (await db.execute({ sql: 'SELECT COUNT(*) as c FROM adverse_events WHERE owner_email = ?', args: [req.apiKey] })).rows[0]?.c || 1
+    const now = new Date().toISOString()
+    const upserted = []
+    for (const row of rows) {
+      const expected = (row.cnt / total) * 2
+      const ror = row.cnt / Math.max(expected, 0.01)
+      const signal_strength = ror >= 3 ? 'strong' : ror >= 2 ? 'moderate' : 'weak'
+      const existing = (await db.execute({ sql: 'SELECT id FROM safety_signals WHERE owner_email = ? AND medication = ? AND event_type = ?', args: [req.apiKey, row.suspected_medication, row.event_type] })).rows[0]
+      if (existing) {
+        await db.execute({ sql: 'UPDATE safety_signals SET case_count=?, ror=?, signal_strength=?, last_seen=? WHERE id=?', args: [row.cnt, ror, signal_strength, now, existing.id] })
+        upserted.push({ medication: row.suspected_medication, event_type: row.event_type, case_count: row.cnt, ror, signal_strength })
+      } else {
+        const id = randomUUID()
+        await db.execute({
+          sql: `INSERT INTO safety_signals (id, owner_email, signal_type, medication, event_type, case_count, expected_count, ror, signal_strength, first_seen, last_seen, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          args: [id, req.apiKey, 'disproportionality', row.suspected_medication, row.event_type, row.cnt, expected, ror, signal_strength, now, now, 'active']
+        })
+        upserted.push({ medication: row.suspected_medication, event_type: row.event_type, case_count: row.cnt, ror, signal_strength })
+      }
+    }
+    res.json({ signals: upserted, analyzed: rows.length })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/adverse-events/scan/:patientId — automated lab-based ADE scan
+app.post('/api/adverse-events/scan/:patientId', auth, async (req, res) => {
+  try {
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [req.params.patientId, req.apiKey] })).rows[0]
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+    let meds = []
+    try { meds = JSON.parse(patient.medications || '[]') } catch {}
+    const labs = (await db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? AND owner_email = ? ORDER BY result_date DESC LIMIT 30', args: [req.params.patientId, req.apiKey] })).rows
+    const detectedSignals = detectLabSignals(labs, meds)
+    const now = new Date().toISOString()
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
+    const created = []
+    for (const sig of detectedSignals) {
+      const existing = (await db.execute({
+        sql: `SELECT id FROM adverse_events WHERE patient_id = ? AND owner_email = ? AND event_type = ? AND detected_at >= ?`,
+        args: [req.params.patientId, req.apiKey, sig.signal_type, sevenDaysAgo]
+      })).rows[0]
+      if (!existing) {
+        const id = randomUUID()
+        const fhirAE = buildFhirAdverseEvent({ id, patient_id: req.params.patientId, event_type: sig.signal_type, severity: sig.severity, description: sig.description, detected_at: now, suspected_medication: sig.medication, causality: 'probable', outcome: null }, patient)
+        await db.execute({
+          sql: `INSERT INTO adverse_events (id, patient_id, owner_email, event_type, severity, suspected_medication, description, detected_at, detection_method, status, causality, lab_trigger, lab_value, lab_threshold, fhir_adverse_event, near_miss, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          args: [id, req.params.patientId, req.apiKey, sig.signal_type, sig.severity, sig.medication, sig.description, now, 'automated_lab_scan', 'open', 'probable', sig.lab_trigger, sig.lab_value, sig.lab_threshold, JSON.stringify(fhirAE), 0, now]
+        })
+        created.push({ id, ...sig })
+      }
+    }
+    res.json({ scanned: true, signals_found: detectedSignals.length, events_created: created })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// PUT /api/adverse-events/:id — update event
+app.put('/api/adverse-events/:id', auth, async (req, res) => {
+  try {
+    const { status, actions_taken, root_cause, outcome, causality, notes } = req.body
+    const now = new Date().toISOString()
+    await db.execute({
+      sql: `UPDATE adverse_events SET status=COALESCE(?,status), actions_taken=COALESCE(?,actions_taken), root_cause=COALESCE(?,root_cause), outcome=COALESCE(?,outcome), causality=COALESCE(?,causality), notes=COALESCE(?,notes), resolved_at=CASE WHEN ? = 'resolved' THEN ? ELSE resolved_at END WHERE id=? AND owner_email=?`,
+      args: [status||null, actions_taken||null, root_cause||null, outcome||null, causality||null, notes||null, status||'', now, req.params.id, req.apiKey]
+    })
+    const updated = (await db.execute({ sql: 'SELECT * FROM adverse_events WHERE id = ?', args: [req.params.id] })).rows[0]
+    res.json(updated)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/adverse-events/:id/report-fda
+app.post('/api/adverse-events/:id/report-fda', auth, async (req, res) => {
+  try {
+    const now = new Date().toISOString()
+    await db.execute({ sql: `UPDATE adverse_events SET reported_to_fda=1, reported_to_fda_at=? WHERE id=? AND owner_email=?`, args: [now, req.params.id, req.apiKey] })
+    const ae = (await db.execute({ sql: 'SELECT * FROM adverse_events WHERE id = ?', args: [req.params.id] })).rows[0]
+    if (!ae) return res.status(404).json({ error: 'Not found' })
+    await db.execute({
+      sql: `INSERT INTO audit_events (owner_email, patient_id, action, resource_type, actor, details, created_at) VALUES (?,?,?,?,?,?,?)`,
+      args: [req.apiKey, ae.patient_id, 'fda_report_submitted', 'AdverseEvent', req.apiKey, `Adverse event ${req.params.id} reported to FDA MedWatch`, now]
+    })
+    res.json({ ok: true, reported_to_fda_at: now })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
