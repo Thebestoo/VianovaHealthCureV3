@@ -82,6 +82,9 @@ async function initDB() {
     // feature 12 – consents & audit
     `CREATE TABLE IF NOT EXISTS consents (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, consent_type TEXT NOT NULL, granted INTEGER NOT NULL DEFAULT 1, signed_by TEXT, signed_date TEXT, expires_at TEXT, notes TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_email TEXT NOT NULL, patient_id TEXT, action TEXT NOT NULL, resource_type TEXT, actor TEXT, details TEXT, created_at TEXT NOT NULL)`,
+    // feature 12 v2 – enhanced FHIR consent & privacy
+    `CREATE TABLE IF NOT EXISTS patient_consents (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, consent_type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', scope TEXT, restrictions TEXT, signed_at TEXT, expires_at TEXT, signature TEXT, signee_name TEXT, fhir_consent TEXT, break_glass_accessed INTEGER NOT NULL DEFAULT 0, break_glass_reason TEXT, break_glass_at TEXT, revoked_at TEXT, revoke_reason TEXT, created_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS consent_audit_events (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, event_type TEXT NOT NULL, actor TEXT, resource_accessed TEXT, consent_id TEXT, violation INTEGER NOT NULL DEFAULT 0, severity TEXT NOT NULL DEFAULT 'info', detail TEXT, fhir_audit_event TEXT, created_at TEXT NOT NULL)`,
     // feature 13 – adverse events & pharmacovigilance
     `CREATE TABLE IF NOT EXISTS adverse_events (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'moderate', suspected_medication TEXT, description TEXT NOT NULL, detected_at TEXT NOT NULL, detection_method TEXT NOT NULL DEFAULT 'manual', status TEXT NOT NULL DEFAULT 'open', causality TEXT, ai_assessment TEXT, medwatch_draft TEXT, resolved_at TEXT, notes TEXT, created_at TEXT NOT NULL)`,
     // feature 14 – population health
@@ -113,6 +116,17 @@ async function initDB() {
     `ALTER TABLE gen_patients ADD COLUMN language TEXT`,
     `ALTER TABLE gen_patients ADD COLUMN import_source TEXT`,
     `ALTER TABLE gen_patients ADD COLUMN data_quality_score INTEGER`,
+    // feature 10 v2 — discharge summary new columns
+    `ALTER TABLE discharge_summaries ADD COLUMN patient_instructions_lang TEXT`,
+    `ALTER TABLE discharge_summaries ADD COLUMN medications_reconciliation TEXT`,
+    `ALTER TABLE discharge_summaries ADD COLUMN tcm_enrolled INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE discharge_summaries ADD COLUMN tcm_reason TEXT`,
+    `ALTER TABLE discharge_summaries ADD COLUMN followup_appointment_id TEXT`,
+    `ALTER TABLE discharge_summaries ADD COLUMN fhir_bundle TEXT`,
+    `ALTER TABLE discharge_summaries ADD COLUMN transmission_status TEXT NOT NULL DEFAULT 'pending'`,
+    `ALTER TABLE discharge_summaries ADD COLUMN transmission_acknowledged INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE discharge_summaries ADD COLUMN receiving_provider TEXT`,
+    `ALTER TABLE discharge_summaries ADD COLUMN language TEXT NOT NULL DEFAULT 'English'`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -1876,7 +1890,10 @@ app.post('/api/appointments/:id/remind', auth, async (req, res) => {
 
 app.get('/api/discharge', auth, async (req, res) => {
   const { patient_id } = req.query
-  let sql = 'SELECT d.*, p.name as patient_name FROM discharge_summaries d JOIN gen_patients p ON d.patient_id = p.id WHERE d.owner_email = ?'
+  let sql = `SELECT d.*, p.name as patient_name, p.language as patient_language
+             FROM discharge_summaries d
+             JOIN gen_patients p ON d.patient_id = p.id
+             WHERE d.owner_email = ?`
   const args = [req.apiKey]
   if (patient_id) { sql += ' AND d.patient_id = ?'; args.push(patient_id) }
   sql += ' ORDER BY d.created_at DESC'
@@ -1889,18 +1906,26 @@ app.get('/api/discharge/:id', auth, async (req, res) => {
   res.json(row)
 })
 
-app.post('/api/discharge/generate', auth, async (req, res) => {
-  const { patient_id, case_id } = req.body
+app.post('/api/discharge/generate', auth, aiLimiter, async (req, res) => {
+  const { patient_id, case_id, language: langOverride } = req.body
   if (!patient_id) return res.status(400).json({ error: 'patient_id required' })
 
   const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows[0]
   if (!patient) return res.status(404).json({ error: 'Patient not found' })
 
+  // Linked case analysis
   let caseData = null
+  let caseRow = null
   if (case_id) {
-    const row = (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ? AND owner_key = ?', args: [case_id, req.apiKey] })).rows[0]
-    if (row) caseData = JSON.parse(row.analysis)
+    caseRow = (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ? AND owner_key = ?', args: [case_id, req.apiKey] })).rows[0]
+    if (caseRow) try { caseData = JSON.parse(caseRow.analysis) } catch {}
   }
+
+  // Recent labs (last 5)
+  const recentLabs = (await db.execute({ sql: 'SELECT test_name, value, unit, interpretation FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 5', args: [patient_id] })).rows
+
+  // Recent appointments (last 3)
+  const recentAppts = (await db.execute({ sql: 'SELECT appointment_type, appointment_date, provider, status FROM appointments WHERE patient_id = ? ORDER BY appointment_date DESC LIMIT 3', args: [patient_id] })).rows
 
   let age = null
   if (patient.dob) {
@@ -1908,46 +1933,176 @@ app.post('/api/discharge/generate', auth, async (req, res) => {
     if (!isNaN(dob)) age = Math.floor((Date.now() - dob) / (365.25 * 24 * 3600 * 1000))
   }
 
-  const prompt = `You are a physician generating a structured discharge summary. Return a JSON object with these exact keys.
+  // Parse JSON arrays safely
+  let conditions = []
+  let patientMeds = []
+  let allergies = []
+  try { conditions = JSON.parse(patient.conditions || '[]') } catch { conditions = patient.conditions ? [patient.conditions] : [] }
+  try { patientMeds = JSON.parse(patient.medications || '[]') } catch { patientMeds = patient.medications ? [patient.medications] : [] }
+  try { allergies = JSON.parse(patient.allergies || '[]') } catch { allergies = patient.allergies ? [patient.allergies] : [] }
+
+  // Vitals
+  let vitalsStr = 'Not recorded'
+  try {
+    const vitals = JSON.parse(patient.fhir_vitals || '{}')
+    if (vitals && Object.keys(vitals).length > 0) {
+      vitalsStr = Object.entries(vitals).map(([k, v]) => `${k}: ${v}`).join(', ')
+    }
+  } catch {}
+
+  // Case medications vs patient medications — medication reconciliation
+  let caseMeds = []
+  if (caseData?.recommended_treatment) caseMeds = [caseData.recommended_treatment]
+  const admissionMedsList = patientMeds.join(', ') || 'none documented'
+  const caseMedsList = caseMeds.join(', ') || 'same as admission'
+
+  // TCM eligibility
+  const riskLevel = caseData?.risk_level || 'low'
+  const tcm_enrolled = riskLevel === 'high' || riskLevel === 'medium' ? 1 : 0
+
+  const patientLang = langOverride || patient.language || 'English'
+
+  const labsStr = recentLabs.length > 0
+    ? recentLabs.map(l => `${l.test_name}: ${l.value} ${l.unit || ''} (${l.interpretation || 'N/A'})`).join('; ')
+    : 'none recent'
+
+  const prompt = `You are a physician creating a discharge summary. Return JSON with these exact keys:
+{
+  "summary": "3-5 sentence clinical discharge summary in formal medical prose",
+  "patient_instructions": ["plain language instruction 1", "instruction 2", "instruction 3"],
+  "patient_instructions_lang": ["same instructions translated to ${patientLang}", "instruction 2 in ${patientLang}"],
+  "medications_at_discharge": "full medication list with doses",
+  "medications_reconciliation": "brief note on any changes from admission to discharge medications",
+  "follow_up_plan": "specific follow-up steps with timeframes",
+  "risk_level": "low|medium|high",
+  "tcm_reason": "brief reason for TCM eligibility or 'Not required'"
+}
 
 Patient: ${patient.name}, age ${age ?? 'unknown'}, ${patient.sex || 'unknown sex'}
-Conditions: ${patient.conditions || 'none documented'}
-Medications: ${patient.medications || 'none documented'}
-Allergies: ${patient.allergies || 'none documented'}
-${caseData ? `
-AI Analysis:
-- Diagnosis: ${caseData.most_likely_diagnosis?.[0]?.name || 'see case'}
-- Treatment: ${caseData.recommended_treatment || 'see case'}
-- Red flags: ${caseData.red_flags?.flags?.join(', ') || 'none'}` : ''}
+Language: ${patientLang}
+Conditions: ${conditions.join(', ') || 'none documented'}
+Allergies: ${allergies.join(', ') || 'none documented'}
+Vitals: ${vitalsStr}
+Admission medications: ${admissionMedsList}
+Recent labs: ${labsStr}
+${caseData ? `Diagnosis: ${caseData.most_likely_diagnosis?.[0]?.name || 'see case'}
+Treatment plan: ${caseMedsList}
+Red flags: ${caseData.red_flags?.flags?.join(', ') || 'none'}` : ''}
 
-Return ONLY valid JSON:
-{
-  "summary": "3–5 sentence clinical discharge summary in medical prose",
-  "patient_instructions": "3–6 bullet points of plain-language (6th grade) discharge instructions starting with -",
-  "medications_at_discharge": "list the current medications with dosing as a comma-separated string",
-  "follow_up_plan": "specific follow-up steps, e.g. 'Follow up with PCP in 1 week; repeat labs in 2 weeks'",
-  "risk_level": "low|medium|high",
-  "risk_reason": "1 sentence explaining risk level"
-}`
+Return ONLY valid JSON matching the schema above. patient_instructions and patient_instructions_lang must be arrays of strings. If language is English, patient_instructions_lang can be identical to patient_instructions.`
 
   try {
     const chat = await client.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
-      max_tokens: 700,
+      max_tokens: 1500,
+      response_format: { type: 'json_object' },
     })
-    const m = chat.choices[0].message.content.match(/\{[\s\S]*\}/)
-    if (!m) throw new Error('Invalid AI response')
-    const draft = JSON.parse(m[0])
+    const draft = JSON.parse(chat.choices[0].message.content)
+
+    // Normalize instructions to arrays
+    if (!Array.isArray(draft.patient_instructions)) {
+      draft.patient_instructions = typeof draft.patient_instructions === 'string'
+        ? draft.patient_instructions.split(/\n/).map(s => s.replace(/^[-•]\s*/, '').trim()).filter(Boolean)
+        : []
+    }
+    if (!Array.isArray(draft.patient_instructions_lang)) {
+      draft.patient_instructions_lang = draft.patient_instructions
+    }
+
+    const finalRisk = draft.risk_level || riskLevel || 'low'
+    const finalTcm = finalRisk === 'high' || finalRisk === 'medium' ? 1 : 0
+    const tcmReason = draft.tcm_reason || (finalTcm ? `Patient risk level is ${finalRisk}` : 'Not required')
+
+    // Auto-schedule follow-up appointment
+    const daysOut = finalRisk === 'high' ? 7 : finalRisk === 'medium' ? 14 : 30
+    const followupDate = new Date(Date.now() + daysOut * 24 * 3600 * 1000).toISOString().slice(0, 10)
+    const apptId = randomUUID()
+    try {
+      await db.execute({
+        sql: 'INSERT INTO appointments (id, patient_id, owner_email, appointment_type, appointment_date, status, created_at) VALUES (?,?,?,?,?,?,?)',
+        args: [apptId, patient_id, req.apiKey, 'Post-Discharge Follow-up', followupDate, 'scheduled', new Date().toISOString()]
+      })
+    } catch {}
+
+    // Build minimal FHIR Composition bundle
+    const fhirBundle = JSON.stringify({
+      resourceType: 'Bundle',
+      id: randomUUID(),
+      type: 'document',
+      timestamp: new Date().toISOString(),
+      entry: [{
+        resource: {
+          resourceType: 'Composition',
+          id: randomUUID(),
+          status: 'final',
+          type: { coding: [{ system: 'http://loinc.org', code: '18842-5', display: 'Discharge summary' }] },
+          subject: { display: patient.name },
+          date: new Date().toISOString(),
+          title: 'Discharge Summary',
+          section: [
+            { title: 'Clinical Summary', text: { div: draft.summary } },
+            { title: 'Patient Instructions', text: { div: draft.patient_instructions.join('\n') } },
+          ]
+        }
+      }]
+    })
 
     const id = randomUUID()
+    const now = new Date().toISOString()
     await db.execute({
-      sql: 'INSERT INTO discharge_summaries (id, patient_id, owner_email, case_id, summary, patient_instructions, medications_at_discharge, follow_up_plan, risk_level, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-      args: [id, patient_id, req.apiKey, case_id || null, draft.summary, draft.patient_instructions, draft.medications_at_discharge, draft.follow_up_plan, draft.risk_level || 'low', new Date().toISOString()]
+      sql: `INSERT INTO discharge_summaries
+        (id, patient_id, owner_email, case_id, summary, patient_instructions, patient_instructions_lang,
+         medications_at_discharge, medications_reconciliation, follow_up_plan, risk_level,
+         tcm_enrolled, tcm_reason, followup_appointment_id, fhir_bundle, language,
+         transmission_status, transmission_acknowledged, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [
+        id, patient_id, req.apiKey, case_id || null,
+        draft.summary,
+        JSON.stringify(draft.patient_instructions),
+        JSON.stringify(draft.patient_instructions_lang),
+        draft.medications_at_discharge || '',
+        draft.medications_reconciliation || '',
+        draft.follow_up_plan || '',
+        finalRisk,
+        finalTcm,
+        tcmReason,
+        apptId,
+        fhirBundle,
+        patientLang,
+        'pending',
+        0,
+        now
+      ]
     })
-    res.json({ id, ...draft })
+
+    const saved = (await db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE id = ?', args: [id] })).rows[0]
+    res.json({ ...saved, patient_name: patient.name })
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/discharge/:id/transmit', auth, async (req, res) => {
+  const row = (await db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  const { receiving_provider } = req.body
+  await db.execute({
+    sql: 'UPDATE discharge_summaries SET transmission_status=?, receiving_provider=? WHERE id=?',
+    args: ['transmitted', receiving_provider || null, req.params.id]
+  })
+  const updated = (await db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE id = ?', args: [req.params.id] })).rows[0]
+  res.json(updated)
+})
+
+app.post('/api/discharge/:id/acknowledge', auth, async (req, res) => {
+  const row = (await db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  await db.execute({
+    sql: 'UPDATE discharge_summaries SET transmission_acknowledged=1 WHERE id=?',
+    args: [req.params.id]
+  })
+  res.json({ ok: true })
 })
 
 app.put('/api/discharge/:id', auth, async (req, res) => {
@@ -3055,6 +3210,277 @@ app.get('/api/compliance/report', auth, async (req, res) => {
         { check: 'Care gap management', status: openCareGaps < 10 ? 'pass' : 'review', detail: `${openCareGaps} open care gaps` },
       ]
     })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE 12 v2 — PATIENT CONSENT & PRIVACY AUTOMATION (FHIR-enabled)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function buildFhirConsent({ id, patient_id, signee_name, consent_type, signed_at, expires_at }) {
+  return {
+    resourceType: 'Consent',
+    id,
+    status: 'active',
+    scope: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/consentscope', code: 'patient-privacy' }] },
+    category: [{ coding: [{ system: 'http://loinc.org', code: '59284-0' }] }],
+    patient: { reference: `Patient/${patient_id}` },
+    dateTime: signed_at || new Date().toISOString(),
+    performer: [{ reference: `Patient/${patient_id}`, display: signee_name || 'Patient' }],
+    policyRule: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode', code: 'HIPAA' }] },
+    provision: {
+      type: 'permit',
+      period: { start: signed_at || new Date().toISOString(), end: expires_at || null },
+      purpose: [{ code: consent_type }]
+    }
+  }
+}
+
+function buildFhirAuditEvent({ id, event_type, actor, patient_id, resource_accessed, detail, created_at }) {
+  return {
+    resourceType: 'AuditEvent',
+    id,
+    type: { code: event_type, system: 'http://terminology.hl7.org/CodeSystem/audit-event-type' },
+    recorded: created_at,
+    agent: [{ who: { display: actor || 'unknown' }, requestor: true }],
+    entity: [
+      { what: { reference: `Patient/${patient_id}` } },
+      ...(resource_accessed ? [{ what: { display: resource_accessed } }] : [])
+    ],
+    outcome: '0',
+    outcomeDesc: detail || ''
+  }
+}
+
+// GET /api/consent — list patient_consents with patient name
+app.get('/api/consent', auth, async (req, res) => {
+  try {
+    const { patient_id } = req.query
+    let sql = `SELECT c.*, p.name as patient_name FROM patient_consents c JOIN gen_patients p ON c.patient_id = p.id WHERE c.owner_email = ?`
+    const args = [req.apiKey]
+    if (patient_id) { sql += ' AND c.patient_id = ?'; args.push(patient_id) }
+    sql += ' ORDER BY c.created_at DESC'
+    const rows = (await db.execute({ sql, args })).rows
+    res.json({ consents: rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/consent — create new FHIR consent record
+app.post('/api/consent', auth, async (req, res) => {
+  try {
+    const { patient_id, consent_type, scope, restrictions, expires_at, signee_name, signature } = req.body
+    if (!patient_id || !consent_type) return res.status(400).json({ error: 'patient_id and consent_type required' })
+    const patient = (await db.execute({ sql: 'SELECT id FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows[0]
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+    const id = randomUUID()
+    const signed_at = signature ? new Date().toISOString() : null
+    const status = signature ? 'active' : 'pending'
+    const fhir = signature ? JSON.stringify(buildFhirConsent({ id, patient_id, signee_name, consent_type, signed_at, expires_at })) : null
+    await db.execute({
+      sql: `INSERT INTO patient_consents (id, patient_id, owner_email, consent_type, status, scope, restrictions, signed_at, expires_at, signature, signee_name, fhir_consent, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [id, patient_id, req.apiKey, consent_type, status, scope || null, restrictions || null, signed_at, expires_at || null, signature || null, signee_name || null, fhir, new Date().toISOString()]
+    })
+    const auditId = randomUUID()
+    const auditCreatedAt = new Date().toISOString()
+    const fhirAudit = JSON.stringify(buildFhirAuditEvent({ id: auditId, event_type: 'consent_created', actor: req.apiKey, patient_id, resource_accessed: 'Consent', detail: `Consent type: ${consent_type}`, created_at: auditCreatedAt }))
+    await db.execute({
+      sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [auditId, patient_id, req.apiKey, 'consent_created', req.apiKey, 'Consent', id, 0, 'info', `Consent created: ${consent_type}`, fhirAudit, auditCreatedAt]
+    })
+    res.json({ id })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/consent/:id/sign — capture e-signature
+app.post('/api/consent/:id/sign', auth, async (req, res) => {
+  try {
+    const row = (await db.execute({ sql: 'SELECT * FROM patient_consents WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+    if (!row) return res.status(404).json({ error: 'Consent not found' })
+    const { signature, signee_name } = req.body
+    if (!signature) return res.status(400).json({ error: 'signature required' })
+    const signed_at = new Date().toISOString()
+    const fhir = JSON.stringify(buildFhirConsent({ id: row.id, patient_id: row.patient_id, signee_name: signee_name || row.signee_name, consent_type: row.consent_type, signed_at, expires_at: row.expires_at }))
+    await db.execute({
+      sql: `UPDATE patient_consents SET signature=?, signee_name=?, signed_at=?, status='active', fhir_consent=? WHERE id=?`,
+      args: [signature, signee_name || row.signee_name, signed_at, fhir, req.params.id]
+    })
+    const auditId = randomUUID()
+    const auditCreatedAt = new Date().toISOString()
+    await db.execute({
+      sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [auditId, row.patient_id, req.apiKey, 'consent_signed', signee_name || req.apiKey, 'Consent', row.id, 0, 'info', `Consent signed by ${signee_name || req.apiKey}`, null, auditCreatedAt]
+    })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/consent/:id/revoke — revoke consent
+app.post('/api/consent/:id/revoke', auth, async (req, res) => {
+  try {
+    const row = (await db.execute({ sql: 'SELECT * FROM patient_consents WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+    if (!row) return res.status(404).json({ error: 'Consent not found' })
+    const { revoke_reason } = req.body
+    const revoked_at = new Date().toISOString()
+    await db.execute({
+      sql: `UPDATE patient_consents SET status='revoked', revoked_at=?, revoke_reason=? WHERE id=?`,
+      args: [revoked_at, revoke_reason || null, req.params.id]
+    })
+    const auditId = randomUUID()
+    const auditCreatedAt = new Date().toISOString()
+    const fhirAudit = JSON.stringify(buildFhirAuditEvent({ id: auditId, event_type: 'consent_revoked', actor: req.apiKey, patient_id: row.patient_id, resource_accessed: 'Consent', detail: revoke_reason || 'Consent revoked', created_at: auditCreatedAt }))
+    await db.execute({
+      sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [auditId, row.patient_id, req.apiKey, 'consent_revoked', req.apiKey, 'Consent', row.id, 0, 'info', revoke_reason || 'Consent revoked', fhirAudit, auditCreatedAt]
+    })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/consent/check-access — check for access violation
+app.post('/api/consent/check-access', auth, async (req, res) => {
+  try {
+    const { patient_id, resource_type, purpose, actor } = req.body
+    if (!patient_id || !purpose) return res.status(400).json({ error: 'patient_id and purpose required' })
+    const sensitiveTypes = ['sensitive_mental_health', 'sensitive_substance_abuse', 'sensitive_hiv', 'sensitive_reproductive', 'mental_health', 'substance_abuse', 'hiv', 'reproductive']
+    const isSensitive = sensitiveTypes.some(s => (resource_type || '').toLowerCase().includes(s.replace('sensitive_', '')) || (purpose || '').toLowerCase().includes(s.replace('sensitive_', '')))
+    let allowed = true
+    let violation = false
+    let consent_id = null
+    let message = 'Access permitted'
+    if (isSensitive) {
+      const activeConsent = (await db.execute({
+        sql: `SELECT id FROM patient_consents WHERE patient_id = ? AND owner_email = ? AND status = 'active' AND (consent_type LIKE ? OR consent_type LIKE ? OR consent_type LIKE ?)`,
+        args: [patient_id, req.apiKey, `%${purpose}%`, `%${resource_type || ''}%`, `%sensitive%`]
+      })).rows[0]
+      if (!activeConsent) {
+        allowed = false; violation = true
+        message = `No active consent for sensitive data: ${resource_type || purpose}`
+      } else {
+        consent_id = activeConsent.id
+      }
+    }
+    const auditId = randomUUID()
+    const auditCreatedAt = new Date().toISOString()
+    const severity = violation ? 'high' : 'info'
+    await db.execute({
+      sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [auditId, patient_id, req.apiKey, violation ? 'access_violation' : 'access_check', actor || req.apiKey, resource_type || purpose, consent_id, violation ? 1 : 0, severity, message, null, auditCreatedAt]
+    })
+    res.json({ allowed, violation, consent_id, message })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/consent/break-glass — emergency access override
+app.post('/api/consent/break-glass', auth, async (req, res) => {
+  try {
+    const { patient_id, reason, actor } = req.body
+    if (!patient_id || !reason) return res.status(400).json({ error: 'patient_id and reason required' })
+    const now = new Date().toISOString()
+    await db.execute({
+      sql: `UPDATE patient_consents SET break_glass_accessed=1, break_glass_reason=?, break_glass_at=? WHERE patient_id=? AND owner_email=? AND status='active'`,
+      args: [reason, now, patient_id, req.apiKey]
+    })
+    const auditId = randomUUID()
+    const fhirAudit = JSON.stringify(buildFhirAuditEvent({ id: auditId, event_type: 'break_glass', actor: actor || req.apiKey, patient_id, resource_accessed: 'PatientRecord', detail: reason, created_at: now }))
+    await db.execute({
+      sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [auditId, patient_id, req.apiKey, 'break_glass', actor || req.apiKey, 'PatientRecord', null, 0, 'high', reason, fhirAudit, now]
+    })
+    res.json({ allowed: true, audit_id: auditId })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/consent/export/:patientId — FHIR $everything bundle
+app.post('/api/consent/export/:patientId', auth, async (req, res) => {
+  try {
+    const pid = req.params.patientId
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [pid, req.apiKey] })).rows[0]
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+    const [casesR, labsR, apptsR, dischargeR, consentsR] = await Promise.all([
+      db.execute({ sql: 'SELECT * FROM cases WHERE gen_patient_id = ? ORDER BY created_at DESC', args: [pid] }),
+      db.execute({ sql: 'SELECT * FROM lab_results WHERE patient_id = ? AND owner_email = ? ORDER BY result_date DESC', args: [pid, req.apiKey] }),
+      db.execute({ sql: 'SELECT * FROM appointments WHERE patient_id = ? AND owner_email = ? ORDER BY appointment_date DESC', args: [pid, req.apiKey] }),
+      db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE patient_id = ? AND owner_email = ? ORDER BY created_at DESC', args: [pid, req.apiKey] }),
+      db.execute({ sql: 'SELECT * FROM patient_consents WHERE patient_id = ? AND owner_email = ? ORDER BY created_at DESC', args: [pid, req.apiKey] }),
+    ])
+    const exported_at = new Date().toISOString()
+    const bundle = {
+      resourceType: 'Bundle',
+      id: randomUUID(),
+      type: 'document',
+      timestamp: exported_at,
+      entry: [
+        { resource: { resourceType: 'Patient', id: pid, name: [{ text: patient.name }], birthDate: patient.dob, identifier: [{ value: patient.mrn || pid }] } },
+        ...casesR.rows.map(r => ({ resource: { resourceType: 'Encounter', id: String(r.id), status: r.status, subject: { reference: `Patient/${pid}` }, period: { start: r.created_at } } })),
+        ...labsR.rows.map(r => ({ resource: { resourceType: 'Observation', id: r.id, status: 'final', code: { text: r.test_name }, valueQuantity: { value: r.value, unit: r.unit }, subject: { reference: `Patient/${pid}` }, effectiveDateTime: r.result_date } })),
+        ...apptsR.rows.map(r => ({ resource: { resourceType: 'Appointment', id: r.id, status: r.status, description: r.appointment_type, start: r.appointment_date, participant: [{ actor: { reference: `Patient/${pid}` } }] } })),
+        ...dischargeR.rows.map(r => ({ resource: { resourceType: 'DocumentReference', id: r.id, type: { text: 'Discharge Summary' }, subject: { reference: `Patient/${pid}` }, date: r.created_at, content: [{ attachment: { contentType: 'text/plain', title: 'Discharge Summary' } }] } })),
+        ...consentsR.rows.map(r => ({ resource: r.fhir_consent ? JSON.parse(r.fhir_consent) : { resourceType: 'Consent', id: r.id, status: r.status, patient: { reference: `Patient/${pid}` } } })),
+      ]
+    }
+    const auditId = randomUUID()
+    await db.execute({
+      sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [auditId, pid, req.apiKey, 'fhir_export', req.apiKey, 'Bundle', null, 0, 'info', 'FHIR $everything export', null, exported_at]
+    })
+    res.json({ bundle, exported_at })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/consent/:id/delete-request — GDPR right-to-delete
+app.post('/api/consent/:id/delete-request', auth, aiLimiter, async (req, res) => {
+  try {
+    const row = (await db.execute({ sql: 'SELECT * FROM patient_consents WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows[0]
+    if (!row) return res.status(404).json({ error: 'Consent not found' })
+    const { reason } = req.body
+    const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ?', args: [row.patient_id] })).rows[0]
+    const prompt = `You are a GDPR/HIPAA compliance officer. A deletion request has been received for patient "${patient?.name || row.patient_id}".
+Analyze what patient data exists across these systems and produce a deletion report.
+Tables with patient data: gen_patients (demographics), cases (clinical cases), lab_results (lab work), appointments (scheduling), discharge_summaries (clinical notes), patient_consents (consent records), consent_audit_events (audit trail).
+Reason for deletion: ${reason || 'Patient requested data deletion under GDPR right to erasure'}.
+Return JSON: { "can_delete": ["list of tables/data that CAN be deleted"], "must_retain": ["list that MUST be retained (audit logs, billing, legal holds)"], "redact_only": ["list that should be redacted/anonymized"], "summary": "brief explanation", "retention_period_years": 7, "legal_basis_for_retention": "explanation" }`
+    const aiRes = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      response_format: { type: 'json_object' },
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }]
+    })
+    const report = JSON.parse(aiRes.choices[0].message.content)
+    await db.execute({
+      sql: `UPDATE patient_consents SET status='deletion_requested' WHERE id=?`,
+      args: [req.params.id]
+    })
+    const auditId = randomUUID()
+    const now = new Date().toISOString()
+    await db.execute({
+      sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [auditId, row.patient_id, req.apiKey, 'deletion_requested', req.apiKey, 'PatientRecord', row.id, 0, 'high', reason || 'GDPR deletion request', null, now]
+    })
+    res.json({ report, consent_id: row.id })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/consent/audit — list consent audit events
+app.get('/api/consent/audit', auth, async (req, res) => {
+  try {
+    const { patient_id } = req.query
+    let sql = `SELECT a.*, p.name as patient_name FROM consent_audit_events a LEFT JOIN gen_patients p ON a.patient_id = p.id WHERE a.owner_email = ?`
+    const args = [req.apiKey]
+    if (patient_id) { sql += ' AND a.patient_id = ?'; args.push(patient_id) }
+    sql += ' ORDER BY a.created_at DESC LIMIT 500'
+    const rows = (await db.execute({ sql, args })).rows
+    res.json({ events: rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/consent/expiring — consents expiring in next 30 days
+app.get('/api/consent/expiring', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({
+      sql: `SELECT c.*, p.name as patient_name FROM patient_consents c JOIN gen_patients p ON c.patient_id = p.id WHERE c.owner_email = ? AND c.expires_at IS NOT NULL AND date(c.expires_at) <= date('now', '+30 days') AND c.status = 'active' ORDER BY c.expires_at ASC`,
+      args: [req.apiKey]
+    })).rows
+    res.json({ consents: rows })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
