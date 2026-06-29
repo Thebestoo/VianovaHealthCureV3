@@ -95,6 +95,8 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS sdoh_assessments (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, housing TEXT, food_security TEXT, transportation TEXT, financial_strain TEXT, social_isolation TEXT, education TEXT, employment TEXT, safety TEXT, z_codes TEXT, ai_summary TEXT, resources_suggested TEXT, status TEXT NOT NULL DEFAULT 'active', assessed_at TEXT NOT NULL, created_at TEXT NOT NULL)`,
     // feature 19 – patient portal / chatbot
     `CREATE TABLE IF NOT EXISTS portal_intakes (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, chief_complaint TEXT, symptoms TEXT, symptom_duration TEXT, pain_scale INTEGER, phq9_score INTEGER, gad7_score INTEGER, phq9_answers TEXT, gad7_answers TEXT, triage_level TEXT, ai_recommendation TEXT, created_at TEXT NOT NULL)`,
+    // feature 14 – billing & coding automation
+    `CREATE TABLE IF NOT EXISTS billing_claims (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, case_id TEXT, encounter_date TEXT, status TEXT NOT NULL DEFAULT 'draft', icd_codes TEXT, cpt_codes TEXT, hcpcs_codes TEXT, drg_code TEXT, drg_description TEXT, em_level TEXT, mdm_complexity TEXT, hcc_codes TEXT, total_charges REAL, confidence_scores TEXT, coding_queries TEXT, compliance_flags TEXT, fhir_claim TEXT, scrub_results TEXT, submitted_at TEXT, created_at TEXT NOT NULL)`,
   ]
   for (const sql of stmts) {
     try { await db.execute({ sql, args: [] }) } catch (e) { console.warn('initDB stmt skipped:', e.message) }
@@ -142,6 +144,9 @@ async function initDB() {
     `ALTER TABLE adverse_events ADD COLUMN reported_to_fda_at TEXT`,
     `ALTER TABLE adverse_events ADD COLUMN near_miss INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE adverse_events ADD COLUMN root_cause TEXT`,
+    // feature 14 – billing & coding
+    `ALTER TABLE billing_claims ADD COLUMN diagnosis_codes_confirmed INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE billing_claims ADD COLUMN claim_notes TEXT`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -1810,7 +1815,7 @@ function noShowRisk(appt) {
 app.get('/api/appointments', auth, async (req, res) => {
   const { patient_id, view } = req.query
   const now = new Date().toISOString()
-  let sql = 'SELECT a.*, p.name as patient_name FROM appointments a JOIN gen_patients p ON a.patient_id = p.id WHERE a.owner_email = ?'
+  let sql = 'SELECT a.*, p.name as patient_name FROM appointments a LEFT JOIN gen_patients p ON CAST(a.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE a.owner_email = ?'
   const args = [req.apiKey]
   if (patient_id) { sql += ' AND a.patient_id = ?'; args.push(patient_id) }
   if (view === 'upcoming') { sql += ' AND a.appointment_date >= ?'; args.push(now) }
@@ -1907,7 +1912,7 @@ app.get('/api/discharge', auth, async (req, res) => {
   const { patient_id } = req.query
   let sql = `SELECT d.*, p.name as patient_name, p.language as patient_language
              FROM discharge_summaries d
-             JOIN gen_patients p ON d.patient_id = p.id
+             LEFT JOIN gen_patients p ON CAST(d.patient_id AS TEXT) = CAST(p.id AS TEXT)
              WHERE d.owner_email = ?`
   const args = [req.apiKey]
   if (patient_id) { sql += ' AND d.patient_id = ?'; args.push(patient_id) }
@@ -2144,7 +2149,7 @@ async function logAudit(ownerEmail, patientId, action, resourceType, actor, deta
 
 app.get('/api/consents', auth, async (req, res) => {
   const { patient_id } = req.query
-  let sql = 'SELECT c.*, p.name as patient_name FROM consents c JOIN gen_patients p ON c.patient_id = p.id WHERE c.owner_email = ?'
+  let sql = 'SELECT c.*, p.name as patient_name FROM consents c LEFT JOIN gen_patients p ON CAST(c.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE c.owner_email = ?'
   const args = [req.apiKey]
   if (patient_id) { sql += ' AND c.patient_id = ?'; args.push(patient_id) }
   sql += ' ORDER BY c.created_at DESC'
@@ -2219,7 +2224,7 @@ app.get('/api/audit-events', auth, async (req, res) => {
 app.get('/api/adverse-events', auth, async (req, res) => {
   try {
     const { patient_id, severity, status } = req.query
-    let sql = 'SELECT a.*, p.name as patient_name FROM adverse_events a JOIN gen_patients p ON a.patient_id = p.id WHERE a.owner_email = ?'
+    let sql = 'SELECT a.*, p.name as patient_name FROM adverse_events a LEFT JOIN gen_patients p ON CAST(a.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE a.owner_email = ?'
     const args = [req.apiKey]
     if (patient_id) { sql += ' AND a.patient_id = ?'; args.push(patient_id) }
     if (severity) { sql += ' AND a.severity = ?'; args.push(severity) }
@@ -3433,7 +3438,7 @@ function buildFhirAuditEvent({ id, event_type, actor, patient_id, resource_acces
 app.get('/api/consent', auth, async (req, res) => {
   try {
     const { patient_id } = req.query
-    let sql = `SELECT c.*, p.name as patient_name FROM patient_consents c JOIN gen_patients p ON c.patient_id = p.id WHERE c.owner_email = ?`
+    let sql = `SELECT c.*, p.name as patient_name FROM patient_consents c LEFT JOIN gen_patients p ON CAST(c.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE c.owner_email = ?`
     const args = [req.apiKey]
     if (patient_id) { sql += ' AND c.patient_id = ?'; args.push(patient_id) }
     sql += ' ORDER BY c.created_at DESC'
@@ -3641,7 +3646,7 @@ Return JSON: { "can_delete": ["list of tables/data that CAN be deleted"], "must_
 app.get('/api/consent/audit', auth, async (req, res) => {
   try {
     const { patient_id } = req.query
-    let sql = `SELECT a.*, p.name as patient_name FROM consent_audit_events a LEFT JOIN gen_patients p ON a.patient_id = p.id WHERE a.owner_email = ?`
+    let sql = `SELECT a.*, p.name as patient_name FROM consent_audit_events a LEFT LEFT JOIN gen_patients p ON CAST(a.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE a.owner_email = ?`
     const args = [req.apiKey]
     if (patient_id) { sql += ' AND a.patient_id = ?'; args.push(patient_id) }
     sql += ' ORDER BY a.created_at DESC LIMIT 500'
@@ -3654,10 +3659,245 @@ app.get('/api/consent/audit', auth, async (req, res) => {
 app.get('/api/consent/expiring', auth, async (req, res) => {
   try {
     const rows = (await db.execute({
-      sql: `SELECT c.*, p.name as patient_name FROM patient_consents c JOIN gen_patients p ON c.patient_id = p.id WHERE c.owner_email = ? AND c.expires_at IS NOT NULL AND date(c.expires_at) <= date('now', '+30 days') AND c.status = 'active' ORDER BY c.expires_at ASC`,
+      sql: `SELECT c.*, p.name as patient_name FROM patient_consents c LEFT JOIN gen_patients p ON CAST(c.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE c.owner_email = ? AND c.expires_at IS NOT NULL AND date(c.expires_at) <= date('now', '+30 days') AND c.status = 'active' ORDER BY c.expires_at ASC`,
       args: [req.apiKey]
     })).rows
     res.json({ consents: rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Feature 14: Billing & Coding Automation ───────────────────────────────────
+
+function buildFhirClaim(claim, patient) {
+  const icd = safeJson(claim.icd_codes, [])
+  const cpt = safeJson(claim.cpt_codes, [])
+  return {
+    resourceType: 'Claim',
+    id: claim.id,
+    status: 'active',
+    type: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/claim-type', code: 'professional' }] },
+    use: 'claim',
+    patient: { reference: `Patient/${claim.patient_id}`, display: patient ? patient.name : '' },
+    created: claim.created_at,
+    provider: { reference: `Practitioner/${claim.owner_email}` },
+    priority: { coding: [{ code: 'normal' }] },
+    diagnosis: icd.map((d, i) => ({
+      sequence: i + 1,
+      diagnosisCodeableConcept: { coding: [{ system: 'http://hl7.org/fhir/sid/icd-10-cm', code: d.code, display: d.description }] }
+    })),
+    procedure: cpt.map((p, i) => ({
+      sequence: i + 1,
+      procedureCodeableConcept: { coding: [{ system: 'http://www.ama-assn.org/go/cpt', code: p.code, display: p.description }] }
+    })),
+    item: cpt.map((p, i) => ({
+      sequence: i + 1,
+      productOrService: { coding: [{ system: 'http://www.ama-assn.org/go/cpt', code: p.code }] },
+      unitPrice: { value: p.unit_price || 0, currency: 'USD' },
+      net: { value: p.unit_price || 0, currency: 'USD' }
+    })),
+    total: { value: claim.total_charges || 0, currency: 'USD' }
+  }
+}
+
+function safeJson(val, fallback) {
+  if (!val) return fallback
+  try { return JSON.parse(val) } catch { return fallback }
+}
+
+// POST /api/billing/suggest — AI code suggestion from clinical text
+app.post('/api/billing/suggest', auth, aiLimiter, async (req, res) => {
+  try {
+    const { patient_id, case_id, clinical_note, encounter_date } = req.body
+    if (!patient_id || !clinical_note) return res.status(400).json({ error: 'patient_id and clinical_note required' })
+
+    const patRows = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows
+    const patient = patRows[0]
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+    let caseData = null
+    if (case_id) {
+      const caseRows = (await db.execute({ sql: 'SELECT * FROM cases WHERE id = ? AND api_key = ?', args: [case_id, req.apiKey] })).rows
+      caseData = caseRows[0] || null
+    }
+
+    const systemPrompt = `You are a medical coding specialist with expertise in ICD-10-CM, CPT/HCPCS, DRG grouping, HCC risk adjustment, and CMS compliance. Analyze the clinical note and return ONLY valid JSON — no markdown, no extra text.`
+    const userPrompt = `Patient: ${patient.name}, DOB: ${patient.dob || 'unknown'}, Conditions: ${patient.conditions || 'none listed'}
+${caseData ? `Case Chief Complaint: ${caseData.chief_complaint || ''}\nDiagnosis: ${caseData.diagnosis || ''}` : ''}
+Encounter Date: ${encounter_date || new Date().toISOString().slice(0,10)}
+Clinical Note:
+${clinical_note}
+
+Return JSON with these exact keys:
+{
+  "icd_codes": [{ "code": "A00.0", "description": "...", "confidence": 0.9, "hcc_eligible": true, "specificity_issue": null }],
+  "cpt_codes": [{ "code": "99213", "description": "...", "confidence": 0.85, "modifier": null }],
+  "hcpcs_codes": [{ "code": "G0439", "description": "...", "confidence": 0.7 }],
+  "em_level": "99213",
+  "em_reasoning": "...",
+  "mdm_complexity": "moderate",
+  "drg_code": null,
+  "drg_description": null,
+  "hcc_codes": [{ "code": "HCC19", "description": "...", "risk_weight": 0.302 }],
+  "coding_queries": [{ "field": "laterality", "question": "...", "reason": "..." }],
+  "compliance_flags": [{ "code": "CPT_99213", "type": "upcoding", "description": "...", "severity": "medium" }],
+  "total_charges": 185.00,
+  "confidence_summary": 0.82
+}`
+
+    const aiResp = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      response_format: { type: 'json_object' },
+      max_tokens: 2000,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+    })
+
+    const coding = JSON.parse(aiResp.choices[0].message.content)
+    const now = new Date().toISOString()
+    const id = randomUUID()
+
+    const fhirBase = { id, patient_id, owner_email: req.apiKey, icd_codes: JSON.stringify(coding.icd_codes || []), cpt_codes: JSON.stringify(coding.cpt_codes || []), total_charges: coding.total_charges || 0, created_at: now }
+    const fhirClaim = buildFhirClaim(fhirBase, patient)
+
+    await db.execute({
+      sql: `INSERT INTO billing_claims (id, patient_id, owner_email, case_id, encounter_date, status, icd_codes, cpt_codes, hcpcs_codes, drg_code, drg_description, em_level, mdm_complexity, hcc_codes, total_charges, confidence_scores, coding_queries, compliance_flags, fhir_claim, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [
+        id, patient_id, req.apiKey, case_id || null, encounter_date || now.slice(0,10), 'draft',
+        JSON.stringify(coding.icd_codes || []), JSON.stringify(coding.cpt_codes || []),
+        JSON.stringify(coding.hcpcs_codes || []),
+        coding.drg_code || null, coding.drg_description || null,
+        coding.em_level || null, coding.mdm_complexity || null,
+        JSON.stringify(coding.hcc_codes || []),
+        coding.total_charges || 0,
+        JSON.stringify({ overall: coding.confidence_summary }),
+        JSON.stringify(coding.coding_queries || []),
+        JSON.stringify(coding.compliance_flags || []),
+        JSON.stringify(fhirClaim), now
+      ]
+    })
+
+    const claim = (await db.execute({ sql: 'SELECT * FROM billing_claims WHERE id = ?', args: [id] })).rows[0]
+    res.json({ claim, coding, fhir_claim: fhirClaim, patient_name: patient.name })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/billing/scrub/:claimId — claim scrubbing
+app.post('/api/billing/scrub/:claimId', auth, aiLimiter, async (req, res) => {
+  try {
+    const claimRows = (await db.execute({ sql: 'SELECT * FROM billing_claims WHERE id = ? AND owner_email = ?', args: [req.params.claimId, req.apiKey] })).rows
+    const claim = claimRows[0]
+    if (!claim) return res.status(404).json({ error: 'Claim not found' })
+
+    const icd = safeJson(claim.icd_codes, [])
+    const cpt = safeJson(claim.cpt_codes, [])
+    const hcpcs = safeJson(claim.hcpcs_codes, [])
+
+    const aiResp = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      response_format: { type: 'json_object' },
+      max_tokens: 1500,
+      messages: [
+        { role: 'system', content: 'You are a medical billing compliance expert. Analyze claims for coding errors. Return ONLY valid JSON.' },
+        { role: 'user', content: `Scrub this claim for coding issues:
+ICD-10 codes: ${JSON.stringify(icd)}
+CPT codes: ${JSON.stringify(cpt)}
+HCPCS codes: ${JSON.stringify(hcpcs)}
+E&M Level: ${claim.em_level || 'N/A'}
+MDM Complexity: ${claim.mdm_complexity || 'N/A'}
+DRG: ${claim.drg_code || 'N/A'}
+
+Check for: unbundling (CPT codes that include each other), upcoding risk, missing modifiers, laterality issues, diagnosis-procedure mismatch.
+Return JSON: { "issues": [{ "type": "unbundling"|"upcoding"|"missing_modifier"|"laterality"|"dx_proc_mismatch", "codes": [], "description": "...", "severity": "low"|"medium"|"high", "recommendation": "..." }], "scrub_passed": true/false, "risk_level": "low"|"medium"|"high", "summary": "..." }` }
+      ]
+    })
+
+    const scrubResult = JSON.parse(aiResp.choices[0].message.content)
+    await db.execute({ sql: `UPDATE billing_claims SET scrub_results = ? WHERE id = ?`, args: [JSON.stringify(scrubResult), claim.id] })
+
+    res.json(scrubResult)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/billing/stats — summary counts
+app.get('/api/billing/stats', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({ sql: 'SELECT * FROM billing_claims WHERE owner_email = ?', args: [req.apiKey] })).rows
+    const total = rows.length
+    const draft = rows.filter(r => r.status === 'draft').length
+    const submitted = rows.filter(r => r.status === 'submitted').length
+    const total_charges_sum = rows.reduce((s, r) => s + (r.total_charges || 0), 0)
+    let high_risk_flags = 0
+    let pending_queries = 0
+    for (const r of rows) {
+      const flags = safeJson(r.compliance_flags, [])
+      high_risk_flags += flags.filter(f => f.severity === 'high').length
+      const queries = safeJson(r.coding_queries, [])
+      pending_queries += queries.length
+    }
+    res.json({ total, draft, submitted, total_charges_sum, high_risk_flags, pending_queries })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/billing — list claims with patient name
+app.get('/api/billing', auth, async (req, res) => {
+  const { patient_id, status } = req.query
+  let sql = `SELECT b.*, p.name as patient_name FROM billing_claims b LEFT JOIN gen_patients p ON CAST(b.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE b.owner_email = ?`
+  const args = [req.apiKey]
+  if (patient_id) { sql += ' AND b.patient_id = ?'; args.push(patient_id) }
+  if (status) { sql += ' AND b.status = ?'; args.push(status) }
+  sql += ' ORDER BY b.created_at DESC'
+  try {
+    res.json({ claims: (await db.execute({ sql, args })).rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/billing/:id — single claim
+app.get('/api/billing/:id', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({ sql: `SELECT b.*, p.name as patient_name FROM billing_claims b LEFT JOIN gen_patients p ON CAST(b.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE b.id = ? AND b.owner_email = ?`, args: [req.params.id, req.apiKey] })).rows
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' })
+    res.json({ claim: rows[0] })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// PUT /api/billing/:id — update claim
+app.put('/api/billing/:id', auth, async (req, res) => {
+  try {
+    const { status, diagnosis_codes_confirmed, claim_notes, icd_codes, cpt_codes, hcpcs_codes, encounter_date } = req.body
+    const rows = (await db.execute({ sql: 'SELECT * FROM billing_claims WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' })
+    const fields = []
+    const args = []
+    if (status !== undefined) { fields.push('status = ?'); args.push(status) }
+    if (diagnosis_codes_confirmed !== undefined) { fields.push('diagnosis_codes_confirmed = ?'); args.push(diagnosis_codes_confirmed ? 1 : 0) }
+    if (claim_notes !== undefined) { fields.push('claim_notes = ?'); args.push(claim_notes) }
+    if (icd_codes !== undefined) { fields.push('icd_codes = ?'); args.push(JSON.stringify(icd_codes)) }
+    if (cpt_codes !== undefined) { fields.push('cpt_codes = ?'); args.push(JSON.stringify(cpt_codes)) }
+    if (hcpcs_codes !== undefined) { fields.push('hcpcs_codes = ?'); args.push(JSON.stringify(hcpcs_codes)) }
+    if (encounter_date !== undefined) { fields.push('encounter_date = ?'); args.push(encounter_date) }
+    if (!fields.length) return res.status(400).json({ error: 'No fields to update' })
+    args.push(req.params.id)
+    await db.execute({ sql: `UPDATE billing_claims SET ${fields.join(', ')} WHERE id = ?`, args })
+    const updated = (await db.execute({ sql: 'SELECT * FROM billing_claims WHERE id = ?', args: [req.params.id] })).rows[0]
+    res.json({ claim: updated })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/billing/:id/submit — mark claim submitted
+app.post('/api/billing/:id/submit', auth, async (req, res) => {
+  try {
+    const rows = (await db.execute({ sql: 'SELECT * FROM billing_claims WHERE id = ? AND owner_email = ?', args: [req.params.id, req.apiKey] })).rows
+    const claim = rows[0]
+    if (!claim) return res.status(404).json({ error: 'Not found' })
+    const patRows = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ?', args: [claim.patient_id] })).rows
+    const patient = patRows[0]
+    const now = new Date().toISOString()
+    const fhirClaim = buildFhirClaim({ ...claim, status: 'active' }, patient)
+    await db.execute({ sql: `UPDATE billing_claims SET status = 'submitted', submitted_at = ?, fhir_claim = ? WHERE id = ?`, args: [now, JSON.stringify(fhirClaim), claim.id] })
+    const updated = (await db.execute({ sql: 'SELECT * FROM billing_claims WHERE id = ?', args: [claim.id] })).rows[0]
+    res.json({ claim: updated, fhir_claim: fhirClaim })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

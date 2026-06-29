@@ -26,6 +26,7 @@ import ChronicDisease from './pages/ChronicDisease.jsx'
 import PatientPortal from './pages/PatientPortal.jsx'
 import Interoperability from './pages/Interoperability.jsx'
 import AuditCompliance from './pages/AuditCompliance.jsx'
+import Billing from './pages/Billing.jsx'
 
 function ProtectedRoute({ children }) {
   const { key } = useKey()
@@ -63,6 +64,7 @@ function AppRoutes() {
             <Route path="/patient-portal" element={<ProtectedRoute><PatientPortal /></ProtectedRoute>} />
             <Route path="/interoperability" element={<ProtectedRoute><Interoperability /></ProtectedRoute>} />
             <Route path="/audit-compliance" element={<ProtectedRoute><AuditCompliance /></ProtectedRoute>} />
+            <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
           </Routes>
         </Layout>

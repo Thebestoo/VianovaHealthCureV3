@@ -5,7 +5,8 @@ import {
   HeartPulse, ShieldCheck, Stethoscope, LogOut, Wifi, WifiOff,
   Users, LogIn, Menu, X, AlertCircle, FlaskConical, CalendarDays,
   ClipboardList, ShieldAlert, AlertOctagon, Users2, FileText,
-  Lightbulb, Home, Activity, MessageSquare, GitMerge, ClipboardCheck
+  Lightbulb, Home, Activity, MessageSquare, GitMerge, ClipboardCheck,
+  Receipt
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
@@ -45,6 +46,7 @@ const NAV_GROUPS = [
       { label: 'Patient Portal',    icon: MessageSquare, path: '/patient-portal'    },
       { label: 'Interoperability',  icon: GitMerge,      path: '/interoperability'  },
       { label: 'Audit & Compliance',icon: ClipboardCheck,path: '/audit-compliance'  },
+      { label: 'Billing & Coding',  icon: Receipt,       path: '/billing'           },
       { label: 'Logs & Analytics',  icon: BarChart2,     path: '/logs'              },
     ],
   },

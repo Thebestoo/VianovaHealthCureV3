@@ -273,7 +273,7 @@ function GenerateModal({ apiKey, onClose, onDone }) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    fetch('/api/patients', { headers: { 'x-api-key': apiKey } })
+    fetch('/api/gen-patients', { headers: { 'x-api-key': apiKey } })
       .then(r => r.json()).then(d => setPatients(d.patients || [])).catch(() => {})
   }, [apiKey])
 
@@ -376,14 +376,14 @@ export default function Discharge() {
     try {
       const res = await fetch('/api/discharge', { headers: { 'x-api-key': key } })
       const d = await res.json()
-      setRecords(d.records || [])
+      setRecords(Array.isArray(d) ? d : d.records || [])
     } catch { toast.error('Failed to load discharge records') } finally { setLoading(false) }
   }, [key])
 
   useEffect(() => {
     if (key) {
       load()
-      fetch('/api/patients', { headers: { 'x-api-key': key } })
+      fetch('/api/gen-patients', { headers: { 'x-api-key': key } })
         .then(r => r.json()).then(d => setPatients(d.patients || [])).catch(() => {})
     }
   }, [key, load])
