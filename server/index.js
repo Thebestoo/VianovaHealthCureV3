@@ -3906,16 +3906,10 @@ app.post('/api/billing/:id/submit', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// ── Serve built frontend (whenever dist/ exists) ──────────────────────────────
+// Static assets served early so CSS/JS/images load fast
 const DIST = join(__dirname, '../dist')
 if (existsSync(DIST)) {
   app.use(express.static(DIST))
-  // SPA fallback — let React Router handle all non-API routes
-  app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-      res.sendFile(join(DIST, 'index.html'))
-    }
-  })
 }
 
 // ── Feature 15: Clinical NLP Engine ──────────────────────────────────────────
@@ -4114,6 +4108,14 @@ app.post('/api/nlp-notes/deidentify-batch', auth, aiLimiter, async (req, res) =>
 app.use('/api/*', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' })
 })
+
+// ── SPA fallback — must be LAST route so all API routes register first ────────
+if (existsSync(DIST)) {
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' })
+    res.sendFile(join(DIST, 'index.html'))
+  })
+}
 
 // ── Global error handler — never leak stack traces to clients ─────────────────
 // eslint-disable-next-line no-unused-vars
