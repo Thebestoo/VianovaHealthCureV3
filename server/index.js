@@ -4158,6 +4158,11 @@ app.post('/api/chat/sessions', auth, async (req, res) => {
   const user = req.user
   await db.execute({ sql: `INSERT INTO chat_sessions (id, created_by_email, created_by_name, created_by_role, subject, status, created_at) VALUES (?,?,?,?,?,?,?)`,
     args: [id, req.apiKey, user?.name || req.apiKey, req.keyRole, subject || 'General inquiry', 'open', now] })
+  // Auto welcome message
+  const welcomeId = randomUUID()
+  const greeting = `👋 Hello ${user?.name || 'there'}, welcome to Vianova Health Support!\n\nI'm here to help you with any questions about patient records, clinical workflows, or platform features.\n\nFeel free to type your question below. If you need to speak with a live admin, type !admincall at any time.`
+  await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [welcomeId, id, 'system', 'Vianova Support', 'system', greeting, now] })
   res.json({ id, status: 'open', created_at: now })
 })
 

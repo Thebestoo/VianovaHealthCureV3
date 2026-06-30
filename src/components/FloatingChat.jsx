@@ -51,6 +51,8 @@ export default function FloatingChat() {
 
   const msgEndRef   = useRef(null)
   const adminEndRef = useRef(null)
+  const inputRef    = useRef(null)
+  const adminInputRef = useRef(null)
   const pollRefs    = useRef({})
 
   const api = useCallback((path, opts = {}) => fetch(path, {
@@ -97,6 +99,10 @@ export default function FloatingChat() {
 
   useEffect(() => { msgEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { adminEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [adminMessages])
+  // Auto-focus input when switching to messages tab
+  useEffect(() => {
+    if (tab === 'messages') setTimeout(() => (role === 'superadmin' ? adminInputRef : inputRef).current?.focus(), 100)
+  }, [tab, session?.id, activeSession?.id]) // eslint-disable-line
 
   if (!key) return null
 
@@ -137,6 +143,7 @@ export default function FloatingChat() {
       if (m.id) setMessages(p => [...p, m])
     } catch {}
     setSending(false)
+    setTimeout(() => inputRef.current?.focus(), 30)
   }
 
   async function endUserChat() {
@@ -169,6 +176,7 @@ export default function FloatingChat() {
       if (m.id) setAdminMessages(p => [...p, m])
     } catch {}
     setAdminSending(false)
+    setTimeout(() => adminInputRef.current?.focus(), 30)
   }
 
   async function endAdminChat() {
@@ -181,7 +189,22 @@ export default function FloatingChat() {
   function Bubble({ msg, i, myEmail }) {
     const mine = msg.sender_email === myEmail
     if (msg.sender_role === 'system') {
-      const urgent = msg.message.includes('🚨')
+      const urgent   = msg.message.includes('🚨')
+      const isWelcome = msg.sender_name === 'Vianova Support'
+      if (isWelcome) {
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 16 }}>🏥</div>
+            <div style={{ maxWidth: '82%' }}>
+              <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 4, fontWeight: 600 }}>Vianova Support</div>
+              <div style={{ background: '#f1f5f9', borderRadius: '4px 18px 18px 18px', padding: '12px 14px', fontSize: 13.5, lineHeight: 1.6, color: '#1e293b', whiteSpace: 'pre-line', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                {msg.message}
+              </div>
+              <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 3, paddingLeft: 2 }}>{fmtTime(msg.created_at)}</div>
+            </div>
+          </div>
+        )
+      }
       return (
         <div key={i} style={{ textAlign: 'center', margin: '10px 0' }}>
           <span style={{
@@ -213,28 +236,42 @@ export default function FloatingChat() {
     )
   }
 
-  // ── Input bar ─────────────────────────────────────────────────────────────
-  function InputBar({ value, onChange, onSend, disabled, placeholder = 'Enter your message…' }) {
+  // ── Input bar — textarea grows with content, Enter sends, Shift+Enter newline ──
+  function InputBar({ value, onChange, onSend, disabled, placeholder = 'Enter your message…', ref: fwdRef }) {
+    const handleKey = e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend() }
+    }
     return (
-      <div style={{ padding: '10px 14px 12px', background: '#fff', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: 8, color: '#94a3b8' }}>
-          <Bot size={17} style={{ cursor: 'pointer' }} />
-          <Paperclip size={17} style={{ cursor: 'pointer' }} />
-          <Smile size={17} style={{ cursor: 'pointer' }} />
+      <div style={{ padding: '10px 14px 12px', background: '#fff', borderTop: '1px solid #f1f5f9', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, background: '#f8fafc', borderRadius: 14, padding: '8px 12px', border: '1.5px solid #e2e8f0' }}>
+          <textarea
+            ref={fwdRef}
+            value={value}
+            onChange={e => { onChange(e); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
+            onKeyDown={handleKey}
+            placeholder={placeholder}
+            disabled={disabled}
+            rows={1}
+            style={{
+              flex: 1, border: 'none', outline: 'none', resize: 'none', overflow: 'hidden',
+              fontSize: 13.5, lineHeight: 1.5, color: '#1e293b', background: 'transparent',
+              minWidth: 0, fontFamily: 'inherit', minHeight: 22, maxHeight: 120,
+            }}
+          />
+          <button onClick={onSend} disabled={disabled || !value.trim()} style={{
+            width: 36, height: 36, borderRadius: '50%', flexShrink: 0, border: 'none', cursor: 'pointer',
+            background: (disabled || !value.trim()) ? '#e2e8f0' : 'linear-gradient(135deg,#1d6ef5,#0ea5e9)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: (!disabled && value.trim()) ? '0 4px 12px rgba(29,110,245,.4)' : 'none',
+            transition: 'all .2s', alignSelf: 'flex-end',
+          }}><Send size={14} color="#fff" /></button>
         </div>
-        <input
-          value={value} onChange={onChange}
-          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && onSend()}
-          placeholder={placeholder} disabled={disabled}
-          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13.5, color: '#1e293b', background: 'transparent', minWidth: 0 }}
-        />
-        <button onClick={onSend} disabled={disabled || !value.trim()} style={{
-          width: 38, height: 38, borderRadius: '50%', flexShrink: 0, border: 'none', cursor: 'pointer',
-          background: (disabled || !value.trim()) ? '#e2e8f0' : 'linear-gradient(135deg,#1d6ef5,#0ea5e9)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: (!disabled && value.trim()) ? '0 4px 12px rgba(29,110,245,.4)' : 'none',
-          transition: 'all .2s',
-        }}><Send size={15} color="#fff" /></button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, color: '#cbd5e1' }}>
+          <Bot size={15} style={{ cursor: 'pointer' }} />
+          <Paperclip size={15} style={{ cursor: 'pointer' }} />
+          <Smile size={15} style={{ cursor: 'pointer' }} />
+          <span style={{ fontSize: 10, color: '#e2e8f0', marginLeft: 4 }}>Shift+Enter for new line</span>
+        </div>
       </div>
     )
   }
@@ -444,7 +481,7 @@ export default function FloatingChat() {
           <button onClick={endUserChat} style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>End Chat</button>
         </div>
 
-        <InputBar value={input} onChange={e => setInput(e.target.value)} onSend={sendMsg} disabled={sending} />
+        <InputBar value={input} onChange={e => setInput(e.target.value)} onSend={sendMsg} disabled={sending} ref={inputRef} />
       </>
     )
   }
@@ -476,7 +513,7 @@ export default function FloatingChat() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 14px 2px' }}>
           <button onClick={endAdminChat} style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Leave Chat</button>
         </div>
-        <InputBar value={adminInput} onChange={e => setAdminInput(e.target.value)} onSend={sendAdminMsg} disabled={adminSending} />
+        <InputBar value={adminInput} onChange={e => setAdminInput(e.target.value)} onSend={sendAdminMsg} disabled={adminSending} ref={adminInputRef} />
       </>
     )
   }
