@@ -97,21 +97,40 @@ export default function FloatingChat() {
   if (!key) return null
 
   // ── Actions ───────────────────────────────────────────────────────────────
-  async function startChat() {
+  async function startChat(subjectOverride) {
     if (starting) return
     setStarting(true)
     setTab('messages')
     try {
-      const d = await api('/api/chat/sessions', { method: 'POST', body: JSON.stringify({ subject: 'General inquiry' }) })
+      const d = await api('/api/chat/sessions', { method: 'POST', body: JSON.stringify({ subject: subjectOverride || 'General inquiry' }) })
       if (d.id) setSession({ ...d, status: 'waiting' })
+      return d
     } catch {}
     setStarting(false)
   }
 
   async function sendMsg() {
     if (!input.trim() || sending || !session) return
+    const text = input.trim()
+
+    // !admincall command — escalate to urgent
+    if (text.toLowerCase() === '!admincall') {
+      setInput('')
+      setSending(true)
+      try {
+        let sid = session?.id
+        if (!sid) {
+          const d = await startChat('🚨 URGENT: Admin call requested')
+          sid = d?.id
+        }
+        if (sid) await api(`/api/chat/sessions/${sid}/admincall`, { method: 'POST' })
+      } catch {}
+      setSending(false)
+      return
+    }
+
     setSending(true)
-    const text = input.trim(); setInput('')
+    setInput('')
     try {
       const m = await api(`/api/chat/sessions/${session.id}/messages`, { method: 'POST', body: JSON.stringify({ message: text }) })
       if (m.id) setMessages(p => [...p, m])
@@ -159,11 +178,22 @@ export default function FloatingChat() {
   // ── Shared message bubble ─────────────────────────────────────────────────
   function Bubble({ msg, i, myEmail }) {
     const mine = msg.sender_email === myEmail
-    if (msg.sender_role === 'system') return (
-      <div key={i} style={{ textAlign: 'center', margin: '10px 0' }}>
-        <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', background: '#f1f5f9', padding: '3px 12px', borderRadius: 99 }}>{msg.message}</span>
-      </div>
-    )
+    if (msg.sender_role === 'system') {
+      const urgent = msg.message.includes('🚨') || msg.message.includes('URGENT')
+      return (
+        <div key={i} style={{ textAlign: 'center', margin: '10px 0' }}>
+          <span style={{
+            fontSize: urgent ? 12 : 11, fontStyle: urgent ? 'normal' : 'italic',
+            fontWeight: urgent ? 700 : 400,
+            background: urgent ? '#fef2f2' : '#f1f5f9',
+            color: urgent ? '#dc2626' : '#94a3b8',
+            border: urgent ? '1.5px solid #fecaca' : 'none',
+            padding: urgent ? '6px 14px' : '3px 12px', borderRadius: 99,
+            display: 'inline-block', maxWidth: '90%',
+          }}>{msg.message}</span>
+        </div>
+      )
+    }
     return (
       <div key={i} style={{ display: 'flex', flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 8, marginBottom: 12 }}>
         {!mine && <Avatar name={msg.sender_name} size={28} role={msg.sender_role} />}
@@ -461,6 +491,21 @@ export default function FloatingChat() {
           {messages.map((m, i) => <Bubble key={m.id || i} msg={m} i={i} myEmail={email} />)}
           <div ref={msgEndRef} />
         </div>
+        {/* !admincall shortcut + end chat */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 14px 2px' }}>
+          <button
+            onClick={async () => {
+              setSending(true)
+              try { await api(`/api/chat/sessions/${session.id}/admincall`, { method: 'POST' }) } catch {}
+              setSending(false)
+            }}
+            style={{ fontSize: 11, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}
+            title="Type !admincall or click to request urgent real-admin help"
+          >
+            🚨 !admincall
+          </button>
+          <button onClick={endUserChat} style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>End Chat</button>
+        </div>
         <InputBar value={input} onChange={e => setInput(e.target.value)} onSend={sendMsg} disabled={sending} />
       </>
     )
@@ -512,7 +557,7 @@ export default function FloatingChat() {
     return (
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
         {pendingSessions.map(s => (
-          <div key={s.id} style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 16, padding: '14px', marginBottom: 10, boxShadow: '0 2px 10px rgba(0,0,0,.06)' }}>
+          <div key={s.id} style={{ background: '#fff', border: `1.5px solid ${s.subject?.includes('URGENT') ? '#fca5a5' : '#e2e8f0'}`, borderRadius: 16, padding: '14px', marginBottom: 10, boxShadow: s.subject?.includes('URGENT') ? '0 2px 14px rgba(239,68,68,.15)' : '0 2px 10px rgba(0,0,0,.06)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <div style={{ position: 'relative' }}>
                 <Avatar name={s.created_by_name} size={42} role={s.created_by_role} />
@@ -523,7 +568,10 @@ export default function FloatingChat() {
                 <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 1 }}>
                   <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>{s.created_by_role}</span> · {fmtTime(s.created_at)}
                 </div>
-                {s.subject && <div style={{ fontSize: 12, color: '#475569', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>"{s.subject}"</div>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                  {s.subject?.includes('URGENT') && <span style={{ background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 99, letterSpacing: .5 }}>URGENT</span>}
+                  {s.subject && <div style={{ fontSize: 12, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic', flex: 1 }}>"{s.subject.replace('🚨 URGENT: ', '')}"</div>}
+                </div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>

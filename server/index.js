@@ -4234,6 +4234,21 @@ app.post('/api/chat/sessions/:id/messages', auth, async (req, res) => {
   res.json({ id, session_id: req.params.id, sender_email: req.apiKey, sender_name: req.user?.name || req.apiKey, sender_role: req.keyRole, message: message.trim(), created_at: now })
 })
 
+// ── !admincall — escalate session to urgent ───────────────────────────────────
+app.post('/api/chat/sessions/:id/admincall', auth, async (req, res) => {
+  const session = (await db.execute({ sql: 'SELECT * FROM chat_sessions WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+  if (session.created_by_email !== req.apiKey) return res.status(403).json({ error: 'Not authorized' })
+  const now = new Date().toISOString()
+  // Mark session urgent
+  await db.execute({ sql: `UPDATE chat_sessions SET subject = '🚨 URGENT: ' || COALESCE(subject,'General inquiry'), status = CASE WHEN status = 'waiting' THEN 'waiting' ELSE status END WHERE id = ?`, args: [req.params.id] })
+  // Insert urgent system message visible in chat
+  const msgId = randomUUID()
+  await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [msgId, req.params.id, 'system', 'System', 'system', '🚨 URGENT: This user has requested immediate admin assistance. A real admin will join shortly.', now] })
+  res.json({ ok: true })
+})
+
 // ── 404 for unknown API routes ────────────────────────────────────────────────
 app.use('/api/*', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' })
