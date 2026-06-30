@@ -11,6 +11,11 @@ const fmtDate = ts => {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+/* ─── Profanity filter ───────────────────────────────────────────── */
+const BAD_WORDS = ['retard', 'pussy', 'fuck', 'fucker', 'fucking', 'fucked', 'fucks']
+const hasProfanity = text => BAD_WORDS.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text))
+const TIMEOUT_MS = 5 * 60 * 1000 // 5 minute timeout after 3 strikes
+
 /* ─── Avatar ─────────────────────────────────────────────────────── */
 const GRAD = {
   superadmin: 'linear-gradient(135deg,#1d6ef5,#38bdf8)',
@@ -366,6 +371,14 @@ export default function FloatingChat() {
   const [open,  setOpen]  = useState(false)
   const [tab,   setTab]   = useState('home')
 
+  // profanity strike system
+  const [strikes,      setStrikes]      = useState(0)
+  const [strikeShow,   setStrikeShow]   = useState(false)
+  const [timedOut,     setTimedOut]     = useState(false)
+  const [timeoutSecs,  setTimeoutSecs]  = useState(0)
+  const strikeTimer  = useRef(null)
+  const timeoutTimer = useRef(null)
+
   // user chat state
   const [session,  setSession]  = useState(null)
   const [messages, setMessages] = useState([])
@@ -475,6 +488,29 @@ export default function FloatingChat() {
 
   if (!key) return null
 
+  /* ── strike system ── */
+  function triggerStrike(newCount) {
+    setStrikeShow(true)
+    clearTimeout(strikeTimer.current)
+    strikeTimer.current = setTimeout(() => setStrikeShow(false), 4000)
+    if (newCount >= 3) {
+      setTimedOut(true)
+      let secs = TIMEOUT_MS / 1000
+      setTimeoutSecs(secs)
+      clearInterval(timeoutTimer.current)
+      timeoutTimer.current = setInterval(() => {
+        secs -= 1
+        setTimeoutSecs(secs)
+        if (secs <= 0) {
+          clearInterval(timeoutTimer.current)
+          setTimedOut(false)
+          setStrikes(0)
+          setStrikeShow(false)
+        }
+      }, 1000)
+    }
+  }
+
   /* ── actions ── */
   async function startChat() {
     if (starting) return
@@ -490,6 +526,14 @@ export default function FloatingChat() {
   async function sendMsg() {
     const text = input.trim()
     if (!text || sending || !session) return
+    if (timedOut) return
+    if (hasProfanity(text)) {
+      setInput('')
+      const next = strikes + 1
+      setStrikes(next)
+      triggerStrike(next)
+      return
+    }
     if (text.toLowerCase() === '!admincall') {
       setInput('')
       // already called or admin already joined — don't send again
@@ -595,7 +639,7 @@ export default function FloatingChat() {
 
       {/* chat window */}
       {open && (
-        <div className="fc-win" style={{ position: 'fixed', bottom: 96, right: 28, zIndex: 9998, width: 370, height: 540, borderRadius: 20, background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="fc-win" style={{ position: 'fixed', bottom: 96, right: 28, zIndex: 9998, width: 370, height: 540, borderRadius: 20, background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', overflow: 'hidden', isolation: 'isolate' }}>
 
           {(inUserChat || inAdminChat)
             ? <ChatHeader
@@ -706,6 +750,32 @@ export default function FloatingChat() {
           </div>
 
           <TabBar tab={tab} setTab={t => { setTab(t); setViewTicket(null) }} isSuperAdmin={isSuperAdmin} escalatedCount={escalatedCount} />
+
+          {/* ── Strike warning overlay ── */}
+          {strikeShow && !timedOut && (
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(254,226,226,.92)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 10, borderRadius: 20, animation: 'fc-slidein .18s ease both' }}>
+              <div style={{ fontSize: 46 }}>⚠️</div>
+              <div style={{ fontWeight: 900, fontSize: 22, color: '#b91c1c', letterSpacing: -.5 }}>Strike {strikes}</div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: '#dc2626' }}>
+                {3 - strikes} more {3 - strikes === 1 ? 'strike' : 'strikes'} before timeout
+              </div>
+              <div style={{ fontSize: 12, color: '#ef4444', marginTop: 2 }}>Keep it respectful 🙏</div>
+            </div>
+          )}
+
+          {/* ── Timeout overlay ── */}
+          {timedOut && (
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(127,29,29,.93)', backdropFilter: 'blur(3px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 10, borderRadius: 20 }}>
+              <div style={{ fontSize: 50 }}>🚫</div>
+              <div style={{ fontWeight: 900, fontSize: 20, color: '#fff', letterSpacing: -.5 }}>Timeout</div>
+              <div style={{ fontWeight: 600, fontSize: 13, color: '#fca5a5', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
+                You've been timed out for inappropriate language.
+              </div>
+              <div style={{ marginTop: 6, background: 'rgba(255,255,255,.12)', borderRadius: 12, padding: '8px 20px', fontWeight: 800, fontSize: 18, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
+                {Math.floor(timeoutSecs / 60)}:{String(timeoutSecs % 60).padStart(2, '0')}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>
