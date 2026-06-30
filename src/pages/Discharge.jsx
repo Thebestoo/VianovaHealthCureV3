@@ -279,10 +279,10 @@ function GenerateModal({ apiKey, onClose, onDone }) {
 
   useEffect(() => {
     if (!patientId) { setCases([]); setCaseId(''); return }
-    fetch(`/api/cases?patient_id=${patientId}`, { headers: { 'x-api-key': apiKey } })
+    fetch(`/api/cases/by-patient/${patientId}`, { headers: { 'x-api-key': apiKey } })
       .then(r => r.json())
       .then(d => {
-        const list = d.cases || []
+        const list = Array.isArray(d) ? d : []
         setCases(list)
         setCaseId(list[0]?.id || '')
         const lang = patients.find(p => String(p.id) === String(patientId))?.language

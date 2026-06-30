@@ -407,7 +407,7 @@ function ProcessModal({ patients, onClose, onSuccess, apiKey }) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function NlpNotes() {
+export default function NLPNotes() {
   const { key } = useKey()
   const [tab, setTab] = useState('notes')
   const [notes, setNotes] = useState([])

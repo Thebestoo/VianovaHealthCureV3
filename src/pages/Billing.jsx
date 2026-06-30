@@ -466,7 +466,7 @@ export default function Billing() {
 
   useEffect(() => {
     if (sugPatient) {
-      API(`/cases?patient_id=${sugPatient}`, { key }).then(d => setCases(d.cases || []))
+      API(`/cases/by-patient/${sugPatient}`, { key }).then(d => setCases(Array.isArray(d) ? d : []))
     } else {
       setCases([])
     }
