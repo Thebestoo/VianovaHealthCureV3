@@ -1,22 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { MessageCircle, X, ChevronDown, ChevronUp, Check, XCircle, Send } from 'lucide-react'
+import { MessageCircle, X, Home, MessageSquare, Inbox, Send, Paperclip, Smile, Bot, ChevronDown, Check, XCircle, MoreVertical } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Avatar({ name, size = 36, role }) {
+function Avatar({ name, size = 36, role, src }) {
   const colors = {
-    superadmin: 'linear-gradient(135deg,#0369a1,#0284c7)',
+    superadmin: 'linear-gradient(135deg,#1d6ef5,#0284c7)',
     doctor:     'linear-gradient(135deg,#059669,#10b981)',
     nurse:      'linear-gradient(135deg,#d97706,#f59e0b)',
     default:    'linear-gradient(135deg,#7c3aed,#6366f1)',
   }
+  if (src) return <img src={src} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
       background: colors[role] || colors.default,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexShrink: 0, fontWeight: 800, fontSize: size * 0.4, color: '#fff',
+      flexShrink: 0, fontWeight: 800, fontSize: size * 0.38, color: '#fff',
     }}>
       {(name || '?').charAt(0).toUpperCase()}
     </div>
@@ -25,29 +26,40 @@ function Avatar({ name, size = 36, role }) {
 
 const fmtTime = ts => new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 
+// Wave SVG divider
+function Wave({ color = '#1d6ef5' }) {
+  return (
+    <div style={{ background: color, lineHeight: 0, flexShrink: 0 }}>
+      <svg viewBox="0 0 370 28" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', width: '100%' }}>
+        <path d="M0,14 C80,28 200,0 370,18 L370,28 L0,28 Z" fill="#fff" />
+      </svg>
+    </div>
+  )
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function FloatingChat() {
   const { key, role, label, email } = useKey()
 
-  const [open, setOpen]       = useState(false)
-  const [input, setInput]     = useState('')
-  const [sending, setSending] = useState(false)
+  const [open, setOpen]     = useState(false)
+  const [tab, setTab]       = useState('home') // 'home' | 'messages' | 'requests'
 
   // ── User state ──────────────────────────────────────────────────────────────
   const [session,  setSession]  = useState(null)
   const [messages, setMessages] = useState([])
+  const [input,    setInput]    = useState('')
+  const [sending,  setSending]  = useState(false)
   const [subject,  setSubject]  = useState('')
   const [starting, setStarting] = useState(false)
 
   // ── Superadmin state ────────────────────────────────────────────────────────
-  const [activeSession,   setActiveSession]   = useState(null)  // currently accepted session
-  const [adminMessages,   setAdminMessages]   = useState([])
-  const [adminInput,      setAdminInput]      = useState('')
-  const [adminSending,    setAdminSending]    = useState(false)
+  const [activeSession, setActiveSession] = useState(null)
+  const [adminMessages, setAdminMessages] = useState([])
+  const [adminInput,    setAdminInput]    = useState('')
+  const [adminSending,  setAdminSending]  = useState(false)
   const [pendingSessions, setPendingSessions] = useState([])
   const [pendingCount,    setPendingCount]    = useState(0)
-  const [pendingOpen,     setPendingOpen]     = useState(true)  // collapsible section
 
   const messagesEndRef  = useRef(null)
   const adminMsgEndRef  = useRef(null)
@@ -60,57 +72,38 @@ export default function FloatingChat() {
     headers: { 'x-api-key': key, 'Content-Type': 'application/json', ...(opts.headers || {}) },
   }).then(r => r.json()), [key])
 
-  // ── User: poll messages + session status ──────────────────────────────────
+  // ── Polls ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!key || !session || ['closed', 'declined'].includes(session.status)) {
-      clearInterval(msgPollRef.current)
-      return
+      clearInterval(msgPollRef.current); return
     }
     const poll = () => {
-      api(`/api/chat/sessions/${session.id}/messages`)
-        .then(d => Array.isArray(d) && setMessages(d)).catch(() => {})
-      api('/api/chat/sessions')
-        .then(d => {
-          if (Array.isArray(d)) {
-            const s = d.find(x => x.id === session.id)
-            if (s) setSession(s)
-          }
-        }).catch(() => {})
+      api(`/api/chat/sessions/${session.id}/messages`).then(d => Array.isArray(d) && setMessages(d)).catch(() => {})
+      api('/api/chat/sessions').then(d => {
+        if (Array.isArray(d)) { const s = d.find(x => x.id === session.id); if (s) setSession(s) }
+      }).catch(() => {})
     }
-    poll()
-    msgPollRef.current = setInterval(poll, 3000)
+    poll(); msgPollRef.current = setInterval(poll, 3000)
     return () => clearInterval(msgPollRef.current)
   }, [key, session?.id, session?.status]) // eslint-disable-line
 
-  // ── Superadmin: poll pending sessions ─────────────────────────────────────
   useEffect(() => {
     if (!key || role !== 'superadmin') return
-    const poll = () => {
-      api('/api/chat/sessions/pending')
-        .then(d => {
-          if (d && typeof d.count === 'number') {
-            setPendingCount(d.count)
-            setPendingSessions(d.sessions || [])
-          }
-        }).catch(() => {})
-    }
-    poll()
-    pendingPollRef.current = setInterval(poll, 4000)
+    const poll = () => api('/api/chat/sessions/pending').then(d => {
+      if (d?.count != null) { setPendingCount(d.count); setPendingSessions(d.sessions || []) }
+    }).catch(() => {})
+    poll(); pendingPollRef.current = setInterval(poll, 4000)
     return () => clearInterval(pendingPollRef.current)
   }, [key, role]) // eslint-disable-line
 
-  // ── Superadmin: poll active chat messages ─────────────────────────────────
   useEffect(() => {
     clearInterval(adminMsgPollRef.current)
     if (!activeSession) return
-    const poll = () => api(`/api/chat/sessions/${activeSession.id}/messages`)
-      .then(d => Array.isArray(d) && setAdminMessages(d)).catch(() => {})
-    poll()
-    adminMsgPollRef.current = setInterval(poll, 3000)
+    const poll = () => api(`/api/chat/sessions/${activeSession.id}/messages`).then(d => Array.isArray(d) && setAdminMessages(d)).catch(() => {})
+    poll(); adminMsgPollRef.current = setInterval(poll, 3000)
     return () => clearInterval(adminMsgPollRef.current)
   }, [activeSession?.id]) // eslint-disable-line
 
-  // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { adminMsgEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [adminMessages])
 
@@ -120,11 +113,8 @@ export default function FloatingChat() {
   async function startChat() {
     setStarting(true)
     try {
-      const d = await api('/api/chat/sessions', {
-        method: 'POST',
-        body: JSON.stringify({ subject: subject.trim() || 'General inquiry' }),
-      })
-      if (d.id) setSession({ ...d, status: 'waiting' })
+      const d = await api('/api/chat/sessions', { method: 'POST', body: JSON.stringify({ subject: subject.trim() || 'General inquiry' }) })
+      if (d.id) { setSession({ ...d, status: 'waiting' }); setTab('messages') }
     } catch {}
     setStarting(false)
   }
@@ -133,11 +123,8 @@ export default function FloatingChat() {
     if (!input.trim() || sending) return
     setSending(true)
     try {
-      const msg = await api(`/api/chat/sessions/${session.id}/messages`, {
-        method: 'POST', body: JSON.stringify({ message: input.trim() }),
-      })
-      if (msg.id) setMessages(p => [...p, msg])
-      setInput('')
+      const msg = await api(`/api/chat/sessions/${session.id}/messages`, { method: 'POST', body: JSON.stringify({ message: input.trim() }) })
+      if (msg.id) setMessages(p => [...p, msg]); setInput('')
     } catch {}
     setSending(false)
   }
@@ -150,10 +137,10 @@ export default function FloatingChat() {
 
   async function acceptSession(s) {
     await api(`/api/chat/sessions/${s.id}/accept`, { method: 'POST' })
-    setActiveSession(s)
-    setAdminMessages([])
+    setActiveSession(s); setAdminMessages([])
     setPendingSessions(p => p.filter(x => x.id !== s.id))
     setPendingCount(p => Math.max(0, p - 1))
+    setTab('messages')
   }
 
   async function declineSession(s) {
@@ -166,11 +153,8 @@ export default function FloatingChat() {
     if (!adminInput.trim() || adminSending || !activeSession) return
     setAdminSending(true)
     try {
-      const msg = await api(`/api/chat/sessions/${activeSession.id}/messages`, {
-        method: 'POST', body: JSON.stringify({ message: adminInput.trim() }),
-      })
-      if (msg.id) setAdminMessages(p => [...p, msg])
-      setAdminInput('')
+      const msg = await api(`/api/chat/sessions/${activeSession.id}/messages`, { method: 'POST', body: JSON.stringify({ message: adminInput.trim() }) })
+      if (msg.id) setAdminMessages(p => [...p, msg]); setAdminInput('')
     } catch {}
     setAdminSending(false)
   }
@@ -178,36 +162,34 @@ export default function FloatingChat() {
   async function closeAdminChat() {
     if (!activeSession) return
     await api(`/api/chat/sessions/${activeSession.id}/close`, { method: 'POST' })
-    setActiveSession(null)
-    setAdminMessages([])
+    setActiveSession(null); setAdminMessages([]); setTab('home')
   }
 
-  // ── Shared message bubble ──────────────────────────────────────────────────
-  function Bubble({ msg, idx, myEmail, accentColor }) {
+  // ── Message bubble ────────────────────────────────────────────────────────
+  function Bubble({ msg, idx, myEmail, senderName, senderRole }) {
     const isMine = msg.sender_email === myEmail
     if (msg.sender_role === 'system') {
       return (
-        <div key={msg.id || idx} style={{ textAlign: 'center', margin: '6px 0' }}>
-          <span style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic', background: '#f3f4f6', padding: '2px 10px', borderRadius: 99 }}>
-            {msg.message}
-          </span>
+        <div key={msg.id || idx} style={{ textAlign: 'center', margin: '8px 0' }}>
+          <span style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic', background: '#f3f4f6', padding: '2px 10px', borderRadius: 99 }}>{msg.message}</span>
         </div>
       )
     }
     return (
-      <div key={msg.id || idx} style={{ display: 'flex', flexDirection: isMine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 6, marginBottom: 8 }}>
-        {!isMine && <Avatar name={msg.sender_name} size={24} role={msg.sender_role} />}
-        <div style={{ maxWidth: '75%' }}>
-          {!isMine && <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 2, marginLeft: 4 }}>{msg.sender_name}</div>}
+      <div key={msg.id || idx} style={{ display: 'flex', flexDirection: isMine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 7, marginBottom: 10 }}>
+        {!isMine && <Avatar name={msg.sender_name} size={28} role={msg.sender_role} />}
+        <div style={{ maxWidth: '72%' }}>
+          {!isMine && <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3, marginLeft: 4 }}>{msg.sender_name}</div>}
           <div style={{
-            padding: '8px 12px',
-            borderRadius: isMine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-            background: isMine ? (accentColor || 'linear-gradient(135deg,#7c3aed,#6366f1)') : '#f3f4f6',
-            color: isMine ? '#fff' : '#111827', fontSize: 13, lineHeight: 1.45,
+            padding: '9px 14px', lineHeight: 1.5, fontSize: 13,
+            borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+            background: isMine ? 'linear-gradient(135deg,#1d6ef5,#0284c7)' : '#f0f2f5',
+            color: isMine ? '#fff' : '#111827',
+            boxShadow: isMine ? '0 2px 8px rgba(29,110,245,.3)' : '0 1px 3px rgba(0,0,0,.06)',
           }}>
             {msg.message}
           </div>
-          <div style={{ fontSize: 10, color: '#d1d5db', marginTop: 2, textAlign: isMine ? 'right' : 'left', paddingInline: 4 }}>
+          <div style={{ fontSize: 10, color: '#c4c9d4', marginTop: 3, textAlign: isMine ? 'right' : 'left', paddingInline: 4 }}>
             {fmtTime(msg.created_at)}
           </div>
         </div>
@@ -215,216 +197,190 @@ export default function FloatingChat() {
     )
   }
 
-  // ── Shared input bar ───────────────────────────────────────────────────────
-  function InputBar({ value, onChange, onSend, disabled, placeholder, accent }) {
+  // ── Chat input bar ────────────────────────────────────────────────────────
+  function ChatInput({ value, onChange, onSend, disabled, placeholder }) {
     return (
-      <div style={{ borderTop: '1px solid #e5e7eb', padding: '10px 12px', display: 'flex', gap: 8, background: '#fff' }}>
+      <div style={{ padding: '10px 14px', borderTop: '1px solid #f0f2f5', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 6, color: '#9ca3af' }}>
+          <Bot size={17} style={{ cursor: 'pointer' }} />
+          <Paperclip size={17} style={{ cursor: 'pointer' }} />
+          <Smile size={17} style={{ cursor: 'pointer' }} />
+        </div>
         <input
-          value={value}
-          onChange={onChange}
+          value={value} onChange={onChange}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && onSend()}
-          placeholder={placeholder || 'Type a message…'}
-          style={{ flex: 1, padding: '9px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 13, outline: 'none', background: '#f9fafb' }}
+          placeholder={placeholder || 'Enter your message…'}
+          disabled={disabled}
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: '#374151', background: 'transparent', padding: '2px 0' }}
         />
         <button
-          onClick={onSend}
-          disabled={disabled || !value.trim()}
+          onClick={onSend} disabled={disabled || !value.trim()}
           style={{
-            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-            background: accent || 'linear-gradient(135deg,#7c3aed,#6366f1)',
-            border: 'none', color: '#fff', cursor: 'pointer',
+            width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+            background: (disabled || !value.trim()) ? '#e5e7eb' : 'linear-gradient(135deg,#1d6ef5,#0284c7)',
+            border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            opacity: (disabled || !value.trim()) ? .45 : 1,
+            transition: 'background .2s',
           }}
         >
-          <Send size={16} />
+          <Send size={15} color="#fff" />
         </button>
       </div>
     )
   }
 
-  const BASE = {
+  // ── Bottom tab bar ────────────────────────────────────────────────────────
+  function TabBar({ tabs }) {
+    return (
+      <div style={{ display: 'flex', borderTop: '1px solid #f0f2f5', background: '#fff', flexShrink: 0 }}>
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              flex: 1, padding: '10px 0 8px', border: 'none', background: 'none', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              color: tab === t.id ? '#1d6ef5' : '#9ca3af',
+              borderTop: tab === t.id ? '2px solid #1d6ef5' : '2px solid transparent',
+              fontSize: 10, fontWeight: tab === t.id ? 700 : 500, transition: 'color .15s',
+            }}
+          >
+            <t.Icon size={18} strokeWidth={tab === t.id ? 2.2 : 1.8} />
+            {t.label}
+            {t.badge > 0 && (
+              <span style={{ position: 'absolute', marginTop: -6, marginLeft: 12, background: '#ef4444', color: '#fff', borderRadius: 99, fontSize: 9, fontWeight: 800, padding: '0px 4px', minWidth: 14, textAlign: 'center', lineHeight: '14px' }}>
+                {t.badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  const WINDOW = {
     position: 'fixed', bottom: 100, right: 28, zIndex: 9998,
-    width: 370, borderRadius: 18,
-    background: '#fff', boxShadow: '0 24px 64px rgba(0,0,0,.2)',
+    width: 370, borderRadius: 20,
+    background: '#fff', boxShadow: '0 24px 64px rgba(0,0,0,.18)',
     display: 'flex', flexDirection: 'column', overflow: 'hidden',
     animation: 'slideUp .22s ease',
-    maxHeight: '80vh',
+    maxHeight: '82vh',
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // SUPERADMIN WINDOW — chat on top, pending requests panel below
+  // HOME TAB
   // ══════════════════════════════════════════════════════════════════════════
-  function renderAdminWindow() {
+  function HomeTab() {
     return (
-      <div style={BASE}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div style={{ background: 'linear-gradient(135deg,#0369a1,#0284c7)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <Avatar name={label} size={38} role="superadmin" />
+        {/* New Message card */}
+        <button
+          onClick={() => { setTab('messages') }}
+          style={{
+            width: '100%', borderRadius: 14, padding: '18px 20px',
+            background: 'linear-gradient(135deg,#1d6ef5,#7c3aed)',
+            border: 'none', cursor: 'pointer', textAlign: 'left',
+            display: 'flex', alignItems: 'center', gap: 14,
+            boxShadow: '0 4px 20px rgba(29,110,245,.35)',
+          }}
+        >
+          <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <MessageSquare size={20} color="#fff" />
+          </div>
           <div style={{ flex: 1 }}>
-            <div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>{label}</div>
-            <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 11 }}>
-              {activeSession ? `Chatting with ${activeSession.created_by_name}` : 'Super Admin · Live Support'}
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: 15, marginBottom: 2 }}>New Message</div>
+            <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 12 }}>Start a new conversation</div>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,.6)', fontSize: 18, fontWeight: 300 }}>›</span>
+        </button>
+
+        {/* Status card */}
+        <div style={{ borderRadius: 14, padding: '14px 16px', border: '1.5px solid #bbf7d0', background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Check size={17} color="#fff" strokeWidth={2.5} />
+          </div>
+          <div>
+            <div style={{ color: '#059669', fontWeight: 700, fontSize: 13 }}>Status: All Systems Operational</div>
+            <div style={{ color: '#6b7280', fontSize: 11, marginTop: 2 }}>
+              Vianova Health Platform · {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} UTC
             </div>
           </div>
-          {activeSession && (
-            <button onClick={closeAdminChat} style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', borderRadius: 8, padding: '4px 10px', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-              End
-            </button>
-          )}
-          <button onClick={() => setOpen(false)} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <X size={16} color="#fff" />
-          </button>
         </div>
 
-        {/* ── Active chat area ────────────────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', minHeight: activeSession ? 220 : 80 }}>
-          {activeSession ? (
-            <>
-              {adminMessages.length === 0 && (
-                <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12, padding: '16px 0' }}>
-                  Session started — say hello 👋
-                </div>
-              )}
-              {adminMessages.map((msg, i) => (
-                <Bubble key={msg.id || i} msg={msg} idx={i} myEmail={email} accentColor="linear-gradient(135deg,#0369a1,#0284c7)" />
-              ))}
-              <div ref={adminMsgEndRef} />
-            </>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '16px 0', color: '#9ca3af', gap: 6 }}>
-              <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <MessageCircle size={20} color="#d1d5db" />
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>No active chat</div>
-              <div style={{ fontSize: 11, textAlign: 'center', maxWidth: 200, lineHeight: 1.5 }}>Accept a request below to start helping someone</div>
-            </div>
-          )}
-        </div>
+        {/* Documentation link */}
+        <button
+          onClick={() => window.open('https://github.com/Thebestoo/VianovaHealthCureV3', '_blank')}
+          style={{ width: '100%', borderRadius: 14, padding: '14px 18px', border: '1.5px solid #e5e7eb', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}
+        >
+          <span style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>Documentation</span>
+          <span style={{ color: '#9ca3af', fontSize: 16, transform: 'rotate(45deg)', display: 'inline-block' }}>↗</span>
+        </button>
 
-        {/* ── Input bar (only enabled when active chat) ─────────────────── */}
-        <InputBar
-          value={adminInput}
-          onChange={e => setAdminInput(e.target.value)}
-          onSend={sendAdminMessage}
-          disabled={adminSending || !activeSession}
-          placeholder={activeSession ? 'Type a reply…' : 'Accept a request to start chatting…'}
-          accent="linear-gradient(135deg,#0369a1,#0284c7)"
-        />
-
-        {/* ── Pending Requests Panel ───────────────────────────────────────── */}
-        <div style={{ borderTop: '2px solid #e5e7eb', flexShrink: 0, maxHeight: pendingOpen ? 260 : 48, overflow: 'hidden', transition: 'max-height .25s ease' }}>
-
-          {/* Section header */}
+        {/* Superadmin: quick pending summary */}
+        {role === 'superadmin' && pendingCount > 0 && (
           <button
-            onClick={() => setPendingOpen(o => !o)}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#f9fafb', border: 'none', cursor: 'pointer', borderBottom: pendingOpen && pendingSessions.length ? '1px solid #e5e7eb' : 'none' }}
+            onClick={() => setTab('requests')}
+            style={{ width: '100%', borderRadius: 14, padding: '13px 16px', border: '1.5px solid #fecaca', background: '#fff7f7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>Pending Requests</div>
-              {pendingCount > 0 && (
-                <span style={{ background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800, padding: '1px 7px', borderRadius: 99 }}>
-                  {pendingCount}
-                </span>
-              )}
-              {pendingCount === 0 && (
-                <span style={{ background: '#dcfce7', color: '#059669', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 99 }}>
-                  All clear
-                </span>
-              )}
+            <span style={{ background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 13, width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {pendingCount}
+            </span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#dc2626' }}>Pending chat requests</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>Tap to review and respond</div>
             </div>
-            {pendingOpen ? <ChevronDown size={16} color="#9ca3af" /> : <ChevronUp size={16} color="#9ca3af" />}
+            <span style={{ marginLeft: 'auto', color: '#ef4444', fontSize: 18 }}>›</span>
           </button>
+        )}
 
-          {/* Pending list */}
-          <div style={{ overflowY: 'auto', maxHeight: 210, padding: pendingSessions.length ? '8px 12px 12px' : 0 }}>
-            {pendingSessions.length === 0 && pendingOpen && (
-              <div style={{ textAlign: 'center', padding: '16px', color: '#9ca3af', fontSize: 12 }}>
-                No one waiting right now ✓
-              </div>
-            )}
-            {pendingSessions.map(s => (
-              <div key={s.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', marginBottom: 8, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <Avatar name={s.created_by_name} size={32} role={s.created_by_role} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.created_by_name}</div>
-                    <div style={{ fontSize: 11, color: '#6b7280' }}>
-                      <span style={{ textTransform: 'capitalize' }}>{s.created_by_role}</span> · {fmtTime(s.created_at)}
-                    </div>
-                    {s.subject && (
-                      <div style={{ fontSize: 11, color: '#374151', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        "{s.subject}"
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    onClick={() => acceptSession(s)}
-                    style={{ flex: 1, padding: '6px 0', borderRadius: 8, background: 'linear-gradient(135deg,#059669,#10b981)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
-                  >
-                    <Check size={13} /> Accept
-                  </button>
-                  <button
-                    onClick={() => declineSession(s)}
-                    style={{ flex: 1, padding: '6px 0', borderRadius: 8, background: '#fff', border: '1px solid #fca5a5', color: '#ef4444', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
-                  >
-                    <XCircle size={13} /> Decline
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* Already in active chat? quick link */}
+        {session && session.status === 'active' && (
+          <button
+            onClick={() => setTab('messages')}
+            style={{ width: '100%', borderRadius: 14, padding: '13px 16px', border: '1.5px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}
+          >
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#1d6ef5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <MessageSquare size={14} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#1d6ef5' }}>Resume active chat</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>You have an ongoing conversation</div>
+            </div>
+            <span style={{ marginLeft: 'auto', color: '#1d6ef5', fontSize: 18 }}>›</span>
+          </button>
+        )}
       </div>
     )
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // USER WINDOW
+  // MESSAGES TAB — user side
   // ══════════════════════════════════════════════════════════════════════════
-  function renderUserWindow() {
-    // No session — welcome screen
+  function UserMessagesTab() {
+    // No session
     if (!session) {
       return (
-        <div style={BASE}>
-          <div style={{ background: 'linear-gradient(135deg,#7c3aed,#6366f1)', padding: '20px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Avatar name={label} size={40} role={role} />
-              <div>
-                <div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>{label}</div>
-                <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 12, textTransform: 'capitalize' }}>{role}</div>
-              </div>
-            </div>
-            <button onClick={() => setOpen(false)} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <X size={16} color="#fff" />
-            </button>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 18px' }}>
+          <div style={{ textAlign: 'center', marginBottom: 20, paddingTop: 10 }}>
+            <div style={{ fontSize: 38, marginBottom: 8 }}>💬</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#111827', marginBottom: 6 }}>How can we help?</div>
+            <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>Start a conversation and our support team will connect with you shortly.</div>
           </div>
-
-          <div style={{ padding: '24px 20px' }}>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>💬</div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#111827', marginBottom: 6 }}>How can we help you today?</div>
-              <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>Our support team is here to assist you. Start a chat and we'll connect you with someone shortly.</div>
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Subject (optional)</label>
-              <input
-                value={subject}
-                onChange={e => setSubject(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && startChat()}
-                placeholder="e.g. Question about patient data"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#f9fafb' }}
-              />
-            </div>
-
-            <button onClick={startChat} disabled={starting} style={{ width: '100%', padding: '12px 0', borderRadius: 10, background: 'linear-gradient(135deg,#7c3aed,#6366f1)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: starting ? .6 : 1 }}>
-              {starting ? 'Starting…' : '🚀 Start Chat'}
-            </button>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Subject (optional)</label>
+            <input
+              value={subject} onChange={e => setSubject(e.target.value)} onKeyDown={e => e.key === 'Enter' && startChat()}
+              placeholder="e.g. Question about my data"
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #e5e7eb', fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#f9fafb' }}
+            />
           </div>
+          <button
+            onClick={startChat} disabled={starting}
+            style={{ width: '100%', padding: '12px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0284c7)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: starting ? .6 : 1 }}
+          >
+            {starting ? 'Starting…' : '🚀 Start Chat'}
+          </button>
         </div>
       )
     }
@@ -432,30 +388,15 @@ export default function FloatingChat() {
     // Waiting
     if (session.status === 'waiting') {
       return (
-        <div style={BASE}>
-          <div style={{ background: 'linear-gradient(135deg,#7c3aed,#6366f1)', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Avatar name={label} size={36} role={role} />
-              <div>
-                <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{label}</div>
-                <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 12 }}>Waiting for support…</div>
-              </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 20px', textAlign: 'center' }}>
+          <div style={{ display: 'inline-block', width: 40, height: 40, border: '3px solid #e5e7eb', borderTop: '3px solid #1d6ef5', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: 16 }} />
+          <div style={{ fontWeight: 700, fontSize: 15, color: '#111827', marginBottom: 6 }}>Connecting you to support…</div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>Available 24/7 · Usually within minutes</div>
+          {session.subject && (
+            <div style={{ padding: '8px 16px', background: '#f0f6ff', borderRadius: 8, fontSize: 12, color: '#1d6ef5', fontWeight: 600 }}>
+              "{session.subject}"
             </div>
-            <button onClick={() => setOpen(false)} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <X size={16} color="#fff" />
-            </button>
-          </div>
-
-          <div style={{ padding: '36px 20px', textAlign: 'center' }}>
-            <div style={{ display: 'inline-block', width: 36, height: 36, border: '3px solid #e5e7eb', borderTop: '3px solid #7c3aed', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: 14 }} />
-            <div style={{ fontWeight: 600, fontSize: 14, color: '#111827', marginBottom: 6 }}>Connecting you to support…</div>
-            <div style={{ fontSize: 12, color: '#9ca3af' }}>Available 24/7 · Usually responds in minutes</div>
-            {session.subject && (
-              <div style={{ marginTop: 16, padding: '8px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 12, color: '#6b7280' }}>
-                Topic: <strong>{session.subject}</strong>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       )
     }
@@ -463,112 +404,208 @@ export default function FloatingChat() {
     // Closed / declined
     if (session.status === 'closed' || session.status === 'declined') {
       return (
-        <div style={BASE}>
-          <div style={{ background: 'linear-gradient(135deg,#7c3aed,#6366f1)', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Chat Ended</div>
-            <button onClick={() => setOpen(false)} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <X size={16} color="#fff" />
-            </button>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 44, marginBottom: 12 }}>{session.status === 'declined' ? '😔' : '✅'}</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: '#111827', marginBottom: 8 }}>
+            {session.status === 'declined' ? 'No agents available' : 'Chat ended'}
           </div>
-          <div style={{ padding: '36px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>{session.status === 'declined' ? '😔' : '✅'}</div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: '#111827', marginBottom: 6 }}>
-              {session.status === 'declined' ? 'No support available' : 'Chat ended'}
-            </div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 24, lineHeight: 1.6 }}>
-              {session.status === 'declined'
-                ? 'Sorry, no support agents are available right now. Please try again later.'
-                : 'Thank you for reaching out. Have a great day!'}
-            </div>
-            <button
-              onClick={() => { setSession(null); setMessages([]); setSubject('') }}
-              style={{ padding: '10px 24px', borderRadius: 10, background: 'linear-gradient(135deg,#7c3aed,#6366f1)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
-            >
-              Start New Chat
-            </button>
+          <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6, marginBottom: 24 }}>
+            {session.status === 'declined' ? 'Sorry, no support agents are available right now. Please try again.' : 'Thank you for reaching out. Have a great day!'}
           </div>
+          <button
+            onClick={() => { setSession(null); setMessages([]); setSubject('') }}
+            style={{ padding: '10px 24px', borderRadius: 10, background: 'linear-gradient(135deg,#1d6ef5,#0284c7)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+          >
+            Start New Chat
+          </button>
         </div>
       )
     }
 
     // Active chat
     return (
-      <div style={{ ...BASE, maxHeight: '80vh' }}>
-        <div style={{ background: 'linear-gradient(135deg,#7c3aed,#6366f1)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <Avatar name={session.admin_name || 'Support'} size={34} role="superadmin" />
-          <div style={{ flex: 1 }}>
-            <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{session.admin_name || 'Support'}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80' }} />
-              <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 11 }}>Online</span>
-            </div>
-          </div>
-          <button onClick={closeUserSession} style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', borderRadius: 8, padding: '5px 10px', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-            End Chat
-          </button>
-          <button onClick={() => setOpen(false)} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ChevronDown size={15} color="#fff" />
-          </button>
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+      <>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 4px' }}>
           {messages.length === 0 && (
             <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12, padding: '20px 0' }}>Support has joined. Say hello! 👋</div>
           )}
-          {messages.map((msg, i) => (
-            <Bubble key={msg.id || i} msg={msg} idx={i} myEmail={email} />
-          ))}
+          {messages.map((msg, i) => <Bubble key={msg.id || i} msg={msg} idx={i} myEmail={email} />)}
           <div ref={messagesEndRef} />
         </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 14px 8px' }}>
+          <button onClick={closeUserSession} style={{ fontSize: 11, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>End Chat</button>
+        </div>
+        <ChatInput value={input} onChange={e => setInput(e.target.value)} onSend={sendMessage} disabled={sending} />
+      </>
+    )
+  }
 
-        <InputBar
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onSend={sendMessage}
-          disabled={sending}
-        />
+  // ══════════════════════════════════════════════════════════════════════════
+  // MESSAGES TAB — superadmin side
+  // ══════════════════════════════════════════════════════════════════════════
+  function AdminMessagesTab() {
+    if (!activeSession) {
+      return (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 20px', textAlign: 'center' }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <MessageSquare size={22} color="#d1d5db" />
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#6b7280', marginBottom: 6 }}>No active chat</div>
+          <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6 }}>Accept a request from the <strong>Requests</strong> tab to start helping someone.</div>
+          <button onClick={() => setTab('requests')} style={{ marginTop: 14, padding: '8px 20px', borderRadius: 10, background: 'linear-gradient(135deg,#1d6ef5,#0284c7)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+            View Requests {pendingCount > 0 && `(${pendingCount})`}
+          </button>
+        </div>
+      )
+    }
+
+    return (
+      <>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 4px' }}>
+          {adminMessages.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 12, padding: '20px 0' }}>Session started — say hello 👋</div>
+          )}
+          {adminMessages.map((msg, i) => <Bubble key={msg.id || i} msg={msg} idx={i} myEmail={email} />)}
+          <div ref={adminMsgEndRef} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 14px 8px' }}>
+          <button onClick={closeAdminChat} style={{ fontSize: 11, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>End Chat</button>
+        </div>
+        <ChatInput value={adminInput} onChange={e => setAdminInput(e.target.value)} onSend={sendAdminMessage} disabled={adminSending} />
+      </>
+    )
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // REQUESTS TAB (superadmin only)
+  // ══════════════════════════════════════════════════════════════════════════
+  function RequestsTab() {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+        {pendingSessions.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '40px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#059669', marginBottom: 6 }}>All clear!</div>
+            <div style={{ fontSize: 12, color: '#9ca3af' }}>No pending chat requests right now.</div>
+          </div>
+        ) : pendingSessions.map(s => (
+          <div key={s.id} style={{ background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 14, padding: '13px 14px', marginBottom: 10, boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 10 }}>
+              <Avatar name={s.created_by_name} size={38} role={s.created_by_role} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.created_by_name}</div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>
+                  <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>{s.created_by_role}</span> · {fmtTime(s.created_at)}
+                </div>
+                {s.subject && <div style={{ fontSize: 12, color: '#374151', marginTop: 3, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{s.subject}"</div>}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => acceptSession(s)}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: 'linear-gradient(135deg,#1d6ef5,#0284c7)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, boxShadow: '0 2px 8px rgba(29,110,245,.3)' }}
+              >
+                <Check size={14} /> Accept
+              </button>
+              <button
+                onClick={() => declineSession(s)}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: '#fff', border: '1.5px solid #fca5a5', color: '#ef4444', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+              >
+                <XCircle size={14} /> Decline
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     )
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Chat header (blue gradient with wave + "We are online") ───────────────
+  function ChatHeader({ name, subRole, showEndBtn, onEnd }) {
+    return (
+      <div style={{ flexShrink: 0 }}>
+        <div style={{ background: 'linear-gradient(135deg,#1d6ef5,#0284c7)', padding: '16px 16px 0', display: 'flex', alignItems: 'center', gap: 11 }}>
+          <Avatar name={name} size={40} role={subRole} />
+          <div style={{ flex: 1 }}>
+            <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 11, marginBottom: 1 }}>Chat with</div>
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>{name}</div>
+          </div>
+          <MoreVertical size={18} color="rgba(255,255,255,.7)" style={{ cursor: 'pointer' }} />
+          <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 2 }}>
+            <ChevronDown size={20} color="rgba(255,255,255,.8)" />
+          </button>
+        </div>
+        <Wave color="#1d6ef5" />
+        <div style={{ background: '#fff', padding: '4px 16px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+          <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 500 }}>We are online!</span>
+          {showEndBtn && (
+            <button onClick={onEnd} style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>End</button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Default header (home / non-chat tabs) ─────────────────────────────────
+  function DefaultHeader() {
+    return (
+      <div style={{ flexShrink: 0 }}>
+        <div style={{ background: 'linear-gradient(135deg,#1d6ef5,#0284c7)', padding: '16px 16px 0', display: 'flex', alignItems: 'center', gap: 11 }}>
+          <Avatar name={label} size={40} role={role} />
+          <div style={{ flex: 1 }}>
+            <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 11 }}>Welcome back,</div>
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>{label}</div>
+          </div>
+          <button onClick={() => setOpen(false)} style={{ background: 'rgba(255,255,255,.18)', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={16} color="#fff" />
+          </button>
+        </div>
+        <Wave color="#1d6ef5" />
+      </div>
+    )
+  }
+
+  // ── Decide which header + which content to show ───────────────────────────
+  const isUserActiveChat = role !== 'superadmin' && session && session.status === 'active'
+  const isAdminActiveChat = role === 'superadmin' && activeSession && tab === 'messages'
+
+  const userTabs = [
+    { id: 'home',     label: 'Home',     Icon: Home },
+    { id: 'messages', label: 'Messages', Icon: MessageSquare },
+  ]
+  const adminTabs = [
+    { id: 'home',     label: 'Home',     Icon: Home },
+    { id: 'messages', label: 'Messages', Icon: MessageSquare },
+    { id: 'requests', label: 'Requests', Icon: Inbox, badge: pendingCount },
+  ]
+
   return (
     <>
       <style>{`
-        @keyframes chatPulse {
-          0%   { transform: scale(1); opacity: 1; }
-          100% { transform: scale(1.7); opacity: 0; }
-        }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(16px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes chatPulse { 0% { transform:scale(1);opacity:1 } 100% { transform:scale(1.7);opacity:0 } }
+        @keyframes slideUp   { from { opacity:0;transform:translateY(16px) } to { opacity:1;transform:translateY(0) } }
+        @keyframes spin      { to { transform:rotate(360deg) } }
       `}</style>
 
-      {/* Floating button */}
+      {/* ── Floating button ── */}
       <button
         onClick={() => setOpen(o => !o)}
         style={{
           position: 'fixed', bottom: 28, right: 28, zIndex: 9999,
           width: 60, height: 60, borderRadius: '50%',
-          background: 'linear-gradient(135deg,#7c3aed,#6366f1)',
+          background: 'linear-gradient(135deg,#1d6ef5,#0284c7)',
           border: 'none', cursor: 'pointer',
-          boxShadow: '0 8px 32px rgba(124,58,237,.5)',
+          boxShadow: '0 8px 32px rgba(29,110,245,.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'transform .15s, box-shadow .15s',
         }}
         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
       >
         {open ? <X size={24} color="#fff" /> : <MessageCircle size={26} color="#fff" />}
-
         {!open && pendingCount === 0 && (
-          <span style={{ position: 'absolute', inset: -4, borderRadius: '50%', border: '2px solid rgba(124,58,237,.4)', animation: 'chatPulse 2s ease-out infinite' }} />
+          <span style={{ position: 'absolute', inset: -4, borderRadius: '50%', border: '2px solid rgba(29,110,245,.4)', animation: 'chatPulse 2s ease-out infinite' }} />
         )}
-
         {!open && pendingCount > 0 && (
           <span style={{ position: 'absolute', top: -4, right: -4, width: 20, height: 20, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff' }}>
             {pendingCount}
@@ -576,8 +613,40 @@ export default function FloatingChat() {
         )}
       </button>
 
-      {/* Chat window */}
-      {open && (role === 'superadmin' ? renderAdminWindow() : renderUserWindow())}
+      {/* ── Chat window ── */}
+      {open && (
+        <div style={WINDOW}>
+
+          {/* Header — blue chat header when in active chat, default otherwise */}
+          {isUserActiveChat && tab === 'messages' ? (
+            <ChatHeader
+              name={session.admin_name || 'Support'}
+              subRole="superadmin"
+              showEndBtn
+              onEnd={closeUserSession}
+            />
+          ) : isAdminActiveChat ? (
+            <ChatHeader
+              name={activeSession.created_by_name}
+              subRole={activeSession.created_by_role}
+              showEndBtn
+              onEnd={closeAdminChat}
+            />
+          ) : (
+            <DefaultHeader />
+          )}
+
+          {/* Tab content */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+            {tab === 'home' && <HomeTab />}
+            {tab === 'messages' && (role === 'superadmin' ? <AdminMessagesTab /> : <UserMessagesTab />)}
+            {tab === 'requests' && role === 'superadmin' && <RequestsTab />}
+          </div>
+
+          {/* Bottom tab bar */}
+          <TabBar tabs={role === 'superadmin' ? adminTabs : userTabs} />
+        </div>
+      )}
     </>
   )
 }
