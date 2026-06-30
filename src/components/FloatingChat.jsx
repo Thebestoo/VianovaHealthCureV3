@@ -14,7 +14,7 @@ const fmtDate = ts => {
 /* ─── Profanity filter ───────────────────────────────────────────── */
 const BAD_WORDS = ['retard', 'pussy', 'fuck', 'fucker', 'fucking', 'fucked', 'fucks']
 const hasProfanity = text => BAD_WORDS.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text))
-const TIMEOUT_MS = 5 * 60 * 1000 // 5 minute timeout after 3 strikes
+const TIMEOUT_MS = 15 * 60 * 1000 // 15 minute timeout after 3 strikes
 
 /* ─── Avatar ─────────────────────────────────────────────────────── */
 const GRAD = {
