@@ -4223,9 +4223,14 @@ app.post('/api/chat/sessions/:id/accept', auth, async (req, res) => {
   const user = req.user
   await db.execute({ sql: `UPDATE chat_sessions SET status='active', admin_email=?, admin_name=?, accepted_at=? WHERE id=?`,
     args: [req.apiKey, user?.name || req.apiKey, now, req.params.id] })
-  const msgId = randomUUID()
+  // Vianova Support hands off to the real admin
+  const botMsgId = randomUUID()
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
-    args: [msgId, req.params.id, 'system', 'System', 'system', `✅ ${user?.name || 'Admin'} has joined the chat.`, now] })
+    args: [botMsgId, req.params.id, 'system', 'Vianova Support', 'system', `A live admin has joined your chat — I'll step aside now. You're in good hands! 👋\n\nHanding over to ${user?.name || 'Admin'}…`, now] })
+  const sysMsgId = randomUUID()
+  const sysNow = new Date(Date.now() + 1).toISOString()
+  await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [sysMsgId, req.params.id, 'system', 'System', 'system', `✅ ${user?.name || 'Admin'} has joined the chat.`, sysNow] })
   res.json({ ok: true })
 })
 
