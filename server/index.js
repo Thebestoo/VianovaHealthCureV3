@@ -4148,17 +4148,20 @@ app.post('/api/nlp-notes/deidentify-batch', auth, aiLimiter, async (req, res) =>
 })
 
 // ── Floating Chat Widget ───────────────────────────────────────────────────────
+// Session statuses: open → (escalated via !admincall) → active (admin joined) → closed
 
+// Create ticket — opens immediately, no approval needed
 app.post('/api/chat/sessions', auth, async (req, res) => {
   const { subject } = req.body
   const id = randomUUID()
   const now = new Date().toISOString()
   const user = req.user
-  await db.execute({ sql: `INSERT INTO chat_sessions (id, created_by_email, created_by_name, created_by_role, subject, created_at) VALUES (?,?,?,?,?,?)`,
-    args: [id, req.apiKey, user?.name || req.apiKey, req.keyRole, subject || 'General inquiry', now] })
-  res.json({ id, status: 'waiting', created_at: now })
+  await db.execute({ sql: `INSERT INTO chat_sessions (id, created_by_email, created_by_name, created_by_role, subject, status, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [id, req.apiKey, user?.name || req.apiKey, req.keyRole, subject || 'General inquiry', 'open', now] })
+  res.json({ id, status: 'open', created_at: now })
 })
 
+// List sessions (user sees own, superadmin sees all)
 app.get('/api/chat/sessions', auth, async (req, res) => {
   let rows
   if (req.keyRole === 'superadmin') {
@@ -4169,20 +4172,42 @@ app.get('/api/chat/sessions', auth, async (req, res) => {
   res.json(rows)
 })
 
+// Pending = only escalated (!admincall) sessions — not all new chats
 app.get('/api/chat/sessions/pending', auth, async (req, res) => {
   if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
-  const rows = (await db.execute({ sql: `SELECT * FROM chat_sessions WHERE status = 'waiting' ORDER BY created_at DESC`, args: [] })).rows
+  const rows = (await db.execute({ sql: `SELECT * FROM chat_sessions WHERE status = 'escalated' ORDER BY created_at DESC`, args: [] })).rows
   res.json({ count: rows.length, sessions: rows })
+})
+
+// All tickets for admin view
+app.get('/api/chat/tickets', auth, async (req, res) => {
+  if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
+  const rows = (await db.execute({ sql: `SELECT cs.*, (SELECT COUNT(*) FROM chat_messages cm WHERE cm.session_id = cs.id) as msg_count FROM chat_sessions cs ORDER BY cs.created_at DESC`, args: [] })).rows
+  res.json(rows)
 })
 
 app.get('/api/chat/stats', auth, async (req, res) => {
   if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
-  const pending = (await db.execute({ sql: `SELECT COUNT(*) as c FROM chat_sessions WHERE status='waiting'`, args: [] })).rows[0].c
-  const active  = (await db.execute({ sql: `SELECT COUNT(*) as c FROM chat_sessions WHERE status='active'`, args: [] })).rows[0].c
-  const total   = (await db.execute({ sql: `SELECT COUNT(*) as c FROM chat_sessions`, args: [] })).rows[0].c
-  res.json({ pending, active, total })
+  const escalated = (await db.execute({ sql: `SELECT COUNT(*) as c FROM chat_sessions WHERE status='escalated'`, args: [] })).rows[0].c
+  const active    = (await db.execute({ sql: `SELECT COUNT(*) as c FROM chat_sessions WHERE status='active'`, args: [] })).rows[0].c
+  const total     = (await db.execute({ sql: `SELECT COUNT(*) as c FROM chat_sessions`, args: [] })).rows[0].c
+  res.json({ escalated, active, total })
 })
 
+// !admincall — escalate ticket so admin gets notified
+app.post('/api/chat/sessions/:id/admincall', auth, async (req, res) => {
+  const session = (await db.execute({ sql: 'SELECT * FROM chat_sessions WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+  if (session.created_by_email !== req.apiKey) return res.status(403).json({ error: 'Not authorized' })
+  const now = new Date().toISOString()
+  await db.execute({ sql: `UPDATE chat_sessions SET status='escalated' WHERE id=?`, args: [req.params.id] })
+  const msgId = randomUUID()
+  await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [msgId, req.params.id, 'system', 'System', 'system', '🚨 Admin call requested — a real admin will join shortly.', now] })
+  res.json({ ok: true })
+})
+
+// Admin accepts escalated ticket → joins as active participant
 app.post('/api/chat/sessions/:id/accept', auth, async (req, res) => {
   if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
   const now = new Date().toISOString()
@@ -4191,17 +4216,18 @@ app.post('/api/chat/sessions/:id/accept', auth, async (req, res) => {
     args: [req.apiKey, user?.name || req.apiKey, now, req.params.id] })
   const msgId = randomUUID()
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
-    args: [msgId, req.params.id, 'system', 'System', 'system', 'Support joined the chat', now] })
+    args: [msgId, req.params.id, 'system', 'System', 'system', `✅ ${user?.name || 'Admin'} has joined the chat.`, now] })
   res.json({ ok: true })
 })
 
+// Admin declines escalated ticket
 app.post('/api/chat/sessions/:id/decline', auth, async (req, res) => {
   if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
   const now = new Date().toISOString()
-  await db.execute({ sql: `UPDATE chat_sessions SET status='declined' WHERE id=?`, args: [req.params.id] })
+  await db.execute({ sql: `UPDATE chat_sessions SET status='open' WHERE id=?`, args: [req.params.id] })
   const msgId = randomUUID()
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
-    args: [msgId, req.params.id, 'system', 'System', 'system', 'No support available right now', now] })
+    args: [msgId, req.params.id, 'system', 'System', 'system', 'No admin available right now. Your messages are saved.', now] })
   res.json({ ok: true })
 })
 
@@ -4232,21 +4258,6 @@ app.post('/api/chat/sessions/:id/messages', auth, async (req, res) => {
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
     args: [id, req.params.id, req.apiKey, req.user?.name || req.apiKey, req.keyRole, message.trim(), now] })
   res.json({ id, session_id: req.params.id, sender_email: req.apiKey, sender_name: req.user?.name || req.apiKey, sender_role: req.keyRole, message: message.trim(), created_at: now })
-})
-
-// ── !admincall — escalate session to urgent ───────────────────────────────────
-app.post('/api/chat/sessions/:id/admincall', auth, async (req, res) => {
-  const session = (await db.execute({ sql: 'SELECT * FROM chat_sessions WHERE id = ?', args: [req.params.id] })).rows[0]
-  if (!session) return res.status(404).json({ error: 'Session not found' })
-  if (session.created_by_email !== req.apiKey) return res.status(403).json({ error: 'Not authorized' })
-  const now = new Date().toISOString()
-  // Mark session urgent
-  await db.execute({ sql: `UPDATE chat_sessions SET subject = '🚨 URGENT: ' || COALESCE(subject,'General inquiry'), status = CASE WHEN status = 'waiting' THEN 'waiting' ELSE status END WHERE id = ?`, args: [req.params.id] })
-  // Insert urgent system message visible in chat
-  const msgId = randomUUID()
-  await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
-    args: [msgId, req.params.id, 'system', 'System', 'system', '🚨 URGENT: This user has requested immediate admin assistance. A real admin will join shortly.', now] })
-  res.json({ ok: true })
 })
 
 // ── 404 for unknown API routes ────────────────────────────────────────────────
