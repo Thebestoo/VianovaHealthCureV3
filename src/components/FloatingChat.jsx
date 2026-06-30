@@ -491,7 +491,12 @@ export default function FloatingChat() {
     const text = input.trim()
     if (!text || sending || !session) return
     if (text.toLowerCase() === '!admincall') {
-      setInput(''); setSending(true)
+      setInput('')
+      // already called or admin already joined — don't send again
+      if (session.status === 'escalated' || session.status === 'active') {
+        setTimeout(() => inputRef.current?.focus(), 30); return
+      }
+      setSending(true)
       try {
         await api(`/api/chat/sessions/${session.id}/admincall`, { method: 'POST' })
         setSession(p => ({ ...p, status: 'escalated' }))

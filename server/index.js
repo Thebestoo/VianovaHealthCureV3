@@ -4208,6 +4208,7 @@ app.post('/api/chat/sessions/:id/admincall', auth, async (req, res) => {
   const session = (await db.execute({ sql: 'SELECT * FROM chat_sessions WHERE id = ?', args: [req.params.id] })).rows[0]
   if (!session) return res.status(404).json({ error: 'Session not found' })
   if (session.created_by_email !== req.apiKey) return res.status(403).json({ error: 'Not authorized' })
+  if (session.status === 'escalated' || session.status === 'active') return res.json({ ok: true, already: true })
   const now = new Date().toISOString()
   await db.execute({ sql: `UPDATE chat_sessions SET status='escalated' WHERE id=?`, args: [req.params.id] })
   const msgId = randomUUID()
