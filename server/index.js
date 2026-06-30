@@ -13,7 +13,9 @@ import { dirname, join } from 'path'
 import { existsSync } from 'fs'
 import Groq from 'groq-sdk'
 import bcrypt from 'bcryptjs'
-import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatmentEdited } from './mailer.js'
+import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatmentEdited,
+         tplAppointmentReminder, tplUserDeactivated, tplAdverseEventDetected,
+         tplConsentExpiring, tplSystemError } from './mailer.js'
 
 const require = createRequire(import.meta.url)
 const { generateCasesReport } = require('./report.cjs')
@@ -311,46 +313,30 @@ async function notify(email, tpl) {
 // Delivers to notify_email if set, otherwise falls back to login email
 async function notifyAll(tpl, { skipEmail } = {}) {
   const users = (await db.execute({ sql: 'SELECT email, notify_email FROM users WHERE active = 1', args: [] })).rows
-  users.forEach(u => {
-    if (skipEmail && u.email === skipEmail) return
-    const dest = u.notify_email || u.email
-    if (!dest) return
-    sendEmail({ to: dest, ...tpl }).then(r => {
-      if (!r.ok) logError('email_failed', r.error, 'notifyAll()', null, { to: dest, subject: tpl.subject })
-      else logUpdate('email_sent', `Email sent to ${dest}: ${tpl.subject}`, { to: dest, subject: tpl.subject })
-    }).catch(() => {})
-  })
+  const sends = users
+    .filter(u => !(skipEmail && u.email === skipEmail))
+    .map(u => {
+      const dest = u.notify_email?.trim() || u.email?.trim()
+      if (!dest) return Promise.resolve()
+      return sendEmail({ to: dest, ...tpl }).then(r => {
+        if (!r.ok) logError('email_failed', r.error, 'notifyAll()', null, { to: dest, subject: tpl.subject })
+        else logUpdate('email_sent', `Email sent to ${dest}: ${tpl.subject}`, { to: dest, subject: tpl.subject })
+      }).catch(e => logError('email_failed', e.message, 'notifyAll()', null, { to: dest }))
+    })
+  await Promise.allSettled(sends)
 }
 
 // Send a system-error alert to all superadmins + the given doctor email
 async function notifySystemError(errorMsg, route, submitterEmail) {
-  const tpl = {
-    subject: '⚠️ Vianova System Error',
-    html: `
-      <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px">
-        <div style="background:#7f1d1d;color:#fff;padding:20px 24px;border-radius:12px 12px 0 0">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin-bottom:4px">Vianova Health · System Alert</div>
-          <div style="font-size:20px;font-weight:700">System Error Detected</div>
-        </div>
-        <div style="background:#fff;border:1px solid #fecaca;border-top:none;padding:20px 24px;border-radius:0 0 12px 12px">
-          <table style="width:100%;border-collapse:collapse;font-size:13px">
-            <tr><td style="padding:7px 0;color:#64748b;width:120px">Route</td><td style="color:#0f172a;font-family:monospace">${route || '—'}</td></tr>
-            <tr><td style="padding:7px 0;color:#64748b">Error</td><td style="color:#dc2626;font-weight:600">${errorMsg}</td></tr>
-            <tr><td style="padding:7px 0;color:#64748b">Triggered by</td><td style="color:#0f172a">${submitterEmail || '—'}</td></tr>
-            <tr><td style="padding:7px 0;color:#64748b">Time</td><td style="color:#0f172a">${new Date().toLocaleString()}</td></tr>
-          </table>
-          <div style="margin-top:16px;font-size:12px;color:#94a3b8">Check the Logs &amp; Analytics → Errors tab for full details.</div>
-        </div>
-      </div>
-    `
-  }
+  const tpl = tplSystemError({ errorMsg, route, triggeredBy: submitterEmail })
   // Email all superadmins
   const admins = (await db.execute({ sql: "SELECT email FROM users WHERE role = 'superadmin' AND active = 1", args: [] })).rows
-  admins.forEach(u => { sendEmail({ to: u.email, ...tpl }).catch(() => {}) })
+  const sends = admins.map(u => sendEmail({ to: u.email, ...tpl }).catch(() => {}))
   // Also email the submitter if they're not a superadmin
   if (submitterEmail && !admins.find(u => u.email === submitterEmail)) {
-    sendEmail({ to: submitterEmail, ...tpl }).catch(() => {})
+    sends.push(sendEmail({ to: submitterEmail, ...tpl }).catch(() => {}))
   }
+  await Promise.allSettled(sends)
 }
 
 // ── new auth middleware ────────────────────────────────────────────────────────
@@ -1123,31 +1109,11 @@ app.patch('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
       const csvString = csvRows.join('\n')
       const csvBase64 = Buffer.from(csvString).toString('base64')
 
-      const subject = `Account Deactivated — ${user.name} — Full History Export`
-      const html = `
-        <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px">
-          <h2 style="color:#0f172a">Account Deactivated</h2>
-          <p>User <strong>${user.name}</strong> (${user.email}) has been deactivated.</p>
-          <table style="font-size:13px;border-collapse:collapse;width:100%">
-            <tr><td style="color:#64748b;padding:4px 0;width:140px">Total cases</td><td>${cases.length}</td></tr>
-            <tr><td style="color:#64748b;padding:4px 0">Sessions</td><td>${sessionCount}</td></tr>
-            <tr><td style="color:#64748b;padding:4px 0">OTP codes</td><td>${otpCount}</td></tr>
-          </table>
-          <p style="font-size:12px;color:#94a3b8;margin-top:16px">Full case history is attached as a CSV.</p>
-        </div>`
+      const deactivationTpl = tplUserDeactivated({ userName: user.name, userEmail: user.email, deactivatedBy: req.apiKey })
       const attachments = [{ name: `${user.email}-history.csv`, content: csvBase64 }]
 
-      // Notify superadmins
-      const admins = (await db.execute({ sql: "SELECT email, notify_email FROM users WHERE role = 'superadmin' AND active = 1", args: [] })).rows
-      for (const a of admins) {
-        const dest = a.notify_email || a.email
-        sendEmail({ to: dest, subject, html, attachments }).catch(() => {})
-      }
-      // Also notify the deactivated user
-      const userDest = user.notify_email || user.email
-      if (userDest && !admins.find(a => (a.notify_email || a.email) === userDest)) {
-        sendEmail({ to: userDest, subject, html, attachments }).catch(() => {})
-      }
+      // Notify all active users (superadmins + doctors)
+      await notifyAll({ ...deactivationTpl, attachments })
 
       // Delete all sessions for user
       await db.execute({ sql: 'DELETE FROM sessions WHERE user_id = ?', args: [req.params.id] })
@@ -1890,20 +1856,16 @@ app.post('/api/appointments/:id/remind', auth, async (req, res) => {
   if (!appt) return res.status(404).json({ error: 'Not found' })
   if (!appt.patient_email) return res.status(400).json({ error: 'Patient has no email on record' })
 
-  const date = new Date(appt.appointment_date).toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   await sendEmail({
     to: appt.patient_email,
-    subject: `Appointment Reminder: ${appt.appointment_type}`,
-    html: `<p>Dear ${appt.patient_name},</p>
-<p>This is a reminder of your upcoming appointment:</p>
-<ul>
-  <li><strong>Type:</strong> ${appt.appointment_type}</li>
-  <li><strong>Date &amp; Time:</strong> ${date}</li>
-  ${appt.provider ? `<li><strong>Provider:</strong> ${appt.provider}</li>` : ''}
-  ${appt.location ? `<li><strong>Location:</strong> ${appt.location}</li>` : ''}
-  ${appt.duration_minutes ? `<li><strong>Duration:</strong> ${appt.duration_minutes} minutes</li>` : ''}
-</ul>
-<p>Please contact us if you need to reschedule.<br/>Vianova Health</p>`
+    ...tplAppointmentReminder({
+      patientName: appt.patient_name,
+      appointmentType: appt.appointment_type,
+      appointmentDate: appt.appointment_date,
+      provider: appt.provider,
+      location: appt.location,
+      durationMinutes: appt.duration_minutes,
+    })
   })
   await db.execute({ sql: 'UPDATE appointments SET reminder_sent = 1 WHERE id = ?', args: [req.params.id] })
   res.json({ ok: true })
@@ -2251,6 +2213,16 @@ app.post('/api/adverse-events', auth, async (req, res) => {
       sql: 'INSERT INTO adverse_events (id, patient_id, owner_email, event_type, severity, suspected_medication, description, detected_at, detection_method, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       args: [id, patient_id, req.apiKey, event_type, severity || 'moderate', suspected_medication || null, description, detected_at || now, 'manual', 'open', now]
     })
+    // Notify all users of the adverse event (fire-and-forget)
+    const aePatient = (await db.execute({ sql: 'SELECT name FROM gen_patients WHERE id = ?', args: [patient_id] })).rows[0]
+    notifyAll(tplAdverseEventDetected({
+      patientId: patient_id,
+      patientName: aePatient?.name || patient_id,
+      eventType: event_type,
+      severity: severity || 'moderate',
+      medication: suspected_medication,
+      detectedBy: req.apiKey,
+    })).catch(() => {})
     // AI causality assessment
     try {
       const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ?', args: [patient_id] })).rows[0]
@@ -3660,6 +3632,9 @@ app.get('/api/consent/audit', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Simple in-memory set to avoid spamming consent expiry emails on repeated calls
+const _consentExpiryNotifiedToday = new Set()
+
 // GET /api/consent/expiring — consents expiring in next 30 days
 app.get('/api/consent/expiring', auth, async (req, res) => {
   try {
@@ -3668,6 +3643,26 @@ app.get('/api/consent/expiring', auth, async (req, res) => {
       args: [req.apiKey]
     })).rows
     res.json({ consents: rows })
+
+    // Fire-and-forget: send consent expiry emails for consents within 7 days
+    const today = new Date().toISOString().slice(0, 10)
+    const urgentRows = rows.filter(c => {
+      if (!c.expires_at) return false
+      const daysLeft = Math.ceil((new Date(c.expires_at) - new Date()) / (1000 * 60 * 60 * 24))
+      return daysLeft <= 7
+    })
+    urgentRows.forEach(c => {
+      const key = `${c.id}:${today}`
+      if (_consentExpiryNotifiedToday.has(key)) return
+      _consentExpiryNotifiedToday.add(key)
+      const daysLeft = Math.ceil((new Date(c.expires_at) - new Date()) / (1000 * 60 * 60 * 24))
+      notifyAll(tplConsentExpiring({
+        patientName: c.patient_name || c.patient_id,
+        consentType: c.consent_type,
+        expiresAt: c.expires_at,
+        daysLeft,
+      })).catch(() => {})
+    })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

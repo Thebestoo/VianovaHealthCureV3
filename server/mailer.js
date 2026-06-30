@@ -1,24 +1,20 @@
 /**
- * mailer.js — sends via Resend REST API (HTTPS, no SMTP, no IPv6 issues)
- * Fallback: nodemailer Gmail if RESEND_API_KEY is not set.
+ * mailer.js — Vianova Health email system
  *
- * Required env var:  RESEND_API_KEY=re_xxxxx
- * Optional from:     RESEND_FROM   (default: onboarding@resend.dev)
- *
- * Resend free tier: 3,000 emails/month, 100/day — https://resend.com
+ * Provider priority: Gmail SMTP -> Brevo -> Resend
+ * Sender is ALWAYS "Vianova Health" <vianova.healthtest@gmail.com>
  */
 
 import nodemailer from 'nodemailer'
 import { lookup as dnsLookup } from 'dns'
 
+const GMAIL_USER  = process.env.GMAIL_USER
+const GMAIL_PASS  = process.env.GMAIL_PASS
 const BREVO_KEY   = process.env.BREVO_API_KEY
 const RESEND_KEY  = process.env.RESEND_API_KEY
-const RESEND_FROM = process.env.RESEND_FROM || 'Vianova Health <onboarding@resend.dev>'
 
-const GMAIL_USER = process.env.GMAIL_USER
-const GMAIL_PASS = process.env.GMAIL_PASS
 const SENDER_NAME  = 'Vianova Health'
-const SENDER_EMAIL = process.env.BREVO_FROM || GMAIL_USER || 'vianova.healthtest@gmail.com'
+const SENDER_EMAIL = 'vianova.healthtest@gmail.com'
 
 let gmailTransporter = null
 
@@ -38,6 +34,22 @@ function getGmailTransporter() {
   return gmailTransporter
 }
 
+async function sendViaGmail(to, subject, html, text) {
+  if (!GMAIL_USER || !GMAIL_PASS) return { ok: false, error: 'Gmail not configured' }
+  try {
+    await getGmailTransporter().sendMail({
+      from: `"${SENDER_NAME}" <${SENDER_EMAIL}>`,
+      to, subject,
+      html: html || `<p>${text || subject}</p>`,
+      text: text || subject,
+    })
+    return { ok: true }
+  } catch (err) {
+    gmailTransporter = null
+    return { ok: false, error: err.message }
+  }
+}
+
 /**
  * Send an email.
  * Returns { ok: true } or { ok: false, error: string }
@@ -45,7 +57,12 @@ function getGmailTransporter() {
 export async function sendEmail({ to, subject, html, text, attachments }) {
   if (!to) return { ok: false, error: 'No recipient email' }
 
-  // ── Brevo (preferred) ──────────────────────────────────────────────────────
+  // ── Gmail SMTP (primary) ───────────────────────────────────────────────────
+  if (GMAIL_USER && GMAIL_PASS) {
+    return sendViaGmail(to, subject, html, text)
+  }
+
+  // ── Brevo (secondary) ──────────────────────────────────────────────────────
   if (BREVO_KEY) {
     try {
       const body = {
@@ -59,23 +76,18 @@ export async function sendEmail({ to, subject, html, text, attachments }) {
       }
       const res = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
-        headers: {
-          'api-key': BREVO_KEY,
-          'content-type': 'application/json',
-        },
+        headers: { 'api-key': BREVO_KEY, 'content-type': 'application/json' },
         body: JSON.stringify(body),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        return { ok: false, error: data.message || `Brevo HTTP ${res.status}` }
-      }
+      if (!res.ok) return { ok: false, error: data.message || `Brevo HTTP ${res.status}` }
       return { ok: true }
     } catch (err) {
       return { ok: false, error: `Brevo fetch error: ${err.message}` }
     }
   }
 
-  // ── Resend (fallback) ──────────────────────────────────────────────────────
+  // ── Resend (tertiary, requires verified domain) ────────────────────────────
   if (RESEND_KEY) {
     try {
       const res = await fetch('https://api.resend.com/emails', {
@@ -85,7 +97,7 @@ export async function sendEmail({ to, subject, html, text, attachments }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: RESEND_FROM,
+          from: `${SENDER_NAME} <${SENDER_EMAIL}>`,
           to: [to],
           subject,
           html: html || `<p>${text || subject}</p>`,
@@ -93,6 +105,10 @@ export async function sendEmail({ to, subject, html, text, attachments }) {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
+        // Domain not verified — skip
+        if (res.status === 403 || res.status === 422) {
+          return { ok: false, error: `Resend domain not verified: ${data.message || data.error}` }
+        }
         return { ok: false, error: data.message || data.error || `Resend HTTP ${res.status}` }
       }
       return { ok: true }
@@ -101,131 +117,369 @@ export async function sendEmail({ to, subject, html, text, attachments }) {
     }
   }
 
-  // ── Gmail SMTP fallback ────────────────────────────────────────────────────
-  if (!GMAIL_USER || !GMAIL_PASS) {
-    return { ok: false, error: 'No email provider configured (set RESEND_API_KEY or GMAIL_USER+GMAIL_PASS)' }
-  }
-  try {
-    await getGmailTransporter().sendMail({
-      from: `"Vianova Health" <${GMAIL_USER}>`,
-      to, subject,
-      html: html || `<p>${text || subject}</p>`,
-      text: text || subject,
-    })
-    return { ok: true }
-  } catch (err) {
-    gmailTransporter = null   // reset so next attempt creates a fresh transporter
-    return { ok: false, error: err.message }
-  }
+  return { ok: false, error: 'No email provider configured (set GMAIL_USER+GMAIL_PASS, BREVO_API_KEY, or RESEND_API_KEY)' }
 }
 
-/* ── Email templates ── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   SHARED HTML BUILDER
+   ───────────────────────────────────────────────────────────────────────────── */
 
-export function tplNewCase({ caseId, label, age, sex, complaint, confidence, emergency }) {
-  const urgentBanner = emergency
-    ? `<div style="background:#fee2e2;border-left:4px solid #dc2626;padding:12px 16px;margin-bottom:16px;border-radius:4px;color:#7f1d1d;font-weight:600;">
-         ⚠ EMERGENCY / URGENT — Immediate review required
-       </div>`
-    : ''
+const HEARTBEAT_SVG = `<svg width="16" height="12" viewBox="0 0 32 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin:0 6px">
+  <polyline points="0,12 6,12 9,4 13,20 17,8 20,16 24,12 32,12" stroke="rgba(255,255,255,0.7)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`
+
+function fmtNow() {
+  return new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function alertPanel({ borderColor, bgColor, textColor, title, content }) {
+  return `
+<div style="border-left:4px solid ${borderColor};background:${bgColor};border-radius:6px;padding:12px 16px;margin:14px 0;">
+  ${title ? `<div style="font-size:12px;font-weight:700;color:${textColor};text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">${title}</div>` : ''}
+  <div style="font-size:13.5px;color:${textColor};line-height:1.5;">${content}</div>
+</div>`
+}
+
+/**
+ * Build a full HTML email.
+ *
+ * @param {object} opts
+ * @param {string}   opts.headerGradient   - CSS gradient string for header
+ * @param {string}   opts.title            - Main heading in header
+ * @param {string}   [opts.subtitle]       - Subtitle under heading
+ * @param {string}   [opts.accentColor]    - Accent for button / highlights (#hex)
+ * @param {Array}    [opts.rows]           - Array of { label, value, valueColor? }
+ * @param {Array}    [opts.alertPanels]    - Array of { borderColor, bgColor, textColor, title?, content }
+ * @param {string}   [opts.actionUrl]      - CTA button URL
+ * @param {string}   [opts.actionLabel]    - CTA button text
+ * @param {string[]} [opts.extraSections]  - Raw HTML strings inserted after rows
+ */
+function buildEmail({ headerGradient, title, subtitle, accentColor = '#0284c7', rows = [], alertPanels = [], actionUrl, actionLabel, extraSections = [] }) {
+  const tableRows = rows.map((r, i) => `
+    <tr style="${i % 2 === 1 ? 'background:#f8fafc;' : ''}">
+      <td style="padding:9px 10px;color:#64748b;width:130px;font-size:13px;vertical-align:top;">${r.label}</td>
+      <td style="padding:9px 10px;color:${r.valueColor || '#0f172a'};font-weight:600;font-size:13px;">${r.value}</td>
+    </tr>`).join('')
+
+  const panelsHtml = alertPanels.map(p => alertPanel(p)).join('')
+
+  const btnHtml = actionUrl && actionLabel ? `
+<div style="text-align:center;margin:24px 0 8px;">
+  <a href="${actionUrl}" style="display:inline-block;background:${accentColor};color:#fff;text-decoration:none;padding:0 28px;height:44px;line-height:44px;border-radius:8px;font-weight:700;font-size:14px;">${actionLabel}</a>
+</div>` : ''
+
+  const extraHtml = extraSections.join('')
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;">
+<div style="max-width:600px;margin:24px auto;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+
+  <!-- HEADER -->
+  <div style="background:${headerGradient};padding:28px 28px 22px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div style="font-size:11px;color:rgba(255,255,255,.75);font-weight:600;letter-spacing:.08em;text-transform:uppercase;">VIANOVA HEALTH ${HEARTBEAT_SVG} Cure Analyzer System</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.65);white-space:nowrap;">${fmtNow()}</div>
+    </div>
+    <div style="font-size:26px;font-weight:700;color:#ffffff;margin-top:12px;line-height:1.2;">${title}</div>
+    ${subtitle ? `<div style="font-size:14px;color:rgba(255,255,255,.85);margin-top:6px;">${subtitle}</div>` : ''}
+  </div>
+
+  <!-- CONTENT -->
+  <div style="padding:28px;">
+    ${tableRows ? `<table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;">${tableRows}</table>` : ''}
+    ${panelsHtml}
+    ${extraHtml}
+    ${btnHtml}
+  </div>
+
+  <!-- FOOTER -->
+  <div style="border-top:1px solid #e2e8f0;padding:18px 28px;background:#f8fafc;">
+    <p style="margin:0 0 4px;font-size:12px;color:#64748b;text-align:center;font-weight:600;">Vianova Health — AI-Assisted Clinical Decision Support</p>
+    <p style="margin:0 0 4px;font-size:11px;color:#94a3b8;text-align:center;">This is an automated notification. AI drafts require physician review before any clinical action.</p>
+    <p style="margin:0;font-size:11px;color:#cbd5e1;text-align:center;">You are receiving this because you have an active account. &nbsp;|&nbsp; &copy; 2025 Vianova Health. HIPAA-compliant platform.</p>
+  </div>
+
+</div>
+</body>
+</html>`
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   EMAIL TEMPLATES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+export function tplNewCase({ caseId, label, age, sex, complaint, confidence, emergency, diagnoses = [] }) {
+  const gradient = emergency
+    ? 'linear-gradient(135deg,#7f1d1d,#dc2626)'
+    : 'linear-gradient(135deg,#1e3a5f,#0284c7)'
+  const title = emergency
+    ? 'Emergency Case Requires Immediate Review'
+    : 'New Case Submitted'
+  const confColor = confidence === 'high' ? '#059669' : confidence === 'moderate' ? '#d97706' : '#dc2626'
+  const topDx = diagnoses.slice(0, 2).join(', ') || '—'
+
+  const rows = [
+    { label: 'Case ID', value: `<span style="font-family:monospace;">${caseId}</span>` },
+    { label: 'Submitted By', value: label || '—' },
+    { label: 'Patient Profile', value: `${age ? age + 'y' : '—'} ${sex || ''}`.trim() || '—' },
+    { label: 'Chief Complaint', value: complaint || '—' },
+    { label: 'AI Confidence', value: `<span style="color:${confColor};font-weight:700;">${confidence || '—'}</span>` },
+    { label: 'Top Diagnoses', value: topDx },
+  ]
+
+  const alertPanels = emergency ? [{
+    borderColor: '#dc2626',
+    bgColor: '#fee2e2',
+    textColor: '#7f1d1d',
+    title: null,
+    content: 'Emergency / Urgent — This case requires immediate physician review.',
+  }] : []
+
   return {
     subject: emergency
-      ? `🚨 EMERGENCY Case Submitted — ${caseId.slice(0, 8)}`
+      ? `EMERGENCY Case Submitted — ${caseId.slice(0, 8)}`
       : `New Case Submitted — ${caseId.slice(0, 8)}`,
-    html: `
-<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:24px;">
-  <div style="background:linear-gradient(135deg,#0e4f7c,#0284c7);padding:24px;border-radius:12px 12px 0 0;color:#fff;">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin-bottom:6px;">Vianova Health · Cure Analyzer System</div>
-    <div style="font-size:22px;font-weight:700;">New Case Submitted</div>
-    <div style="opacity:.75;font-size:13px;margin-top:4px;">Submitted by ${label}</div>
-  </div>
-  <div style="background:#fff;padding:24px;border-radius:0 0 12px 12px;border:1px solid #e2e8f0;border-top:none;">
-    ${urgentBanner}
-    <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
-      <tr><td style="padding:8px 0;color:#64748b;width:140px;">Case ID</td><td style="font-family:monospace;color:#0f172a;">${caseId}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">Patient</td><td>${age ? age + 'y' : '—'} ${sex || ''}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">Chief Complaint</td><td>${complaint || '—'}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">AI Confidence</td><td><span style="font-weight:600;color:${confidence === 'high' ? '#059669' : confidence === 'moderate' ? '#d97706' : '#dc2626'}">${confidence || '—'}</span></td></tr>
-    </table>
-    <div style="margin-top:20px;font-size:11.5px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:12px;">
-      AI draft — physician review required before any clinical decision.
-    </div>
-  </div>
-</div>`,
+    html: buildEmail({
+      headerGradient: gradient,
+      title,
+      subtitle: `Submitted by ${label || '—'}`,
+      accentColor: emergency ? '#dc2626' : '#0284c7',
+      rows,
+      alertPanels,
+      actionUrl: `https://vianova-health.onrender.com/cases/${caseId}`,
+      actionLabel: 'Review Case →',
+    }),
   }
 }
 
-export function tplEmergencyAlert({ caseId, label, age, sex, complaint, redFlags }) {
+export function tplEmergencyAlert({ caseId, label, age, sex, complaint, redFlags = [] }) {
   const flags = Array.isArray(redFlags) ? redFlags : []
+  const flagsHtml = flags.length
+    ? `<div style="margin-top:14px;">${flags.map(f => `<div style="background:#fee2e2;border-radius:5px;padding:7px 12px;margin-bottom:6px;color:#7f1d1d;font-size:13px;">&#9888; ${f}</div>`).join('')}</div>`
+    : ''
+
   return {
-    subject: `🚨 EMERGENCY ALERT — Immediate Action Required`,
-    html: `
-<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:24px;">
-  <div style="background:linear-gradient(135deg,#7f1d1d,#dc2626);padding:24px;border-radius:12px 12px 0 0;color:#fff;">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin-bottom:6px;">Vianova Health · Emergency Alert</div>
-    <div style="font-size:22px;font-weight:700;">Emergency Case Detected</div>
-    <div style="opacity:.8;font-size:13px;margin-top:4px;">Submitted by ${label} — Immediate review required</div>
-  </div>
-  <div style="background:#fff;padding:24px;border-radius:0 0 12px 12px;border:1px solid #fecaca;border-top:none;">
-    <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
-      <tr><td style="padding:8px 0;color:#64748b;width:140px;">Case ID</td><td style="font-family:monospace;color:#0f172a;">${caseId}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">Patient</td><td>${age ? age + 'y' : '—'} ${sex || ''}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">Chief Complaint</td><td>${complaint || '—'}</td></tr>
-    </table>
-    ${flags.length ? `
-    <div style="margin-top:16px;">
-      <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Red Flags</div>
-      ${flags.map(f => `<div style="background:#fee2e2;border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:13px;color:#7f1d1d;">• ${f}</div>`).join('')}
-    </div>` : ''}
-  </div>
-</div>`,
+    subject: 'EMERGENCY ALERT — Immediate Action Required',
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#450a0a,#991b1b)',
+      title: 'EMERGENCY ALERT — Immediate Action Required',
+      subtitle: `Submitted by ${label || '—'}`,
+      accentColor: '#dc2626',
+      rows: [
+        { label: 'Case ID', value: `<span style="font-family:monospace;">${caseId}</span>` },
+        { label: 'Submitted By', value: label || '—' },
+        { label: 'Patient', value: `${age ? age + 'y' : '—'} ${sex || ''}`.trim() || '—' },
+        { label: 'Chief Complaint', value: complaint || '—' },
+      ],
+      extraSections: flagsHtml ? [`<div style="margin-top:4px;"><div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Red Flags</div>${flagsHtml}</div>`] : [],
+      actionUrl: `https://vianova-health.onrender.com/cases/${caseId}`,
+      actionLabel: 'REVIEW NOW →',
+    }),
   }
 }
 
 export function tplCaseApproved({ caseId, label, age, sex, complaint, approvedBy, treatment }) {
+  const treatmentPanel = treatment ? alertPanel({
+    borderColor: '#bbf7d0',
+    bgColor: '#f0fdf4',
+    textColor: '#065f46',
+    title: 'Approved Treatment Plan',
+    content: treatment,
+  }) : ''
+
   return {
     subject: `Case Approved — ${caseId.slice(0, 8)}`,
-    html: `
-<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:24px;">
-  <div style="background:linear-gradient(135deg,#064e3b,#059669);padding:24px;border-radius:12px 12px 0 0;color:#fff;">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin-bottom:6px;">Vianova Health · Case Update</div>
-    <div style="font-size:22px;font-weight:700;">Case Approved</div>
-    <div style="opacity:.8;font-size:13px;margin-top:4px;">Reviewed by ${approvedBy || label}</div>
-  </div>
-  <div style="background:#fff;padding:24px;border-radius:0 0 12px 12px;border:1px solid #a7f3d0;border-top:none;">
-    <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
-      <tr><td style="padding:8px 0;color:#64748b;width:140px;">Case ID</td><td style="font-family:monospace;color:#0f172a;">${caseId}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">Patient</td><td>${age ? age + 'y' : '—'} ${sex || ''}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">Chief Complaint</td><td>${complaint || '—'}</td></tr>
-    </table>
-    ${treatment ? `
-    <div style="margin-top:16px;background:#ecfdf5;border-radius:8px;padding:14px 16px;">
-      <div style="font-size:12px;font-weight:600;color:#059669;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Approved Treatment Plan</div>
-      <div style="font-size:13.5px;color:#0f172a;line-height:1.6;">${treatment}</div>
-    </div>` : ''}
-  </div>
-</div>`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#064e3b,#059669)',
+      title: 'Case Approved',
+      subtitle: `Reviewed by ${approvedBy || label || '—'}`,
+      accentColor: '#059669',
+      rows: [
+        { label: 'Case ID', value: `<span style="font-family:monospace;">${caseId}</span>` },
+        { label: 'Patient', value: `${age ? age + 'y' : '—'} ${sex || ''}`.trim() || '—' },
+        { label: 'Chief Complaint', value: complaint || '—' },
+        { label: 'Approved By', value: approvedBy || label || '—' },
+        { label: 'Approval Time', value: fmtNow() },
+      ],
+      extraSections: treatmentPanel ? [treatmentPanel] : [],
+      actionUrl: `https://vianova-health.onrender.com/cases/${caseId}`,
+      actionLabel: 'View Case →',
+    }),
   }
 }
 
 export function tplTreatmentEdited({ caseId, label, age, sex, oldTreatment, newTreatment, notes }) {
+  const panels = [
+    oldTreatment && alertPanel({ borderColor: '#cbd5e1', bgColor: '#f1f5f9', textColor: '#475569', title: 'Previous Plan', content: oldTreatment }),
+    newTreatment && alertPanel({ borderColor: '#c4b5fd', bgColor: '#f5f3ff', textColor: '#5b21b6', title: 'Updated Plan', content: newTreatment }),
+    notes && alertPanel({ borderColor: '#bbf7d0', bgColor: '#f0fdf4', textColor: '#065f46', title: 'Doctor Notes', content: notes }),
+  ].filter(Boolean)
+
   return {
     subject: `Treatment Plan Updated — ${caseId.slice(0, 8)}`,
-    html: `
-<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:24px;">
-  <div style="background:linear-gradient(135deg,#4c1d95,#7c3aed);padding:24px;border-radius:12px 12px 0 0;color:#fff;">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;margin-bottom:6px;">Vianova Health · Case Update</div>
-    <div style="font-size:22px;font-weight:700;">Treatment Plan Edited</div>
-    <div style="opacity:.8;font-size:13px;margin-top:4px;">Updated by ${label}</div>
-  </div>
-  <div style="background:#fff;padding:24px;border-radius:0 0 12px 12px;border:1px solid #ddd6fe;border-top:none;">
-    <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
-      <tr><td style="padding:8px 0;color:#64748b;width:140px;">Case ID</td><td style="font-family:monospace;color:#0f172a;">${caseId}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748b;">Patient</td><td>${age ? age + 'y' : '—'} ${sex || ''}</td></tr>
-    </table>
-    ${oldTreatment ? `<div style="margin-top:14px;background:#f1f5f9;border-radius:8px;padding:12px 14px;"><div style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;">Previous</div><div style="font-size:13px;color:#475569;">${oldTreatment}</div></div>` : ''}
-    ${newTreatment ? `<div style="margin-top:10px;background:#ede9fe;border-radius:8px;padding:12px 14px;"><div style="font-size:11px;font-weight:600;color:#7c3aed;text-transform:uppercase;margin-bottom:4px;">Updated</div><div style="font-size:13px;color:#0f172a;">${newTreatment}</div></div>` : ''}
-    ${notes ? `<div style="margin-top:10px;background:#f0fdf4;border-radius:8px;padding:12px 14px;"><div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;margin-bottom:4px;">Doctor Notes</div><div style="font-size:13px;color:#0f172a;">${notes}</div></div>` : ''}
-  </div>
-</div>`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#3b0764,#7c3aed)',
+      title: 'Treatment Plan Updated',
+      subtitle: `Updated by ${label || '—'}`,
+      accentColor: '#7c3aed',
+      rows: [
+        { label: 'Case ID', value: `<span style="font-family:monospace;">${caseId}</span>` },
+        { label: 'Patient', value: `${age ? age + 'y' : '—'} ${sex || ''}`.trim() || '—' },
+        { label: 'Updated By', value: label || '—' },
+        { label: 'Update Time', value: fmtNow() },
+      ],
+      extraSections: panels,
+      actionUrl: `https://vianova-health.onrender.com/cases/${caseId}`,
+      actionLabel: 'View Changes →',
+    }),
+  }
+}
+
+export function tplAppointmentReminder({ patientName, appointmentType, appointmentDate, provider, location, durationMinutes }) {
+  const formattedDate = appointmentDate
+    ? new Date(appointmentDate).toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '—'
+
+  const rows = [
+    { label: 'Patient Name', value: patientName || '—' },
+    { label: 'Appointment Type', value: appointmentType || '—' },
+    { label: 'Date & Time', value: formattedDate },
+    provider && { label: 'Provider', value: provider },
+    location && { label: 'Location', value: location },
+    durationMinutes && { label: 'Duration', value: `${durationMinutes} minutes` },
+  ].filter(Boolean)
+
+  return {
+    subject: `Appointment Reminder: ${appointmentType || 'Upcoming Appointment'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#164e63,#0e7490)',
+      title: 'Appointment Reminder',
+      subtitle: `For ${patientName || 'Patient'}`,
+      accentColor: '#0e7490',
+      rows,
+      alertPanels: [{
+        borderColor: '#67e8f9',
+        bgColor: '#ecfeff',
+        textColor: '#164e63',
+        title: 'Important',
+        content: 'Please arrive 10 minutes early. Bring your insurance card and a list of current medications.',
+      }],
+      actionUrl: 'https://vianova-health.onrender.com',
+      actionLabel: 'Confirm Appointment',
+      extraSections: [`<p style="text-align:center;font-size:12px;color:#94a3b8;margin-top:8px;">To reschedule, contact your care team.</p>`],
+    }),
+  }
+}
+
+export function tplUserDeactivated({ userName, userEmail, deactivatedBy }) {
+  return {
+    subject: `User Account Deactivated — ${userName || userEmail}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#1c1917,#44403c)',
+      title: 'User Account Deactivated',
+      subtitle: `Account access has been revoked`,
+      accentColor: '#78716c',
+      rows: [
+        { label: 'User Name', value: userName || '—' },
+        { label: 'Email', value: userEmail || '—' },
+        { label: 'Deactivated By', value: deactivatedBy || '—' },
+        { label: 'Time', value: fmtNow() },
+      ],
+      alertPanels: [{
+        borderColor: '#fbbf24',
+        bgColor: '#fffbeb',
+        textColor: '#92400e',
+        title: 'Access Revoked',
+        content: "This user's access has been revoked. All active sessions have been terminated.",
+      }],
+    }),
+  }
+}
+
+export function tplAdverseEventDetected({ patientId, patientName, eventType, severity, medication, detectedBy }) {
+  const sevColor = severity === 'severe' || severity === 'life-threatening' ? '#dc2626'
+    : severity === 'moderate' ? '#d97706'
+    : '#64748b'
+
+  return {
+    subject: `Adverse Event Detected — ${eventType || 'Unknown'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#7c2d12,#ea580c)',
+      title: 'Adverse Event Detected',
+      subtitle: `Patient: ${patientName || patientId || '—'}`,
+      accentColor: '#ea580c',
+      rows: [
+        { label: 'Patient', value: patientName || patientId || '—' },
+        { label: 'Event Type', value: eventType || '—' },
+        { label: 'Severity', value: `<span style="color:${sevColor};font-weight:700;">${severity || '—'}</span>` },
+        { label: 'Suspected Medication', value: medication || '—' },
+        { label: 'Detected By', value: detectedBy || '—' },
+        { label: 'Detection Time', value: fmtNow() },
+      ],
+      alertPanels: [{
+        borderColor: '#fb923c',
+        bgColor: '#fff7ed',
+        textColor: '#9a3412',
+        title: 'Action Required',
+        content: 'Review and document this adverse event in accordance with your pharmacovigilance protocol.',
+      }],
+      actionUrl: 'https://vianova-health.onrender.com/adverse-events',
+      actionLabel: 'Review Adverse Event →',
+    }),
+  }
+}
+
+export function tplConsentExpiring({ patientName, consentType, expiresAt, daysLeft }) {
+  const daysNum = Number(daysLeft)
+  const daysColor = daysNum <= 7 ? '#dc2626' : daysNum <= 14 ? '#d97706' : '#059669'
+  const formattedExpiry = expiresAt
+    ? new Date(expiresAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : '—'
+
+  return {
+    subject: `Consent Expiring Soon — ${patientName || 'Patient'} (${daysLeft} days)`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#713f12,#ca8a04)',
+      title: 'Consent Expiring Soon',
+      subtitle: `Patient: ${patientName || '—'}`,
+      accentColor: '#ca8a04',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Consent Type', value: consentType || '—' },
+        { label: 'Expires On', value: formattedExpiry },
+        { label: 'Days Remaining', value: `<span style="color:${daysColor};font-weight:700;">${daysLeft}</span>` },
+      ],
+      alertPanels: [{
+        borderColor: '#fbbf24',
+        bgColor: '#fefce8',
+        textColor: '#713f12',
+        title: 'Renewal Required',
+        content: 'Patient consent must be renewed before expiry to maintain compliant data access.',
+      }],
+    }),
+  }
+}
+
+export function tplSystemError({ errorMsg, route, triggeredBy }) {
+  return {
+    subject: 'System Error Detected — Vianova Health',
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#450a0a,#b91c1c)',
+      title: 'System Error Detected',
+      subtitle: 'An unexpected error occurred on the platform',
+      accentColor: '#dc2626',
+      rows: [
+        { label: 'Route', value: `<span style="font-family:monospace;">${route || '—'}</span>` },
+        { label: 'Triggered By', value: triggeredBy || '—' },
+        { label: 'Time', value: fmtNow() },
+      ],
+      extraSections: [
+        `<div style="margin-top:14px;"><div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Error Message</div>
+        <pre style="background:#0f172a;color:#f87171;font-family:monospace;font-size:12px;padding:14px 16px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:0;">${errorMsg || '(no message)'}</pre></div>`,
+        `<p style="font-size:12px;color:#94a3b8;margin-top:14px;">Check the Logs &amp; Analytics &#8594; Errors tab for full details.</p>`,
+      ],
+    }),
   }
 }
