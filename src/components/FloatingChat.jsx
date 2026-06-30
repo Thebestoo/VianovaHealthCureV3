@@ -5,13 +5,16 @@ import { useKey } from '../context/KeyContext.jsx'
 const fmtTime = ts => new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 const fmtDate = ts => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
-function Avatar({ name, size = 36, role }) {
+function Avatar({ name, size = 36, role, src }) {
   const colors = {
     superadmin: 'linear-gradient(135deg,#1d6ef5,#38bdf8)',
     doctor:     'linear-gradient(135deg,#059669,#34d399)',
     nurse:      'linear-gradient(135deg,#d97706,#fbbf24)',
     default:    'linear-gradient(135deg,#7c3aed,#a78bfa)',
   }
+  if (src) return (
+    <img src={src} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,.15)' }} />
+  )
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
@@ -29,7 +32,7 @@ const STATUS_COLORS = { open: '#0ea5e9', escalated: '#ef4444', active: '#10b981'
 const STATUS_LABELS = { open: 'Open', escalated: '🚨 Urgent', active: 'Live', closed: 'Closed' }
 
 export default function FloatingChat() {
-  const { key, role, label, email } = useKey()
+  const { key, role, label, email, avatar } = useKey()
 
   const [open, setOpen]   = useState(false)
   const [tab,  setTab]    = useState('home')
@@ -311,7 +314,7 @@ export default function FloatingChat() {
     return (
       <div style={{ flexShrink: 0 }}>
         <div style={{ background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', padding: '18px 16px 4px', display: 'flex', alignItems: 'center', gap: 11 }}>
-          <Avatar name={label} size={40} role={role} />
+          <Avatar name={label} size={40} role={role} src={avatar || undefined} />
           <div style={{ flex: 1 }}>
             <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 10.5 }}>Welcome back,</div>
             <div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>{label}</div>

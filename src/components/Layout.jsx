@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, FolderOpen, PlusCircle, BarChart2,
@@ -6,7 +6,7 @@ import {
   Users, LogIn, Menu, X, AlertCircle, FlaskConical, CalendarDays,
   ClipboardList, ShieldAlert, AlertOctagon, Users2, FileText,
   Lightbulb, Home, Activity, GitMerge, ClipboardCheck,
-  Receipt
+  Receipt, Settings
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import FloatingChat from './FloatingChat.jsx'
@@ -76,8 +76,18 @@ const BOTTOM_NAV = [
 export default function Layout({ children }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const { key, role, label, stats, disconnect } = useKey()
-  const [menuOpen, setMenuOpen] = useState(false)
+  const { key, role, label, avatar, stats, disconnect, setAvatar } = useKey()
+  const [menuOpen,     setMenuOpen]     = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const fileRef = useRef(null)
+
+  function handleAvatarUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => setAvatar(ev.target.result)
+    reader.readAsDataURL(file)
+  }
 
   const isConnected  = !!key
   const isSuperAdmin = role === 'superadmin'
@@ -123,14 +133,25 @@ export default function Layout({ children }) {
                   <Wifi size={13} color="#4ade80" />
                   <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>Connected</span>
                 </div>
-                <button onClick={handleDisconnect} title="Sign Out"
-                  style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', padding: 2 }}>
-                  <LogOut size={13} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <button onClick={() => setSettingsOpen(true)} title="Profile Settings"
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', padding: 2 }}>
+                    <Settings size={13} />
+                  </button>
+                  <button onClick={handleDisconnect} title="Sign Out"
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', padding: 2 }}>
+                    <LogOut size={13} />
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 99, background: isSuperAdmin ? 'rgba(14,116,144,.7)' : 'rgba(5,150,105,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {isSuperAdmin ? <ShieldCheck size={13} color="#fff" /> : <Stethoscope size={13} color="#fff" />}
+                {/* Avatar — photo if set, otherwise icon */}
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: isSuperAdmin ? 'rgba(14,116,144,.7)' : 'rgba(5,150,105,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', cursor: 'pointer' }}
+                  onClick={() => setSettingsOpen(true)} title="Change photo">
+                  {avatar
+                    ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : (isSuperAdmin ? <ShieldCheck size={14} color="#fff" /> : <Stethoscope size={14} color="#fff" />)
+                  }
                 </div>
                 <div>
                   <div style={{ color: '#fff', fontWeight: 600, fontSize: 13, lineHeight: 1.2 }}>{label}</div>
@@ -281,6 +302,53 @@ export default function Layout({ children }) {
       </nav>
 
       <FloatingChat />
+
+      {/* ── Profile Settings Modal ── */}
+      {settingsOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => e.target === e.currentTarget && setSettingsOpen(false)}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: 340, boxShadow: '0 24px 64px rgba(0,0,0,.25)', animation: 'modalIn .2s ease' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
+              <div style={{ fontWeight: 700, fontSize: 17, color: '#0f172a' }}>Profile Settings</div>
+              <button onClick={() => setSettingsOpen(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={15} color="#64748b" />
+              </button>
+            </div>
+
+            {/* Avatar preview + upload */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginBottom: 24 }}>
+              <div style={{ position: 'relative' }}>
+                <div style={{ width: 90, height: 90, borderRadius: '50%', background: isSuperAdmin ? '#0e7490' : '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '3px solid #e2e8f0', boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
+                  {avatar
+                    ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ fontSize: 36, fontWeight: 800, color: '#fff' }}>{(label || '?').charAt(0).toUpperCase()}</span>
+                  }
+                </div>
+                <button onClick={() => fileRef.current?.click()} style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: '50%', background: '#1d6ef5', border: '2px solid #fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </button>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontWeight: 600, fontSize: 15, color: '#0f172a' }}>{label}</div>
+                <div style={{ fontSize: 12, color: '#64748b', textTransform: 'capitalize' }}>{role?.replace('superadmin', 'Super Admin')}</div>
+              </div>
+            </div>
+
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
+
+            <button onClick={() => fileRef.current?.click()} style={{ width: '100%', padding: '11px 0', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 10 }}>
+              Upload Photo
+            </button>
+            {avatar && (
+              <button onClick={() => { setAvatar(''); setSettingsOpen(false) }} style={{ width: '100%', padding: '10px 0', borderRadius: 12, background: '#fff', border: '1.5px solid #e2e8f0', color: '#ef4444', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                Remove Photo
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <style>{`@keyframes modalIn { from { opacity:0; transform:scale(.95) } to { opacity:1; transform:scale(1) } }`}</style>
     </div>
   )
 }

@@ -3,17 +3,25 @@ import toast from 'react-hot-toast'
 
 const KeyContext = createContext(null)
 
-const LS_KEY   = 'vnh_api_key'
-const LS_ROLE  = 'vnh_api_role'
-const LS_LABEL = 'vnh_api_label'
-const LS_EMAIL = 'vnh_user_email'
+const LS_KEY    = 'vnh_api_key'
+const LS_ROLE   = 'vnh_api_role'
+const LS_LABEL  = 'vnh_api_label'
+const LS_EMAIL  = 'vnh_user_email'
+const LS_AVATAR = 'vnh_user_avatar'
 
 export function KeyProvider({ children }) {
-  const [key,   setKeyState]   = useState(() => localStorage.getItem(LS_KEY)   || '')
-  const [role,  setRoleState]  = useState(() => localStorage.getItem(LS_ROLE)  || '')
-  const [label, setLabelState] = useState(() => localStorage.getItem(LS_LABEL) || '')
-  const [email, setEmailState] = useState(() => localStorage.getItem(LS_EMAIL) || '')
-  const [stats, setStats]      = useState(null)
+  const [key,    setKeyState]    = useState(() => localStorage.getItem(LS_KEY)    || '')
+  const [role,   setRoleState]   = useState(() => localStorage.getItem(LS_ROLE)   || '')
+  const [label,  setLabelState]  = useState(() => localStorage.getItem(LS_LABEL)  || '')
+  const [email,  setEmailState]  = useState(() => localStorage.getItem(LS_EMAIL)  || '')
+  const [avatar, setAvatarState] = useState(() => localStorage.getItem(LS_AVATAR) || '')
+  const [stats,  setStats]       = useState(null)
+
+  const setAvatar = useCallback((dataUrl) => {
+    if (dataUrl) localStorage.setItem(LS_AVATAR, dataUrl)
+    else localStorage.removeItem(LS_AVATAR)
+    setAvatarState(dataUrl || '')
+  }, [])
 
   // connect(apiKey) — backward compat: validates a session token via /api/auth/verify
   const connect = useCallback(async (apiKey) => {
@@ -96,7 +104,7 @@ export function KeyProvider({ children }) {
     localStorage.removeItem(LS_ROLE)
     localStorage.removeItem(LS_LABEL)
     localStorage.removeItem(LS_EMAIL)
-    setKeyState(''); setRoleState(''); setLabelState(''); setEmailState(''); setStats(null)
+    setKeyState(''); setRoleState(''); setLabelState(''); setEmailState(''); setAvatarState(''); setStats(null)
     toast('Signed out', { icon: '🔒', style: { fontSize: 13 } })
   }, [])
 
@@ -122,7 +130,7 @@ export function KeyProvider({ children }) {
   }, [key])
 
   return (
-    <KeyContext.Provider value={{ key, role, label, email, stats, connect, loginWithOTP, disconnect, refreshStats }}>
+    <KeyContext.Provider value={{ key, role, label, email, avatar, stats, connect, loginWithOTP, disconnect, refreshStats, setAvatar }}>
       {children}
     </KeyContext.Provider>
   )
