@@ -4147,19 +4147,6 @@ app.post('/api/nlp-notes/deidentify-batch', auth, aiLimiter, async (req, res) =>
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// ── 404 for unknown API routes ────────────────────────────────────────────────
-app.use('/api/*', (req, res) => {
-  res.status(404).json({ error: 'API endpoint not found' })
-})
-
-// ── SPA fallback — must be LAST route so all API routes register first ────────
-if (existsSync(DIST)) {
-  app.get('*', (req, res) => {
-    if (req.path.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' })
-    res.sendFile(join(DIST, 'index.html'))
-  })
-}
-
 // ── Floating Chat Widget ───────────────────────────────────────────────────────
 
 app.post('/api/chat/sessions', auth, async (req, res) => {
@@ -4246,6 +4233,19 @@ app.post('/api/chat/sessions/:id/messages', auth, async (req, res) => {
     args: [id, req.params.id, req.apiKey, req.user?.name || req.apiKey, req.keyRole, message.trim(), now] })
   res.json({ id, session_id: req.params.id, sender_email: req.apiKey, sender_name: req.user?.name || req.apiKey, sender_role: req.keyRole, message: message.trim(), created_at: now })
 })
+
+// ── 404 for unknown API routes ────────────────────────────────────────────────
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' })
+})
+
+// ── SPA fallback — must be LAST ───────────────────────────────────────────────
+if (existsSync(DIST)) {
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' })
+    res.sendFile(join(DIST, 'index.html'))
+  })
+}
 
 // ── Global error handler — never leak stack traces to clients ─────────────────
 // eslint-disable-next-line no-unused-vars
