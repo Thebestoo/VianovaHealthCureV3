@@ -705,7 +705,7 @@ app.post('/api/auth/login', async (req, res) => {
       let geo = null
       if (ip && !ip.startsWith('127.') && !ip.startsWith('::1') && !ip.startsWith('10.') && !ip.startsWith('192.168.')) {
         try {
-          const geoRes = await fetch(\`http://ip-api.com/json/\${ip}?fields=status,country,regionName,city,zip,lat,lon,timezone,isp,org,query\`, { signal: AbortSignal.timeout(4000) })
+          const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,zip,lat,lon,timezone,isp,org,query`, { signal: AbortSignal.timeout(4000) })
           const geoData = await geoRes.json()
           if (geoData.status === 'success') geo = geoData
         } catch { /* geo lookup failed — send email without it */ }
