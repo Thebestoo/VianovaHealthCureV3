@@ -4266,6 +4266,70 @@ app.get('/api/chat/sessions/:id/messages', auth, async (req, res) => {
   res.json(rows)
 })
 
+const CHAT_BOT_SYSTEM = `You are Vianova Health Support Assistant, an AI chatbot built into the Vianova Health clinical platform. You help healthcare staff with questions about platform features, workflows, and best practices.
+
+PLATFORM FEATURES YOU KNOW ABOUT:
+- Case Management: Create, review, and approve AI-analyzed medical cases; share cases via secure link; filter by date/status
+- Patient Records (gen_patients): Demographics, DOB, MRN, conditions, medications, allergies, FHIR vitals, RPM/CCM enrollment
+- Lab Results: Track values with reference ranges, critical flag, delta flag, AI interpretation summaries
+- Appointments: Schedule with no-show risk prediction, reminder emails, status tracking (scheduled/completed/no-show)
+- Discharge Summaries: AI-generated SOAP summaries, patient instructions in multiple languages, TCM enrollment, FHIR bundle export
+- Care Gaps: Identify, prioritize, and close care gaps; AI-generated outreach messages; suppression with reason
+- Consent Management: FHIR-compliant consent lifecycle (active/revoked/expired), break-glass access, full audit trail
+- Adverse Events: Pharmacovigilance, causality assessment, FDA MedWatch draft generation, near-miss tracking
+- Population Health: Cohort creation with criteria, risk stratification, outreach tracking
+- NLP Notes: AI SOAP/H&P/progress note generation from free text; de-identification; entity extraction (conditions, meds, procedures, labs)
+- Clinical Decisions: Evidence-based decision support with AI recommendations
+- SDOH Assessments: Screen for housing, food, transportation, financial, social isolation; ICD Z-codes; resource suggestions
+- Chronic Disease: Chronic disease monitoring, care plan management
+- Interoperability: FHIR R4 export, HL7 data exchange, EHR integration
+- Audit & Compliance: Full action audit trail, HIPAA compliance reporting, role-based access logs
+- Billing: ICD-10/CPT/HCPCS coding automation, E&M level suggestion, HCC capture, claim scrubbing
+- Remote Patient Monitoring (RPM): Heart rate, SpO2, blood pressure, temperature, respiratory rate readings
+- Chronic Care Management (CCM): Care plans, task tracking, monthly check-in minutes
+- Admin Panel: Manage users, API keys, roles (superadmin/doctor/nurse); deactivate accounts; view system logs
+- Live Admin Chat: Type !admincall in this chat to connect with a real admin immediately
+
+RESPONSE STYLE:
+- Be warm, professional, and communicative
+- Give clear step-by-step guidance when explaining how to use a feature
+- Use bullet points and structure for complex answers
+- Keep responses concise but complete — don't truncate important info
+
+PERSONAL DATA RULE — CRITICAL:
+If the user asks to ACCESS, VIEW, RETRIEVE, or MODIFY specific personal patient records (e.g. "show me patient John's records", "what did my patient score on PHQ-9", "pull case #xyz", "what are [name]'s lab results"), you must NOT provide or fabricate that data. Instead respond with exactly:
+"To access specific patient data securely, you'll need a live admin. Type **!admincall** in this chat and a real admin will join your session right away."
+
+You may freely discuss general platform features, how things work, navigation, clinical workflows, and best practices without any restriction.`
+
+async function generateBotReply(sessionId, userMessage, history) {
+  try {
+    const messages = [
+      { role: 'system', content: CHAT_BOT_SYSTEM },
+      ...history.slice(-10).map(m => ({
+        role: m.sender_role === 'system' ? 'assistant' : (m.sender_email === 'system' ? 'assistant' : 'user'),
+        content: m.message,
+      })),
+      { role: 'user', content: userMessage },
+    ]
+    const aiRes = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      temperature: 0.5,
+      max_tokens: 500,
+    })
+    const reply = aiRes.choices[0].message.content.trim()
+    const botId  = randomUUID()
+    const botNow = new Date().toISOString()
+    await db.execute({
+      sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
+      args: [botId, sessionId, 'system', 'Vianova Support', 'system', reply, botNow],
+    })
+  } catch (e) {
+    console.error('Bot reply error:', e.message)
+  }
+}
+
 app.post('/api/chat/sessions/:id/messages', auth, async (req, res) => {
   const { message } = req.body
   if (!message?.trim()) return res.status(400).json({ error: 'Message required' })
@@ -4278,6 +4342,12 @@ app.post('/api/chat/sessions/:id/messages', auth, async (req, res) => {
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
     args: [id, req.params.id, req.apiKey, req.user?.name || req.apiKey, req.keyRole, message.trim(), now] })
   res.json({ id, session_id: req.params.id, sender_email: req.apiKey, sender_name: req.user?.name || req.apiKey, sender_role: req.keyRole, message: message.trim(), created_at: now })
+
+  // Fire bot reply async when no admin has joined yet (open/escalated session, message from user not admin)
+  if ((session.status === 'open' || session.status === 'escalated') && req.keyRole !== 'superadmin') {
+    const history = (await db.execute({ sql: 'SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC', args: [req.params.id] })).rows
+    generateBotReply(req.params.id, message.trim(), history).catch(() => {})
+  }
 })
 
 // ── 404 for unknown API routes ────────────────────────────────────────────────
