@@ -27,7 +27,6 @@ const NLPNotes         = lazy(() => import('./pages/NLPNotes.jsx'))
 const ClinicalDecisions= lazy(() => import('./pages/ClinicalDecisions.jsx'))
 const SDOH             = lazy(() => import('./pages/SDOH.jsx'))
 const ChronicDisease   = lazy(() => import('./pages/ChronicDisease.jsx'))
-const PatientPortal    = lazy(() => import('./pages/PatientPortal.jsx'))
 const Interoperability = lazy(() => import('./pages/Interoperability.jsx'))
 const AuditCompliance  = lazy(() => import('./pages/AuditCompliance.jsx'))
 const Billing          = lazy(() => import('./pages/Billing.jsx'))
@@ -82,7 +81,6 @@ function AppRoutes() {
               <Route path="/clinical-decisions" element={<P component={ClinicalDecisions} />} />
               <Route path="/sdoh"             element={<P component={SDOH} />} />
               <Route path="/chronic-disease"  element={<P component={ChronicDisease} />} />
-              <Route path="/patient-portal"   element={<P component={PatientPortal} />} />
               <Route path="/interoperability" element={<P component={Interoperability} />} />
               <Route path="/audit-compliance" element={<P component={AuditCompliance} />} />
               <Route path="/billing"          element={<P component={Billing} />} />
