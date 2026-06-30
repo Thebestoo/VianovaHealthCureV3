@@ -482,80 +482,193 @@ export function tplSystemError({ errorMsg, route, triggeredBy }) {
   }
 }
 
-export function tplLoginWelcome({ displayName, email, role, loginTime, ipHint }) {
+export function tplLoginWelcome({ displayName, email, role, loginTime, ip, geo }) {
   const roleLabel = role === 'superadmin' ? 'Super Administrator' : 'Doctor'
   const roleColor = role === 'superadmin' ? '#0369a1' : '#059669'
   const roleGrad  = role === 'superadmin'
-    ? 'linear-gradient(135deg,#0c4a6e,#0284c7)'
-    : 'linear-gradient(135deg,#064e3b,#059669)'
+    ? 'linear-gradient(135deg,#0c4a6e 0%,#0284c7 100%)'
+    : 'linear-gradient(135deg,#064e3b 0%,#059669 100%)'
+
+  // Build location string from geo data
+  const locationParts = []
+  if (geo) {
+    if (geo.city)       locationParts.push(geo.city)
+    if (geo.regionName) locationParts.push(geo.regionName)
+    if (geo.country)    locationParts.push(geo.country)
+  }
+  const locationStr = locationParts.length ? locationParts.join(', ') : null
+  const timezone    = geo?.timezone || null
+  const isp         = geo?.isp     || geo?.org || null
+  const initial     = displayName.charAt(0).toUpperCase()
 
   return {
-    subject: `Welcome back, ${displayName} — You are now signed in`,
+    subject: `Welcome back, ${displayName} — Successful sign-in detected`,
     html: `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
-<tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Sign-in Notification — Vianova Health</title>
+</head>
+<body style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
 
-  <tr><td style="background:${roleGrad};border-radius:16px 16px 0 0;padding:36px 36px 28px;">
-    <table width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td><table cellpadding="0" cellspacing="0"><tr>
-        <td style="padding-right:8px;vertical-align:middle;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h2l2-7 3 14 3-10 2 3h6" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;padding:40px 16px;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+  <!-- ░░ HEADER CARD ░░ -->
+  <tr><td style="background:${roleGrad};border-radius:16px 16px 0 0;padding:0;">
+
+    <!-- top bar -->
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="padding:18px 32px 0;">
+          <table cellpadding="0" cellspacing="0"><tr>
+            <td style="padding-right:7px;vertical-align:middle;">
+              <svg width="18" height="14" viewBox="0 0 32 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polyline points="0,12 6,12 9,4 13,20 17,8 20,16 24,12 32,12" stroke="rgba(255,255,255,0.6)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </td>
+            <td style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:.14em;vertical-align:middle;">Vianova Health &nbsp;&bull;&nbsp; Cure Analyzer System</td>
+          </tr></table>
         </td>
-        <td style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.65);text-transform:uppercase;letter-spacing:.1em;vertical-align:middle;">Vianova Health &middot; Cure Analyzer System</td>
-      </tr></table></td>
-      <td align="right" style="font-size:11px;color:rgba(255,255,255,0.45);">${loginTime}</td>
-    </tr></table>
-    <div style="margin-top:24px;">
-      <div style="font-size:28px;font-weight:800;color:#fff;line-height:1.15;letter-spacing:-.3px;">Welcome back!</div>
-      <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:7px;">You have successfully signed in to Vianova Health.</div>
-    </div>
-  </td></tr>
+      </tr>
+    </table>
 
-  <tr><td style="background:#fff;padding:28px 36px 0;">
-    <table width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td style="width:52px;height:52px;background:${roleGrad};border-radius:50%;text-align:center;line-height:52px;font-size:20px;font-weight:800;color:#fff;vertical-align:middle;">${displayName.charAt(0).toUpperCase()}</td>
-      <td style="padding-left:14px;">
-        <div style="font-size:17px;font-weight:700;color:#0f172a;">${displayName}</div>
-        <div style="font-size:12px;color:#64748b;margin-top:3px;">${email}</div>
-      </td>
-      <td align="right"><span style="background:${roleColor}22;color:${roleColor};font-size:11px;font-weight:700;padding:5px 13px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase;">${roleLabel}</span></td>
-    </tr></table>
-  </td></tr>
-
-  <tr><td style="background:#fff;padding:20px 36px 0;"><div style="height:1px;background:#e2e8f0;"></div></td></tr>
-
-  <tr><td style="background:#fff;padding:20px 36px;">
-    <div style="font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;">Sign-in Details</div>
-    <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13.5px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
-      <tr style="background:#f8fafc;"><td style="padding:11px 14px;color:#64748b;width:140px;border-bottom:1px solid #e2e8f0;">Date &amp; Time</td><td style="padding:11px 14px;color:#0f172a;font-weight:500;border-bottom:1px solid #e2e8f0;">${loginTime}</td></tr>
-      <tr><td style="padding:11px 14px;color:#64748b;border-bottom:1px solid #e2e8f0;">Account</td><td style="padding:11px 14px;color:#0f172a;font-weight:500;border-bottom:1px solid #e2e8f0;">${email}</td></tr>
-      <tr style="background:#f8fafc;"><td style="padding:11px 14px;color:#64748b;${ipHint ? 'border-bottom:1px solid #e2e8f0;' : ''}">Role</td><td style="padding:11px 14px;${ipHint ? 'border-bottom:1px solid #e2e8f0;' : ''}"><span style="color:${roleColor};font-weight:700;">${roleLabel}</span></td></tr>
-      ${ipHint ? `<tr><td style="padding:11px 14px;color:#64748b;">Access From</td><td style="padding:11px 14px;color:#0f172a;font-family:monospace;font-size:12px;">${ipHint}</td></tr>` : ''}
+    <!-- big headline area -->
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="padding:28px 32px 32px;">
+          <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">Security Notification</div>
+          <div style="font-size:32px;font-weight:900;color:#ffffff;line-height:1.1;letter-spacing:-.5px;">Welcome back!</div>
+          <div style="font-size:15px;color:rgba(255,255,255,0.78);margin-top:8px;font-weight:400;line-height:1.5;">A successful sign-in to your Vianova Health account has been detected.</div>
+        </td>
+      </tr>
     </table>
   </td></tr>
 
-  <tr><td style="background:#fff;padding:0 36px 28px;">
-    <div style="background:#fef9ec;border-left:4px solid #f59e0b;border-radius:0 8px 8px 0;padding:14px 18px;">
-      <div style="font-size:11.5px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">Security Notice</div>
-      <div style="font-size:13px;color:#78350f;line-height:1.65;">If you did not initiate this sign-in, contact your system administrator immediately and reset your password. Never share your login credentials.</div>
+  <!-- ░░ PROFILE STRIP ░░ -->
+  <tr><td style="background:#ffffff;padding:28px 32px 24px;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <!-- Avatar -->
+      <td style="width:56px;" valign="middle">
+        <div style="width:56px;height:56px;border-radius:50%;background:${roleGrad};text-align:center;line-height:56px;font-size:22px;font-weight:900;color:#fff;">${initial}</div>
+      </td>
+      <!-- Name / email -->
+      <td style="padding-left:16px;" valign="middle">
+        <div style="font-size:19px;font-weight:800;color:#0f172a;line-height:1.2;">${displayName}</div>
+        <div style="font-size:12.5px;color:#64748b;margin-top:3px;">${email}</div>
+      </td>
+      <!-- Role badge -->
+      <td align="right" valign="middle">
+        <span style="display:inline-block;padding:5px 14px;border-radius:99px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:${roleColor};background:${roleColor}18;">${roleLabel}</span>
+      </td>
+    </tr></table>
+  </td></tr>
+
+  <!-- ░░ DIVIDER ░░ -->
+  <tr><td style="background:#ffffff;padding:0 32px;"><div style="height:1px;background:#e8edf3;"></div></td></tr>
+
+  <!-- ░░ SIGN-IN DETAILS ░░ -->
+  <tr><td style="background:#ffffff;padding:24px 32px 8px;">
+    <div style="font-size:10.5px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.12em;margin-bottom:14px;">Sign-in Details</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:0;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-size:13.5px;">
+      <tr style="background:#f8fafc;">
+        <td style="padding:12px 16px;color:#64748b;width:145px;border-bottom:1px solid #e2e8f0;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Date &amp; Time
+        </td>
+        <td style="padding:12px 16px;color:#0f172a;font-weight:600;border-bottom:1px solid #e2e8f0;">${loginTime}</td>
+      </tr>
+      ${ip ? `<tr>
+        <td style="padding:12px 16px;color:#64748b;border-bottom:1px solid #e2e8f0;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M7 12h10M12 7v10"/></svg>
+          IP Address
+        </td>
+        <td style="padding:12px 16px;font-family:ui-monospace,'Cascadia Code','Fira Code',monospace;font-size:13px;color:#0f172a;font-weight:600;border-bottom:1px solid #e2e8f0;">${ip}</td>
+      </tr>` : ''}
+      ${locationStr ? `<tr style="background:#f8fafc;">
+        <td style="padding:12px 16px;color:#64748b;border-bottom:1px solid #e2e8f0;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Location
+        </td>
+        <td style="padding:12px 16px;color:#0f172a;font-weight:600;border-bottom:1px solid #e2e8f0;">${locationStr}</td>
+      </tr>` : ''}
+      ${timezone ? `<tr${locationStr ? '' : ' style="background:#f8fafc;"'}>
+        <td style="padding:12px 16px;color:#64748b;${isp ? 'border-bottom:1px solid #e2e8f0;' : ''}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Timezone
+        </td>
+        <td style="padding:12px 16px;color:#0f172a;font-weight:600;${isp ? 'border-bottom:1px solid #e2e8f0;' : ''}">${timezone}</td>
+      </tr>` : ''}
+      ${isp ? `<tr style="background:#f8fafc;">
+        <td style="padding:12px 16px;color:#64748b;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+          Network / ISP
+        </td>
+        <td style="padding:12px 16px;color:#0f172a;font-weight:600;">${isp}</td>
+      </tr>` : ''}
+    </table>
+  </td></tr>
+
+  <!-- ░░ MAP PLACEHOLDER — lat/lon geo pill ░░ -->
+  ${geo && geo.lat && geo.lon ? `<tr><td style="background:#ffffff;padding:12px 32px 0;">
+    <div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:1px solid #bae6fd;border-radius:10px;padding:14px 18px;display:flex;align-items:center;">
+      <table cellpadding="0" cellspacing="0"><tr>
+        <td style="padding-right:12px;">
+          <div style="width:38px;height:38px;background:#0284c7;border-radius:50%;text-align:center;line-height:38px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+        </td>
+        <td>
+          <div style="font-size:12px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.06em;">Approximate Location</div>
+          <div style="font-size:13px;color:#0c4a6e;font-weight:500;margin-top:2px;">${locationStr || 'Unknown'} &nbsp;&bull;&nbsp; <span style="font-family:monospace;">${geo.lat.toFixed(4)}&deg;N, ${geo.lon.toFixed(4)}&deg;E</span></div>
+        </td>
+      </tr></table>
+    </div>
+  </td></tr>` : ''}
+
+  <!-- ░░ SECURITY ALERT BOX ░░ -->
+  <tr><td style="background:#ffffff;padding:20px 32px 28px;">
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:0 8px 8px 0;padding:16px 18px;">
+      <table cellpadding="0" cellspacing="0"><tr>
+        <td style="padding-right:12px;vertical-align:top;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </td>
+        <td>
+          <div style="font-size:12.5px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;">Security Notice</div>
+          <div style="font-size:13px;color:#78350f;line-height:1.65;">If you did not initiate this sign-in, your account may be compromised. Contact your system administrator immediately and reset your password. Never share your login credentials with anyone.</div>
+        </td>
+      </tr></table>
     </div>
   </td></tr>
 
-  <tr><td style="background:#fff;padding:0 36px 32px;text-align:center;">
-    <a href="https://vianova-health.onrender.com/dashboard" style="display:inline-block;background:${roleGrad};color:#fff;font-size:14px;font-weight:700;padding:14px 42px;border-radius:8px;text-decoration:none;letter-spacing:.02em;">Open Dashboard &rarr;</a>
+  <!-- ░░ CTA BUTTON ░░ -->
+  <tr><td style="background:#ffffff;padding:0 32px 36px;text-align:center;">
+    <a href="https://vianova-health.onrender.com/dashboard"
+       style="display:inline-block;background:${roleGrad};color:#ffffff;font-size:14px;font-weight:800;padding:0 40px;height:48px;line-height:48px;border-radius:10px;text-decoration:none;letter-spacing:.03em;box-shadow:0 4px 14px rgba(0,0,0,.15);">
+      Open Dashboard &rarr;
+    </a>
   </td></tr>
 
-  <tr><td style="background:#fff;border-radius:0 0 16px 16px;padding:0 36px 28px;">
-    <div style="border-top:1px solid #e2e8f0;padding-top:20px;text-align:center;">
-      <div style="font-size:11px;color:#94a3b8;line-height:1.8;"><strong style="color:#64748b;">Vianova Health</strong> &mdash; AI-Assisted Clinical Decision Support<br>This is an automated security notification. AI drafts require physician review before any clinical action.<br><span style="color:#cbd5e1;">&copy; 2025 Vianova Health. HIPAA-compliant platform.</span></div>
-    </div>
+  <!-- ░░ FOOTER ░░ -->
+  <tr><td style="background:#f8fafc;border-radius:0 0 16px 16px;padding:24px 32px;border-top:1px solid #e2e8f0;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>
+        <div style="font-size:11px;color:#94a3b8;line-height:1.8;text-align:center;">
+          <strong style="color:#64748b;font-size:12px;">Vianova Health</strong> &mdash; AI-Assisted Clinical Decision Support<br>
+          This is an automated security notification. Do not reply to this email.<br>
+          AI-generated content requires physician review before any clinical action.<br>
+          <span style="color:#cbd5e1;">&copy; 2025 Vianova Health &bull; HIPAA-compliant platform</span>
+        </div>
+      </td>
+    </tr></table>
   </td></tr>
 
-</table></td></tr>
 </table>
-</body></html>`,
+</td></tr>
+</table>
+</body>
+</html>`,
   }
 }

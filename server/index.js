@@ -696,13 +696,24 @@ app.post('/api/auth/login', async (req, res) => {
   const displayName = user.role === 'doctor' ? `Dr. ${user.name}` : user.name
   await logUpdate('auth_login', `${user.role} "${displayName}" signed in`, { email: user.email, role: user.role })
 
-  // Fire-and-forget welcome email to the user's notify_email or login email
+  // Fire-and-forget welcome email — resolve IP geolocation first, then send
   const dest = user.notify_email?.trim() || user.email
-  const loginTime = new Date().toLocaleString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
-  const ipHint = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim() || null
-  sendEmail({ to: dest, ...tplLoginWelcome({ displayName, email: user.email, role: user.role, loginTime, ipHint }) })
-    .then(r => { if (!r.ok) logError('email_failed', r.error, 'POST /api/auth/login', null, { to: dest }) })
-    .catch(() => {})
+  ;(async () => {
+    try {
+      const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim() || null
+      const loginTime = new Date().toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })
+      let geo = null
+      if (ip && !ip.startsWith('127.') && !ip.startsWith('::1') && !ip.startsWith('10.') && !ip.startsWith('192.168.')) {
+        try {
+          const geoRes = await fetch(\`http://ip-api.com/json/\${ip}?fields=status,country,regionName,city,zip,lat,lon,timezone,isp,org,query\`, { signal: AbortSignal.timeout(4000) })
+          const geoData = await geoRes.json()
+          if (geoData.status === 'success') geo = geoData
+        } catch { /* geo lookup failed — send email without it */ }
+      }
+      const result = await sendEmail({ to: dest, ...tplLoginWelcome({ displayName, email: user.email, role: user.role, loginTime, ip, geo }) })
+      if (!result.ok) logError('email_failed', result.error, 'POST /api/auth/login', null, { to: dest })
+    } catch (e) { logError('email_failed', e.message, 'POST /api/auth/login', null, { to: dest }) }
+  })()
 
   res.json({ token, role: user.role, label: displayName, email: user.email })
 })
