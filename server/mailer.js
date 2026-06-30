@@ -672,3 +672,299 @@ export function tplLoginWelcome({ displayName, email, role, loginTime, ip, geo }
 </html>`,
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   FEATURE NOTIFICATION TEMPLATES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+export function tplBillingClaimSubmitted({ claimId, patientName, emLevel, icdCount, cptCount, totalCharges, complianceFlags }) {
+  const flagCount = complianceFlags || 0
+  return {
+    subject: `Billing Claim Submitted — ${String(claimId).slice(0, 8)}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#312e81,#4f46e5)',
+      title: 'Billing Claim Submitted',
+      accentColor: '#4f46e5',
+      rows: [
+        { label: 'Claim ID', value: `<span style="font-family:monospace;">${claimId}</span>` },
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'E&M Level', value: emLevel || '—' },
+        { label: 'ICD-10 Codes', value: String(icdCount ?? 0) },
+        { label: 'CPT Codes', value: String(cptCount ?? 0) },
+        { label: 'Estimated Charges', value: `$${Number(totalCharges || 0).toFixed(2)}` },
+        { label: 'Compliance Flags', value: `<span style="color:${flagCount > 0 ? '#dc2626' : '#059669'};font-weight:700;">${flagCount}</span>` },
+      ],
+      alertPanels: flagCount > 0 ? [{ borderColor: '#f59e0b', bgColor: '#fffbeb', textColor: '#92400e', content: `${flagCount} compliance flag${flagCount > 1 ? 's' : ''} require review before final submission` }] : [],
+      actionUrl: 'https://vianova-health.onrender.com/billing',
+      actionLabel: 'Review Claim →',
+    }),
+  }
+}
+
+export function tplAppointmentScheduled({ patientName, appointmentType, appointmentDate, provider, location, status }) {
+  const title = status === 'cancelled' ? 'Appointment Cancelled' : status === 'completed' ? 'Appointment Completed' : 'Appointment Scheduled'
+  const statusColor = status === 'cancelled' ? '#dc2626' : status === 'completed' ? '#059669' : '#0284c7'
+  return {
+    subject: `${title} — ${patientName || 'Patient'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#164e63,#0e7490)',
+      title,
+      accentColor: '#0e7490',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Type', value: appointmentType || '—' },
+        { label: 'Date & Time', value: appointmentDate || '—' },
+        { label: 'Provider', value: provider || '—' },
+        { label: 'Location', value: location || '—' },
+        { label: 'Status', value: `<span style="color:${statusColor};font-weight:700;">${status || 'scheduled'}</span>` },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/appointments',
+      actionLabel: 'View Appointments →',
+    }),
+  }
+}
+
+export function tplLabResultAdded({ patientName, testName, value, unit, interpretation, critical, referenceRange }) {
+  const isCrit = !!critical
+  const valColor = isCrit ? '#dc2626' : (interpretation === 'H' || interpretation === 'HH') ? '#dc2626' : (interpretation === 'N') ? '#059669' : '#0f172a'
+  return {
+    subject: isCrit ? `CRITICAL Lab Result — ${testName}` : `New Lab Result — ${testName}`,
+    html: buildEmail({
+      headerGradient: isCrit ? 'linear-gradient(135deg,#7f1d1d,#dc2626)' : 'linear-gradient(135deg,#1e3a5f,#0284c7)',
+      title: isCrit ? 'CRITICAL Lab Result' : 'New Lab Result',
+      accentColor: isCrit ? '#dc2626' : '#0284c7',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Test', value: testName || '—' },
+        { label: 'Result', value: `<span style="color:${valColor};font-weight:700;">${value} ${unit || ''}</span>` },
+        { label: 'Reference Range', value: referenceRange || '—' },
+        { label: 'Interpretation', value: interpretation || '—' },
+        { label: 'Flagged Critical', value: isCrit ? '<span style="color:#dc2626;font-weight:700;">Yes</span>' : 'No' },
+      ],
+      alertPanels: isCrit ? [{ borderColor: '#dc2626', bgColor: '#fee2e2', textColor: '#7f1d1d', content: 'This result requires immediate physician review' }] : [],
+      actionUrl: 'https://vianova-health.onrender.com/labs',
+      actionLabel: 'View Lab Results →',
+    }),
+  }
+}
+
+export function tplDischargeGenerated({ patientName, riskLevel, tcmEnrolled, language, followupScheduled, transmissionStatus }) {
+  const riskColor = riskLevel === 'high' ? '#dc2626' : riskLevel === 'medium' ? '#d97706' : '#059669'
+  return {
+    subject: `Discharge Summary Generated — ${patientName || 'Patient'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#064e3b,#059669)',
+      title: 'Discharge Summary Generated',
+      accentColor: '#059669',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Risk Level', value: `<span style="color:${riskColor};font-weight:700;">${riskLevel || '—'}</span>` },
+        { label: 'TCM Enrolled', value: tcmEnrolled ? 'Yes' : 'No' },
+        { label: 'Language', value: language || 'en' },
+        { label: 'Follow-up Scheduled', value: followupScheduled ? 'Yes' : 'No' },
+        { label: 'Transmission Status', value: transmissionStatus || '—' },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/discharge',
+      actionLabel: 'View Discharge →',
+    }),
+  }
+}
+
+export function tplConsentSigned({ patientName, consentType, signedBy, expiresAt }) {
+  return {
+    subject: `Consent Signed — ${patientName || 'Patient'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#1e3a5f,#1d4ed8)',
+      title: 'Consent Signed',
+      accentColor: '#1d4ed8',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Consent Type', value: consentType || '—' },
+        { label: 'Signed By', value: signedBy || '—' },
+        { label: 'Signed At', value: fmtNow() },
+        { label: 'Expires At', value: expiresAt || 'No expiry' },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/consent',
+      actionLabel: 'View Consents →',
+    }),
+  }
+}
+
+export function tplConsentRevoked({ patientName, consentType, revokedBy, reason }) {
+  return {
+    subject: `Consent Revoked — ${patientName || 'Patient'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#7f1d1d,#b91c1c)',
+      title: 'Consent Revoked',
+      accentColor: '#b91c1c',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Consent Type', value: consentType || '—' },
+        { label: 'Revoked By', value: revokedBy || '—' },
+        { label: 'Reason', value: reason || '—' },
+        { label: 'Revoked At', value: fmtNow() },
+      ],
+      alertPanels: [{ borderColor: '#dc2626', bgColor: '#fee2e2', textColor: '#7f1d1d', content: 'Data access restrictions for this patient may have changed' }],
+    }),
+  }
+}
+
+export function tplCareGapDetected({ patientName, gapType, priority, description, dueDate }) {
+  const gradient = priority === 'high' ? 'linear-gradient(135deg,#7c2d12,#ea580c)' : 'linear-gradient(135deg,#713f12,#ca8a04)'
+  const prioColor = priority === 'high' ? '#dc2626' : priority === 'medium' ? '#d97706' : '#059669'
+  return {
+    subject: `Care Gap Identified — ${patientName || 'Patient'}`,
+    html: buildEmail({
+      headerGradient: gradient,
+      title: 'Care Gap Identified',
+      accentColor: priority === 'high' ? '#ea580c' : '#ca8a04',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Gap Type', value: gapType || '—' },
+        { label: 'Priority', value: `<span style="color:${prioColor};font-weight:700;">${priority || '—'}</span>` },
+        { label: 'Description', value: description || '—' },
+        { label: 'Due Date', value: dueDate || '—' },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/care-gaps',
+      actionLabel: 'View Care Gaps →',
+    }),
+  }
+}
+
+export function tplNlpNoteProcessed({ patientName, noteType, acuityScore, phenotypeFlags, conditionsFound, medicationsFound, sentiment }) {
+  const score = acuityScore ?? 0
+  const acuityColor = score >= 7 ? '#dc2626' : score >= 4 ? '#d97706' : '#059669'
+  const phenotypes = Array.isArray(phenotypeFlags) ? phenotypeFlags.join(', ') || '—' : String(phenotypeFlags || '—')
+  return {
+    subject: `Clinical Note Processed — ${patientName || 'Patient'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#0c4a6e,#0284c7)',
+      title: 'Clinical Note Processed',
+      accentColor: '#0284c7',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Note Type', value: noteType || '—' },
+        { label: 'Acuity Score', value: `<span style="color:${acuityColor};font-weight:700;">${score}/10</span>` },
+        { label: 'Sentiment', value: sentiment || '—' },
+        { label: 'Conditions Found', value: String(conditionsFound ?? 0) },
+        { label: 'Medications Found', value: String(medicationsFound ?? 0) },
+        { label: 'Phenotypes', value: phenotypes },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/nlp-notes',
+      actionLabel: 'View NLP Notes →',
+    }),
+  }
+}
+
+export function tplSdohAssessmentCompleted({ patientName, housingRisk, foodSecurity, transportationRisk, zCodes, resourcesSuggested }) {
+  return {
+    subject: `SDOH Screening Completed — ${patientName || 'Patient'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#134e4a,#0f766e)',
+      title: 'SDOH Screening Completed',
+      accentColor: '#0f766e',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Housing', value: housingRisk || '—' },
+        { label: 'Food Security', value: foodSecurity || '—' },
+        { label: 'Transportation', value: transportationRisk || '—' },
+        { label: 'Z-Codes Assigned', value: Array.isArray(zCodes) ? zCodes.join(', ') || '—' : String(zCodes || '—') },
+        { label: 'Resources Suggested', value: String(resourcesSuggested ?? 0) },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/sdoh',
+      actionLabel: 'View SDOH →',
+    }),
+  }
+}
+
+export function tplChronicDiseaseUpdate({ patientName, conditions, riskLevel, lastCheckin, nextCheckin }) {
+  const riskColor = riskLevel === 'critical' ? '#dc2626' : riskLevel === 'high' ? '#ea580c' : riskLevel === 'moderate' ? '#d97706' : '#059669'
+  return {
+    subject: `Chronic Disease Plan Updated — ${patientName || 'Patient'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#4c1d95,#7c3aed)',
+      title: 'Chronic Disease Plan Updated',
+      accentColor: '#7c3aed',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Conditions', value: Array.isArray(conditions) ? conditions.join(', ') || '—' : String(conditions || '—') },
+        { label: 'Risk Level', value: `<span style="color:${riskColor};font-weight:700;">${riskLevel || '—'}</span>` },
+        { label: 'Last Check-in', value: lastCheckin || fmtNow() },
+        { label: 'Next Check-in', value: nextCheckin || '—' },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/chronic-disease',
+      actionLabel: 'View Chronic Disease →',
+    }),
+  }
+}
+
+export function tplClinicalDecisionRun({ patientName, news2Score, news2Label, riskLabel, topDiagnosis, alertCount }) {
+  const s = news2Score ?? 0
+  const gradient = s >= 7 ? 'linear-gradient(135deg,#7f1d1d,#dc2626)' : s >= 5 ? 'linear-gradient(135deg,#713f12,#d97706)' : 'linear-gradient(135deg,#0c4a6e,#0e7490)'
+  const accentColor = s >= 7 ? '#dc2626' : s >= 5 ? '#d97706' : '#0e7490'
+  const scoreColor = s >= 7 ? '#dc2626' : s >= 5 ? '#d97706' : '#059669'
+  const riskColor = riskLabel === 'critical' ? '#dc2626' : riskLabel === 'high' ? '#ea580c' : riskLabel === 'moderate' ? '#d97706' : '#059669'
+  return {
+    subject: `Clinical Decision Support Run — ${patientName || 'Patient'}`,
+    html: buildEmail({
+      headerGradient: gradient,
+      title: 'Clinical Decision Support Run',
+      accentColor,
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'NEWS2 Score', value: `<span style="color:${scoreColor};font-weight:700;">${s}</span>` },
+        { label: 'NEWS2 Level', value: news2Label || '—' },
+        { label: 'Overall Risk', value: `<span style="color:${riskColor};font-weight:700;">${riskLabel || '—'}</span>` },
+        { label: 'Top Diagnosis', value: topDiagnosis || '—' },
+        { label: 'Clinical Alerts', value: String(alertCount ?? 0) },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/clinical-decisions',
+      actionLabel: 'View Clinical Decisions →',
+    }),
+  }
+}
+
+export function tplAuditEvent({ eventType, actor, resourceType, patientId, detail, severity }) {
+  const isHigh = severity === 'high'
+  return {
+    subject: `Audit Event: ${eventType}${isHigh ? ' [HIGH SEVERITY]' : ''}`,
+    html: buildEmail({
+      headerGradient: isHigh ? 'linear-gradient(135deg,#7f1d1d,#dc2626)' : 'linear-gradient(135deg,#1c1917,#44403c)',
+      title: 'Audit Event Recorded',
+      accentColor: isHigh ? '#dc2626' : '#44403c',
+      rows: [
+        { label: 'Event Type', value: eventType || '—' },
+        { label: 'Actor', value: actor || '—' },
+        { label: 'Resource Type', value: resourceType || '—' },
+        { label: 'Patient', value: patientId || '—' },
+        { label: 'Detail', value: detail || '—' },
+        { label: 'Severity', value: `<span style="color:${isHigh ? '#dc2626' : '#d97706'};font-weight:700;">${severity || '—'}</span>` },
+        { label: 'Timestamp', value: fmtNow() },
+      ],
+      alertPanels: isHigh ? [{ borderColor: '#dc2626', bgColor: '#fee2e2', textColor: '#7f1d1d', content: 'High-severity compliance event requires immediate review' }] : [],
+      actionUrl: 'https://vianova-health.onrender.com/audit-compliance',
+      actionLabel: 'View Audit Log →',
+    }),
+  }
+}
+
+export function tplPopulationHealthReport({ cohortName, memberCount, highRiskCount, programType, criteria }) {
+  const critSummary = typeof criteria === 'object' ? JSON.stringify(criteria).slice(0, 120) : String(criteria || '—')
+  return {
+    subject: `Population Health Cohort Updated — ${cohortName || 'Cohort'}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#1e3a5f,#0369a1)',
+      title: 'Population Health Cohort Updated',
+      accentColor: '#0369a1',
+      rows: [
+        { label: 'Cohort', value: cohortName || '—' },
+        { label: 'Program Type', value: programType || '—' },
+        { label: 'Members', value: String(memberCount ?? 0) },
+        { label: 'High Risk Members', value: String(highRiskCount ?? 0) },
+        { label: 'Criteria Summary', value: critSummary },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/population-health',
+      actionLabel: 'View Population Health →',
+    }),
+  }
+}

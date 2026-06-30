@@ -15,7 +15,12 @@ import Groq from 'groq-sdk'
 import bcrypt from 'bcryptjs'
 import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatmentEdited,
          tplAppointmentReminder, tplUserDeactivated, tplAdverseEventDetected,
-         tplConsentExpiring, tplSystemError, tplLoginWelcome } from './mailer.js'
+         tplConsentExpiring, tplSystemError, tplLoginWelcome,
+         tplBillingClaimSubmitted, tplAppointmentScheduled, tplLabResultAdded,
+         tplDischargeGenerated, tplConsentSigned, tplConsentRevoked,
+         tplCareGapDetected, tplNlpNoteProcessed, tplSdohAssessmentCompleted,
+         tplChronicDiseaseUpdate, tplClinicalDecisionRun, tplAuditEvent,
+         tplPopulationHealthReport } from './mailer.js'
 
 const require = createRequire(import.meta.url)
 const { generateCasesReport } = require('./report.cjs')
@@ -1613,6 +1618,7 @@ Limit to the 5 most clinically important gaps. Return [] if no gaps.`
         args: [id, req.params.patientId, req.apiKey, g.gap_type, g.description, g.priority || 'medium', g.due_date || null, new Date().toISOString()]
       })
       inserted.push({ id, ...g })
+      notify(req.apiKey, tplCareGapDetected({ patientName: patient.name, gapType: g.gap_type, priority: g.priority, description: g.description, dueDate: g.due_date })).catch(() => {})
     }
     res.json({ detected: inserted.length, gaps: inserted })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1779,6 +1785,7 @@ Conditions: ${patient.conditions || 'none'}`
     args: [new Date().toISOString(), patient_id, req.apiKey, `%${test_name}%`, `%${key}%`]
   })
 
+  notify(req.apiKey, tplLabResultAdded({ patientName: patient?.name, testName: test_name, value, unit, interpretation: interp, critical: !!critical, referenceRange: refLow != null && refHigh != null ? `${refLow}–${refHigh} ${unit||''}`.trim() : null })).catch(() => {})
   res.json({ id, interpretation: interp, critical: !!critical, delta_flag: !!delta_flag, ai_summary })
 })
 
@@ -1827,6 +1834,7 @@ app.post('/api/appointments', auth, async (req, res) => {
     sql: 'INSERT INTO appointments (id, patient_id, owner_email, appointment_type, appointment_date, duration_minutes, provider, location, notes, status, no_show_risk, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
     args: [id, patient_id, req.apiKey, appointment_type, appointment_date, duration_minutes || 30, provider || null, location || null, notes || null, 'scheduled', risk, new Date().toISOString()]
   })
+  notify(req.apiKey, tplAppointmentScheduled({ patientName: patient?.name || patient_id, appointmentType: appointment_type, appointmentDate: appointment_date, provider, location, status: 'scheduled' })).catch(() => {})
   res.json({ id, no_show_risk: risk })
 })
 
@@ -1838,6 +1846,7 @@ app.put('/api/appointments/:id', auth, async (req, res) => {
     sql: 'UPDATE appointments SET appointment_type=?, appointment_date=?, duration_minutes=?, provider=?, location=?, notes=?, status=? WHERE id=?',
     args: [appointment_type||appt.appointment_type, appointment_date||appt.appointment_date, duration_minutes||appt.duration_minutes, provider??appt.provider, location??appt.location, notes??appt.notes, status||appt.status, req.params.id]
   })
+  notify(req.apiKey, tplAppointmentScheduled({ patientName: appt.patient_id, appointmentType: appointment_type||appt.appointment_type, appointmentDate: appointment_date||appt.appointment_date, provider: provider??appt.provider, location: location??appt.location, status: status||appt.status })).catch(() => {})
   res.json({ ok: true })
 })
 
@@ -2086,6 +2095,7 @@ Return ONLY valid JSON matching the schema above. patient_instructions and patie
     })
 
     const saved = (await db.execute({ sql: 'SELECT * FROM discharge_summaries WHERE id = ?', args: [id] })).rows[0]
+    notify(req.apiKey, tplDischargeGenerated({ patientName: patient.name, riskLevel: finalRisk, tcmEnrolled: !!finalTcm, language: patientLang, followupScheduled: !!apptId, transmissionStatus: 'pending' })).catch(() => {})
     res.json({ ...saved, patient_name: patient.name })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2548,6 +2558,7 @@ app.post('/api/cohorts', auth, async (req, res) => {
     if (!name || !criteria) return res.status(400).json({ error: 'name and criteria required' })
     const id = randomUUID(); const now = new Date().toISOString()
     await db.execute({ sql: 'INSERT INTO cohorts (id, owner_email, name, description, criteria, program_type, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)', args: [id, req.apiKey, name, description || '', JSON.stringify(criteria), program_type || null, now, now] })
+    notify(req.apiKey, tplPopulationHealthReport({ cohortName: name, memberCount: 0, highRiskCount: 0, programType: program_type, criteria })).catch(() => {})
     res.json({ id, name })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2931,6 +2942,7 @@ Return this exact JSON structure:
     })
     const aiResult = JSON.parse(aiRes.choices[0].message.content)
 
+    notify(req.apiKey, tplClinicalDecisionRun({ patientName: patient.name, news2Score: news2.score, news2Label: news2.label, riskLabel: aiResult.risk_label, topDiagnosis: aiResult.differential?.[0]?.diagnosis, alertCount: (aiResult.cards||[]).length })).catch(() => {})
     res.json({
       // patient info
       patient_name:       patient.name,
@@ -3123,6 +3135,8 @@ Return JSON:
     })
 
     const saved = (await db.execute({ sql: 'SELECT * FROM sdoh_assessments WHERE id = ?', args: [id] })).rows[0]
+    const _sdohPat = (await db.execute({ sql: 'SELECT name FROM gen_patients WHERE id = ?', args: [patient_id] })).rows[0]
+    notify(req.apiKey, tplSdohAssessmentCompleted({ patientName: _sdohPat?.name, housingRisk: housing, foodSecurity: food_security, transportationRisk: transportation, zCodes: ai.z_codes, resourcesSuggested: (ai.resources||[]).length })).catch(() => {})
     res.json({ ...saved, ai })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3178,6 +3192,9 @@ Return JSON:
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const result = JSON.parse(aiRes.choices[0].message.content)
+    const _activeConditions = (result.programs||[]).map(p => p.condition)
+    const _overallRisk = result.overall_status === 'critical' ? 'critical' : result.overall_status === 'worsening' ? 'high' : result.overall_status === 'stable' ? 'low' : 'moderate'
+    notify(req.apiKey, tplChronicDiseaseUpdate({ patientName: patient.name, conditions: _activeConditions, riskLevel: _overallRisk, lastCheckin: new Date().toISOString().slice(0,10), nextCheckin: null })).catch(() => {})
     res.json({ ...result, patient_name: patient.name, generated_at: new Date().toISOString() })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3489,6 +3506,8 @@ app.post('/api/consent/:id/sign', auth, async (req, res) => {
       sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       args: [auditId, row.patient_id, req.apiKey, 'consent_signed', signee_name || req.apiKey, 'Consent', row.id, 0, 'info', `Consent signed by ${signee_name || req.apiKey}`, null, auditCreatedAt]
     })
+    const _csPat = (await db.execute({ sql: 'SELECT name FROM gen_patients WHERE id = ?', args: [row.patient_id] })).rows[0]
+    notify(req.apiKey, tplConsentSigned({ patientName: _csPat?.name, consentType: row.consent_type, signedBy: signee_name || req.apiKey, expiresAt: row.expires_at })).catch(() => {})
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3511,6 +3530,8 @@ app.post('/api/consent/:id/revoke', auth, async (req, res) => {
       sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       args: [auditId, row.patient_id, req.apiKey, 'consent_revoked', req.apiKey, 'Consent', row.id, 0, 'info', revoke_reason || 'Consent revoked', fhirAudit, auditCreatedAt]
     })
+    const _crPat = (await db.execute({ sql: 'SELECT name FROM gen_patients WHERE id = ?', args: [row.patient_id] })).rows[0]
+    notify(req.apiKey, tplConsentRevoked({ patientName: _crPat?.name, consentType: row.consent_type, revokedBy: req.apiKey, reason: revoke_reason })).catch(() => {})
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3565,6 +3586,7 @@ app.post('/api/consent/break-glass', auth, async (req, res) => {
       sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       args: [auditId, patient_id, req.apiKey, 'break_glass', actor || req.apiKey, 'PatientRecord', null, 0, 'high', reason, fhirAudit, now]
     })
+    notifyAll(tplAuditEvent({ eventType: 'break_glass', actor: actor || req.apiKey, resourceType: 'Patient', patientId: patient_id, detail: reason, severity: 'high' })).catch(() => {})
     res.json({ allowed: true, audit_id: auditId })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3799,6 +3821,7 @@ Return JSON with these exact keys:
     })
 
     const claim = (await db.execute({ sql: 'SELECT * FROM billing_claims WHERE id = ?', args: [id] })).rows[0]
+    notify(req.apiKey, tplBillingClaimSubmitted({ claimId: id, patientName: patient?.name, emLevel: coding.em_level, icdCount: (coding.icd_codes||[]).length, cptCount: (coding.cpt_codes||[]).length, totalCharges: coding.total_charges, complianceFlags: (coding.compliance_flags||[]).length })).catch(() => {})
     res.json({ claim, coding, fhir_claim: fhirClaim, patient_name: patient.name })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3917,6 +3940,7 @@ app.post('/api/billing/:id/submit', auth, async (req, res) => {
     const fhirClaim = buildFhirClaim({ ...claim, status: 'active' }, patient)
     await db.execute({ sql: `UPDATE billing_claims SET status = 'submitted', submitted_at = ?, fhir_claim = ? WHERE id = ?`, args: [now, JSON.stringify(fhirClaim), claim.id] })
     const updated = (await db.execute({ sql: 'SELECT * FROM billing_claims WHERE id = ?', args: [claim.id] })).rows[0]
+    notify(req.apiKey, tplBillingClaimSubmitted({ claimId: claim.id, patientName: patient?.name, emLevel: claim.em_level, icdCount: (safeJson(claim.icd_codes, [])).length, cptCount: (safeJson(claim.cpt_codes, [])).length, totalCharges: claim.total_charges, complianceFlags: (safeJson(claim.compliance_flags, [])).length })).catch(() => {})
     res.json({ claim: updated, fhir_claim: fhirClaim })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4083,6 +4107,7 @@ app.post('/api/nlp-notes/process', auth, aiLimiter, async (req, res) => {
       ]
     })
     const rows = (await db.execute({ sql: `SELECT n.*, p.name as patient_name FROM nlp_notes n LEFT JOIN gen_patients p ON CAST(n.patient_id AS TEXT) = CAST(p.id AS TEXT) WHERE n.id = ?`, args: [id] })).rows
+    notify(req.apiKey, tplNlpNoteProcessed({ patientName: rows[0]?.patient_name, noteType: note_type, acuityScore: extracted.acuity_score, phenotypeFlags: extracted.phenotype_flags, conditionsFound: (extracted.conditions||[]).length, medicationsFound: (extracted.medications||[]).length, sentiment: extracted.sentiment })).catch(() => {})
     res.json({ note: rows[0] })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
