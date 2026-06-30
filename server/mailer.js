@@ -1,8 +1,15 @@
 /**
  * mailer.js — Vianova Health email system
  *
- * Provider priority: Gmail SMTP -> Brevo -> Resend
- * Sender is ALWAYS "Vianova Health" <vianova.healthtest@gmail.com>
+ * Provider priority (on cloud/Render — SMTP port 587 is blocked):
+ *   1. Brevo  (HTTP API — works everywhere, free 300/day)
+ *   2. Resend (HTTP API — fallback)
+ *   3. Gmail SMTP — LOCAL DEV ONLY (Render blocks port 587)
+ *
+ * Sender display: "Vianova Health" <vianova.healthtest@gmail.com>
+ * NOTE: to send FROM that Gmail address via Brevo/Resend you must verify
+ * it as a sender in your Brevo/Resend dashboard, OR use the Brevo default
+ * sender and set replyTo to vianova.healthtest@gmail.com.
  */
 
 import nodemailer from 'nodemailer'
@@ -25,9 +32,10 @@ function getGmailTransporter() {
       port: 587,
       secure: false,
       auth: { user: GMAIL_USER, pass: GMAIL_PASS },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 10000,
+      // Force IPv4 — Render's IPv6 routing to Google SMTP is unreliable
       lookup: (hostname, options, cb) => dnsLookup(hostname, { ...options, family: 4 }, cb),
     })
   }
@@ -35,7 +43,6 @@ function getGmailTransporter() {
 }
 
 async function sendViaGmail(to, subject, html, text) {
-  if (!GMAIL_USER || !GMAIL_PASS) return { ok: false, error: 'Gmail not configured' }
   try {
     await getGmailTransporter().sendMail({
       from: `"${SENDER_NAME}" <${SENDER_EMAIL}>`,
@@ -45,79 +52,70 @@ async function sendViaGmail(to, subject, html, text) {
     })
     return { ok: true }
   } catch (err) {
-    gmailTransporter = null
+    gmailTransporter = null  // reset so next call gets a fresh transporter
     return { ok: false, error: err.message }
   }
 }
 
+async function sendViaBrevo(to, subject, html, attachments) {
+  const body = {
+    sender:      { name: SENDER_NAME, email: SENDER_EMAIL },
+    to:          [{ email: to }],
+    replyTo:     { email: SENDER_EMAIL },
+    subject,
+    htmlContent: html,
+  }
+  if (attachments && attachments.length > 0) body.attachment = attachments
+  const res  = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method:  'POST',
+    headers: { 'api-key': BREVO_KEY, 'content-type': 'application/json' },
+    body:    JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, error: data.message || `Brevo HTTP ${res.status}` }
+  return { ok: true }
+}
+
+async function sendViaResend(to, subject, html) {
+  const res  = await fetch('https://api.resend.com/emails', {
+    method:  'POST',
+    headers: { 'Authorization': `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ from: `${SENDER_NAME} <${SENDER_EMAIL}>`, to: [to], subject, html }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { ok: false, error: data.message || data.error || `Resend HTTP ${res.status}` }
+  return { ok: true }
+}
+
 /**
- * Send an email.
- * Returns { ok: true } or { ok: false, error: string }
+ * Send an email. Returns { ok: true } or { ok: false, error: string }.
+ *
+ * Priority: Brevo (HTTP) → Resend (HTTP) → Gmail SMTP (local dev only).
+ * HTTP APIs are used first because cloud hosts (Render, Railway, Fly)
+ * block outbound SMTP port 587, causing connection timeouts.
  */
 export async function sendEmail({ to, subject, html, text, attachments }) {
   if (!to) return { ok: false, error: 'No recipient email' }
+  const body = html || `<p>${text || subject}</p>`
 
-  // ── Gmail SMTP (primary) ───────────────────────────────────────────────────
-  if (GMAIL_USER && GMAIL_PASS) {
-    return sendViaGmail(to, subject, html, text)
-  }
-
-  // ── Brevo (secondary) ──────────────────────────────────────────────────────
+  // 1. Brevo — HTTP API, works on all cloud platforms
   if (BREVO_KEY) {
-    try {
-      const body = {
-        sender: { name: SENDER_NAME, email: SENDER_EMAIL },
-        to: [{ email: to }],
-        subject,
-        htmlContent: html || `<p>${text || subject}</p>`,
-      }
-      if (attachments && attachments.length > 0) {
-        body.attachment = attachments
-      }
-      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: { 'api-key': BREVO_KEY, 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) return { ok: false, error: data.message || `Brevo HTTP ${res.status}` }
-      return { ok: true }
-    } catch (err) {
-      return { ok: false, error: `Brevo fetch error: ${err.message}` }
-    }
+    try { return await sendViaBrevo(to, subject, body, attachments) }
+    catch (e) { /* fall through to next provider */ }
   }
 
-  // ── Resend (tertiary, requires verified domain) ────────────────────────────
+  // 2. Resend — HTTP API fallback
   if (RESEND_KEY) {
-    try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${RESEND_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: `${SENDER_NAME} <${SENDER_EMAIL}>`,
-          to: [to],
-          subject,
-          html: html || `<p>${text || subject}</p>`,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        // Domain not verified — skip
-        if (res.status === 403 || res.status === 422) {
-          return { ok: false, error: `Resend domain not verified: ${data.message || data.error}` }
-        }
-        return { ok: false, error: data.message || data.error || `Resend HTTP ${res.status}` }
-      }
-      return { ok: true }
-    } catch (err) {
-      return { ok: false, error: `Resend fetch error: ${err.message}` }
-    }
+    try { return await sendViaResend(to, subject, body) }
+    catch (e) { /* fall through */ }
   }
 
-  return { ok: false, error: 'No email provider configured (set GMAIL_USER+GMAIL_PASS, BREVO_API_KEY, or RESEND_API_KEY)' }
+  // 3. Gmail SMTP — only reliable in local dev; Render blocks port 587
+  if (GMAIL_USER && GMAIL_PASS) {
+    return sendViaGmail(to, subject, body, text)
+  }
+
+  return { ok: false, error: 'No email provider configured. Set BREVO_API_KEY (recommended) or RESEND_API_KEY in environment variables.' }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
