@@ -15,6 +15,22 @@ const fmtDate = ts => {
 const BAD_WORDS = ['retard', 'pussy', 'fuck', 'fucker', 'fucking', 'fucked', 'fucks']
 const hasProfanity = text => BAD_WORDS.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text))
 const TIMEOUT_MS = 15 * 60 * 1000 // 15 minute timeout after 3 strikes
+const LS_TIMEOUT_KEY = 'vnh_chat_timeout_until'
+
+function getStoredTimeoutSecsLeft() {
+  const until = Number(localStorage.getItem(LS_TIMEOUT_KEY) || 0)
+  if (!until) return 0
+  const left = Math.ceil((until - Date.now()) / 1000)
+  return left > 0 ? left : 0
+}
+
+function setStoredTimeout() {
+  localStorage.setItem(LS_TIMEOUT_KEY, String(Date.now() + TIMEOUT_MS))
+}
+
+function clearStoredTimeout() {
+  localStorage.removeItem(LS_TIMEOUT_KEY)
+}
 
 /* ─── Avatar ─────────────────────────────────────────────────────── */
 const GRAD = {
@@ -371,11 +387,11 @@ export default function FloatingChat() {
   const [open,  setOpen]  = useState(false)
   const [tab,   setTab]   = useState('home')
 
-  // profanity strike system
+  // profanity strike system — initialise from localStorage so timeout survives new chats/refreshes
   const [strikes,      setStrikes]      = useState(0)
   const [strikeShow,   setStrikeShow]   = useState(false)
-  const [timedOut,     setTimedOut]     = useState(false)
-  const [timeoutSecs,  setTimeoutSecs]  = useState(0)
+  const [timedOut,     setTimedOut]     = useState(() => getStoredTimeoutSecsLeft() > 0)
+  const [timeoutSecs,  setTimeoutSecs]  = useState(() => getStoredTimeoutSecsLeft())
   const strikeTimer  = useRef(null)
   const timeoutTimer = useRef(null)
 
@@ -488,12 +504,35 @@ export default function FloatingChat() {
 
   if (!key) return null
 
+  /* ── resume timeout countdown if one was active when component mounts ── */
+  useEffect(() => {
+    const secsLeft = getStoredTimeoutSecsLeft()
+    if (secsLeft <= 0) return
+    setTimedOut(true)
+    setTimeoutSecs(secsLeft)
+    let s = secsLeft
+    clearInterval(timeoutTimer.current)
+    timeoutTimer.current = setInterval(() => {
+      s -= 1
+      setTimeoutSecs(s)
+      if (s <= 0) {
+        clearInterval(timeoutTimer.current)
+        clearStoredTimeout()
+        setTimedOut(false)
+        setStrikes(0)
+        setStrikeShow(false)
+      }
+    }, 1000)
+    return () => clearInterval(timeoutTimer.current)
+  }, []) // eslint-disable-line
+
   /* ── strike system ── */
   function triggerStrike(newCount) {
     setStrikeShow(true)
     clearTimeout(strikeTimer.current)
     strikeTimer.current = setTimeout(() => setStrikeShow(false), 4000)
     if (newCount >= 3) {
+      setStoredTimeout()           // persist to localStorage
       setTimedOut(true)
       let secs = TIMEOUT_MS / 1000
       setTimeoutSecs(secs)
@@ -503,6 +542,7 @@ export default function FloatingChat() {
         setTimeoutSecs(secs)
         if (secs <= 0) {
           clearInterval(timeoutTimer.current)
+          clearStoredTimeout()
           setTimedOut(false)
           setStrikes(0)
           setStrikeShow(false)
@@ -513,7 +553,7 @@ export default function FloatingChat() {
 
   /* ── actions ── */
   async function startChat() {
-    if (starting) return
+    if (starting || timedOut) return
     setStarting(true); setTab('messages')
     try {
       const d = await api('/api/chat/sessions', { method: 'POST', body: JSON.stringify({ subject: 'General inquiry' }) })
@@ -751,7 +791,7 @@ export default function FloatingChat() {
 
           <TabBar tab={tab} setTab={t => { setTab(t); setViewTicket(null) }} isSuperAdmin={isSuperAdmin} escalatedCount={escalatedCount} />
 
-          {/* ── Strike warning overlay ── */}
+          {/* ── Strike warning overlay (shows on top of any tab) ── */}
           {strikeShow && !timedOut && (
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(254,226,226,.92)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 10, borderRadius: 20, animation: 'fc-slidein .18s ease both' }}>
               <div style={{ fontSize: 46 }}>⚠️</div>
