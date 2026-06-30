@@ -98,15 +98,16 @@ export default function FloatingChat() {
 
   // ── Actions ───────────────────────────────────────────────────────────────
   async function startChat(subjectOverride) {
-    if (starting) return
+    if (starting) return null
     setStarting(true)
     setTab('messages')
+    let result = null
     try {
       const d = await api('/api/chat/sessions', { method: 'POST', body: JSON.stringify({ subject: subjectOverride || 'General inquiry' }) })
-      if (d.id) setSession({ ...d, status: 'waiting' })
-      return d
+      if (d.id) { setSession({ ...d, status: 'waiting' }); result = d }
     } catch {}
     setStarting(false)
+    return result
   }
 
   async function sendMsg() {
