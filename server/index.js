@@ -15,7 +15,7 @@ import Groq from 'groq-sdk'
 import bcrypt from 'bcryptjs'
 import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatmentEdited,
          tplAppointmentReminder, tplUserDeactivated, tplAdverseEventDetected,
-         tplConsentExpiring, tplSystemError } from './mailer.js'
+         tplConsentExpiring, tplSystemError, tplLoginWelcome } from './mailer.js'
 
 const require = createRequire(import.meta.url)
 const { generateCasesReport } = require('./report.cjs')
@@ -695,6 +695,15 @@ app.post('/api/auth/login', async (req, res) => {
   })
   const displayName = user.role === 'doctor' ? `Dr. ${user.name}` : user.name
   await logUpdate('auth_login', `${user.role} "${displayName}" signed in`, { email: user.email, role: user.role })
+
+  // Fire-and-forget welcome email to the user's notify_email or login email
+  const dest = user.notify_email?.trim() || user.email
+  const loginTime = new Date().toLocaleString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
+  const ipHint = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim() || null
+  sendEmail({ to: dest, ...tplLoginWelcome({ displayName, email: user.email, role: user.role, loginTime, ipHint }) })
+    .then(r => { if (!r.ok) logError('email_failed', r.error, 'POST /api/auth/login', null, { to: dest }) })
+    .catch(() => {})
+
   res.json({ token, role: user.role, label: displayName, email: user.email })
 })
 
