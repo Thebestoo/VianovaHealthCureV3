@@ -83,6 +83,41 @@ function WelcomeBubble({ msg }) {
   )
 }
 
+/* ── Input bar — defined OUTSIDE FloatingChat so it never remounts ── */
+function InputBar({ value, onChange, onSend, disabled, placeholder, fwdRef }) {
+  return (
+    <div style={{ padding: '10px 12px 12px', background: '#fff', borderTop: '1px solid #f1f5f9', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', borderRadius: 12, padding: '6px 8px 6px 12px', border: '1.5px solid #e2e8f0' }}>
+        <input
+          ref={fwdRef}
+          value={value}
+          onChange={onChange}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend() } }}
+          placeholder={placeholder || 'Type a message…'}
+          disabled={disabled}
+          autoComplete="off"
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13.5, color: '#1e293b', background: 'transparent', lineHeight: 1.4 }}
+        />
+        <button
+          onClick={onSend}
+          disabled={disabled || !value.trim()}
+          style={{
+            width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: 'pointer',
+            background: (!disabled && value.trim()) ? 'linear-gradient(135deg,#1d6ef5,#0ea5e9)' : '#e2e8f0',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background .15s',
+          }}
+        >
+          <Send size={14} color="#fff" />
+        </button>
+      </div>
+      <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 5, textAlign: 'center' }}>
+        Press Enter to send
+      </div>
+    </div>
+  )
+}
+
 /* ══════════════════════════════════════════════════════════════ */
 export default function FloatingChat() {
   const { key, role, label, email, avatar } = useKey()
@@ -242,40 +277,6 @@ export default function FloatingChat() {
     if (!activeSession) return
     await api(`/api/chat/sessions/${activeSession.id}/close`, { method: 'POST' })
     setActiveSession(null); setAdminMessages([]); setTab('home')
-  }
-
-  /* ── shared input bar (fixed height — NO auto-resize = no bounce) ── */
-  function InputBar({ value, onChange, onSend, disabled, placeholder = 'Type a message…', fwdRef }) {
-    return (
-      <div style={{ padding: '10px 12px 12px', background: '#fff', borderTop: '1px solid #f1f5f9', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', borderRadius: 12, padding: '6px 8px 6px 12px', border: '1.5px solid #e2e8f0' }}>
-          <input
-            ref={fwdRef}
-            value={value}
-            onChange={onChange}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend() } }}
-            placeholder={placeholder}
-            disabled={disabled}
-            style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13.5, color: '#1e293b', background: 'transparent', lineHeight: 1.4 }}
-          />
-          <button
-            onClick={onSend}
-            disabled={disabled || !value.trim()}
-            style={{
-              width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: 'pointer',
-              background: (!disabled && value.trim()) ? 'linear-gradient(135deg,#1d6ef5,#0ea5e9)' : '#e2e8f0',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background .15s',
-            }}
-          >
-            <Send size={14} color="#fff" />
-          </button>
-        </div>
-        <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 5, textAlign: 'center' }}>
-          Press Enter to send · Type <strong style={{ color: '#94a3b8' }}>!admincall</strong> to reach a live admin
-        </div>
-      </div>
-    )
   }
 
   /* ── blue wave header ─────────────────────────────────────────── */
