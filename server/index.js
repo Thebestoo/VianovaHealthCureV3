@@ -4248,15 +4248,23 @@ app.post('/api/chat/sessions/:id/decline', auth, async (req, res) => {
 app.post('/api/chat/sessions/:id/close', auth, async (req, res) => {
   const { resolution } = req.body || {}
   const now = new Date().toISOString()
+  const session = (await db.execute({ sql: 'SELECT * FROM chat_sessions WHERE id = ?', args: [req.params.id] })).rows[0]
   const closerName = req.user?.name || req.keyLabel || req.apiKey
+  const closerIsUser = session && session.created_by_email === req.apiKey
   await db.execute({
     sql: `UPDATE chat_sessions SET status='closed', closed_at=?, closed_by_email=?, closed_by_name=?, resolution=? WHERE id=?`,
     args: [now, req.apiKey, closerName, resolution || 'closed', req.params.id]
   })
   const msgId = randomUUID()
-  const closedMsg = resolution === 'reviewed'
-    ? `📋 Ticket sent to review by ${closerName}.`
-    : `🔒 Chat closed by ${closerName}.`
+  let closedMsg
+  if (resolution === 'reviewed') {
+    closedMsg = `📋 Ticket sent to review by ${closerName}.`
+  } else if (closerIsUser && session?.admin_email) {
+    // user ended an active session — tell the admin they're no longer needed
+    closedMsg = `🔒 ${closerName} has ended the chat and no longer needs assistance. This ticket is now closed.`
+  } else {
+    closedMsg = `🔒 Chat closed by ${closerName}.`
+  }
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
     args: [msgId, req.params.id, 'system', 'System', 'system', closedMsg, now] })
   res.json({ ok: true })

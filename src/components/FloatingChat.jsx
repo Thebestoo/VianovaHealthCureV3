@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react'
-import { MessageCircle, X, Home, MessageSquare, Ticket, Send, Check, XCircle, ArrowRight, ChevronDown, Clock, CheckCircle, AlertCircle, BookOpen } from 'lucide-react'
+import { MessageCircle, X, Home, MessageSquare, Ticket, Send, Check, XCircle,
+         ArrowRight, ChevronDown, Clock, CheckCircle, AlertCircle, BookOpen, PhoneOff } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 /* ─── helpers ────────────────────────────────────────────────────── */
 const fmtTime = ts => new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 const fmtDate = ts => {
   const d = new Date(ts)
-  const today = new Date()
-  if (d.toDateString() === today.toDateString()) return fmtTime(ts)
+  if (d.toDateString() === new Date().toDateString()) return fmtTime(ts)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
@@ -27,30 +27,27 @@ const Avatar = memo(function Avatar({ name, size = 36, role, src }) {
   )
 })
 
-/* ─── InputBar — outside so it NEVER remounts ────────────────────── */
-const InputBar = memo(function InputBar({ value, onChange, onSend, disabled, fwdRef }) {
+/* ─── InputBar ───────────────────────────────────────────────────── */
+const InputBar = memo(function InputBar({ value, onChange, onSend, disabled, fwdRef, placeholder }) {
   return (
-    <div style={{ padding: '10px 12px 12px', background: '#fff', borderTop: '1px solid #f1f5f9', flexShrink: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', borderRadius: 12, padding: '6px 8px 6px 12px', border: '1.5px solid #e2e8f0' }}>
+    <div style={{ padding: '10px 12px 14px', background: '#fff', borderTop: '1px solid #f1f5f9', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', borderRadius: 14, padding: '7px 8px 7px 14px', border: '1.5px solid #e2e8f0', transition: 'border-color .15s' }}
+        onFocus={() => {}} onBlur={() => {}}>
         <input
           ref={fwdRef}
           value={value}
           onChange={onChange}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend() } }}
-          placeholder="Type a message…"
+          placeholder={placeholder || 'Type a message…'}
           disabled={disabled}
           autoComplete="off"
           style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13.5, color: '#1e293b', background: 'transparent', lineHeight: 1.4, fontFamily: 'inherit' }}
         />
-        <button
-          onClick={onSend}
-          disabled={disabled || !value.trim()}
-          style={{
-            width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: 'pointer',
-            background: (!disabled && value.trim()) ? 'linear-gradient(135deg,#1d6ef5,#0ea5e9)' : '#e2e8f0',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s',
-          }}
-        ><Send size={14} color="#fff" /></button>
+        <button onClick={onSend} disabled={disabled || !value.trim()} style={{
+          width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: disabled || !value.trim() ? 'default' : 'pointer',
+          background: (!disabled && value.trim()) ? 'linear-gradient(135deg,#1d6ef5,#0ea5e9)' : '#e2e8f0',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s',
+        }}><Send size={14} color="#fff" /></button>
       </div>
     </div>
   )
@@ -65,29 +62,34 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 14 }}>🏥</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3, fontWeight: 600 }}>Vianova Support</div>
+            <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3, fontWeight: 600, letterSpacing: .3 }}>Vianova Support</div>
             <div style={{ background: '#f1f5f9', borderRadius: '3px 16px 16px 16px', padding: '11px 13px', fontSize: 13.5, lineHeight: 1.65, color: '#1e293b' }}>
               {msg.message.split('\n').map((l, i, a) => <span key={i}>{l}{i < a.length - 1 && <br />}</span>)}
             </div>
-            <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 3 }}>{fmtTime(msg.created_at)}</div>
+            <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 4 }}>{fmtTime(msg.created_at)}</div>
           </div>
         </div>
       )
     }
     const urgent = msg.message.startsWith('🚨')
+    const closed = msg.message.startsWith('🔒') || msg.message.includes('no longer needs assistance')
     return (
-      <div style={{ textAlign: 'center', margin: '8px 0' }}>
-        <span style={{ display: 'inline-block', fontSize: 11, padding: '4px 12px', borderRadius: 99, background: urgent ? '#fef2f2' : '#f1f5f9', color: urgent ? '#dc2626' : '#94a3b8', border: urgent ? '1px solid #fecaca' : 'none', fontWeight: urgent ? 600 : 400, fontStyle: urgent ? 'normal' : 'italic' }}>
-          {msg.message}
-        </span>
+      <div style={{ textAlign: 'center', margin: '10px 0' }}>
+        <span style={{
+          display: 'inline-block', fontSize: 11, padding: '5px 14px', borderRadius: 99,
+          background: urgent ? '#fef2f2' : closed ? '#f8fafc' : '#f1f5f9',
+          color: urgent ? '#dc2626' : closed ? '#64748b' : '#94a3b8',
+          border: urgent ? '1px solid #fecaca' : closed ? '1px solid #e2e8f0' : 'none',
+          fontWeight: 500, fontStyle: urgent ? 'normal' : 'italic',
+        }}>{msg.message}</span>
       </div>
     )
   }
   return (
-    <div style={{ display: 'flex', flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 7, marginBottom: 10 }}>
+    <div style={{ display: 'flex', flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 7, marginBottom: 12 }}>
       {!mine && <Avatar name={msg.sender_name} size={26} role={msg.sender_role} />}
       <div style={{ maxWidth: '74%' }}>
-        {!mine && <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3, paddingLeft: 2 }}>{msg.sender_name}</div>}
+        {!mine && <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3, paddingLeft: 2, fontWeight: 600 }}>{msg.sender_name}</div>}
         <div style={{ padding: '9px 13px', fontSize: 13.5, lineHeight: 1.55, borderRadius: mine ? '16px 16px 3px 16px' : '3px 16px 16px 16px', background: mine ? 'linear-gradient(135deg,#1d6ef5,#0ea5e9)' : '#f1f5f9', color: mine ? '#fff' : '#1e293b', wordBreak: 'break-word' }}>
           {msg.message}
         </div>
@@ -97,7 +99,7 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
   )
 })
 
-/* ─── Headers ────────────────────────────────────────────────────── */
+/* ─── Blue gradient header (chat view) ──────────────────────────── */
 const ChatHeader = memo(function ChatHeader({ name, subRole, onEnd, onReview, onClose, isAdmin }) {
   return (
     <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}>
@@ -111,24 +113,25 @@ const ChatHeader = memo(function ChatHeader({ name, subRole, onEnd, onReview, on
           <div style={{ color: '#fff', fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
         </div>
         {isAdmin && (
-          <button onClick={onReview} style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', borderRadius: 8, padding: '4px 9px', color: '#fff', fontSize: 10, fontWeight: 600, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={onReview} title="Send to review" style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', borderRadius: 8, padding: '5px 10px', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
             <BookOpen size={11} /> Review
           </button>
         )}
-        <button onClick={onEnd} style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', borderRadius: 8, padding: '4px 10px', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>End</button>
-        <button onClick={onClose} style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <button onClick={onEnd} title="End chat" style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', borderRadius: 8, padding: '5px 10px', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>End</button>
+        <button onClick={onClose} title="Minimise" style={{ background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <ChevronDown size={16} color="#fff" />
         </button>
       </div>
-      <svg viewBox="0 0 375 22" style={{ display: 'block', width: '100%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}><path d="M0,8 C80,22 220,0 375,14 L375,22 L0,22 Z" fill="#fff" /></svg>
+      <svg viewBox="0 0 375 22" style={{ display: 'block', width: '100%' }}><path d="M0,8 C80,22 220,0 375,14 L375,22 L0,22 Z" fill="#fff" /></svg>
       <div style={{ background: '#fff', padding: '2px 14px 8px', display: 'flex', alignItems: 'center', gap: 5 }}>
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-        <span style={{ fontSize: 11.5, color: '#64748b' }}>We are online!</span>
+        <span style={{ fontSize: 11.5, color: '#64748b' }}>We are online</span>
       </div>
     </div>
   )
 })
 
+/* ─── Blue gradient header (home/tabs view) ──────────────────────── */
 const HomeHeader = memo(function HomeHeader({ label, role, avatar, escalatedCount, onClose }) {
   return (
     <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}>
@@ -141,11 +144,11 @@ const HomeHeader = memo(function HomeHeader({ label, role, avatar, escalatedCoun
         {role === 'superadmin' && escalatedCount > 0 && (
           <span style={{ background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 11, padding: '2px 8px', borderRadius: 99, flexShrink: 0 }}>{escalatedCount} urgent</span>
         )}
-        <button onClick={onClose} style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <button onClick={onClose} style={{ background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <X size={15} color="#fff" />
         </button>
       </div>
-      <svg viewBox="0 0 375 22" style={{ display: 'block', width: '100%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}><path d="M0,8 C80,22 220,0 375,14 L375,22 L0,22 Z" fill="#fff" /></svg>
+      <svg viewBox="0 0 375 22" style={{ display: 'block', width: '100%' }}><path d="M0,8 C80,22 220,0 375,14 L375,22 L0,22 Z" fill="#fff" /></svg>
     </div>
   )
 })
@@ -153,19 +156,12 @@ const HomeHeader = memo(function HomeHeader({ label, role, avatar, escalatedCoun
 /* ─── TabBar ─────────────────────────────────────────────────────── */
 const TabBar = memo(function TabBar({ tab, setTab, isSuperAdmin, escalatedCount }) {
   const tabs = isSuperAdmin
-    ? [
-        { id: 'home',     label: 'Home',     Icon: Home },
-        { id: 'messages', label: 'Messages',  Icon: MessageSquare },
-        { id: 'tickets',  label: 'Tickets',   Icon: Ticket, badge: escalatedCount },
-      ]
-    : [
-        { id: 'home',     label: 'Home',     Icon: Home },
-        { id: 'messages', label: 'Messages',  Icon: MessageSquare },
-      ]
+    ? [{ id: 'home', label: 'Home', Icon: Home }, { id: 'messages', label: 'Messages', Icon: MessageSquare }, { id: 'tickets', label: 'Tickets', Icon: Ticket, badge: escalatedCount }]
+    : [{ id: 'home', label: 'Home', Icon: Home }, { id: 'messages', label: 'Messages', Icon: MessageSquare }]
   return (
     <div style={{ display: 'flex', borderTop: '1px solid #f1f5f9', background: '#fff', flexShrink: 0 }}>
       {tabs.map(t => (
-        <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: '9px 0 7px', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: tab === t.id ? '#1d6ef5' : '#94a3b8', borderTop: `2px solid ${tab === t.id ? '#1d6ef5' : 'transparent'}`, fontSize: 10, fontWeight: tab === t.id ? 700 : 400, position: 'relative' }}>
+        <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: '9px 0 7px', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: tab === t.id ? '#1d6ef5' : '#94a3b8', borderTop: `2px solid ${tab === t.id ? '#1d6ef5' : 'transparent'}`, fontSize: 10, fontWeight: tab === t.id ? 700 : 400, position: 'relative', transition: 'color .15s' }}>
           <t.Icon size={17} strokeWidth={tab === t.id ? 2.3 : 1.7} />
           {t.label}
           {t.badge > 0 && <span style={{ position: 'absolute', top: 5, left: '50%', marginLeft: 5, background: '#ef4444', color: '#fff', borderRadius: 99, fontSize: 9, fontWeight: 800, padding: '0 4px', lineHeight: '13px' }}>{t.badge}</span>}
@@ -232,7 +228,7 @@ const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, 
   )
 })
 
-/* ─── Status badge helper ────────────────────────────────────────── */
+/* ─── Status badge config ────────────────────────────────────────── */
 const STATUS_STYLE = {
   open:      { bg: '#eff6ff', color: '#1d6ef5', border: '#bfdbfe', label: 'Open',     Icon: Clock },
   escalated: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', label: 'Urgent',   Icon: AlertCircle },
@@ -244,18 +240,15 @@ const STATUS_STYLE = {
 /* ─── TicketsTab ─────────────────────────────────────────────────── */
 const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOpen, filter, setFilter }) {
   const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter)
-
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {/* filter pills */}
       <div style={{ padding: '8px 12px 4px', display: 'flex', gap: 5, flexShrink: 0, overflowX: 'auto' }}>
         {['all', 'escalated', 'active', 'open', 'closed'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{ padding: '3px 10px', borderRadius: 99, border: `1px solid ${filter === f ? '#1d6ef5' : '#e2e8f0'}`, background: filter === f ? '#1d6ef5' : '#fff', color: filter === f ? '#fff' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0, textTransform: 'capitalize' }}>
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '3px 10px', borderRadius: 99, border: `1px solid ${filter === f ? '#1d6ef5' : '#e2e8f0'}`, background: filter === f ? '#1d6ef5' : '#fff', color: filter === f ? '#fff' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0, textTransform: 'capitalize', transition: 'all .15s' }}>
             {f}
           </button>
         ))}
       </div>
-
       <div style={{ flex: 1, overflowY: 'auto', padding: '6px 12px 10px' }}>
         {filtered.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: '100%', textAlign: 'center', padding: '0 24px' }}>
@@ -266,10 +259,8 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
         )}
         {filtered.map(t => {
           const st = STATUS_STYLE[t.status] || STATUS_STYLE.open
-          const StatusIcon = st.Icon
           return (
             <div key={t.id} style={{ border: `1.5px solid ${st.border}`, borderRadius: 14, padding: '11px 12px', marginBottom: 8, background: '#fff' }}>
-              {/* ticket header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <Avatar name={t.created_by_name} size={30} role={t.created_by_role} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -277,32 +268,23 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
                   <div style={{ fontSize: 11, color: '#64748b', textTransform: 'capitalize' }}>{t.created_by_role}</div>
                 </div>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 99, background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
-                  <StatusIcon size={10} strokeWidth={2.5} /> {st.label}
+                  <st.Icon size={10} strokeWidth={2.5} /> {st.label}
                 </span>
               </div>
-
-              {/* subject & meta */}
-              <div style={{ fontSize: 12, color: '#475569', marginBottom: 4, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                "{t.subject || 'General inquiry'}"
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, color: '#94a3b8', marginBottom: t.status === 'escalated' ? 8 : 0 }}>
-                <Clock size={11} />
-                {fmtDate(t.created_at)}
-                {t.msg_count > 0 && <><span>·</span><MessageSquare size={11} />{t.msg_count} msg{t.msg_count !== 1 ? 's' : ''}</>}
+              <div style={{ fontSize: 12, color: '#475569', marginBottom: 5, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{t.subject || 'General inquiry'}"</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, color: '#94a3b8' }}>
+                <Clock size={11} /> {fmtDate(t.created_at)}
+                {t.msg_count > 0 && <><span>·</span><MessageSquare size={11} />{t.msg_count}</>}
                 {t.admin_name && t.status === 'active' && <><span>·</span><span style={{ color: '#059669', fontWeight: 600 }}>w/ {t.admin_name}</span></>}
               </div>
-
-              {/* closed/reviewed by */}
               {(t.status === 'closed' || t.status === 'reviewed') && t.closed_by_name && (
-                <div style={{ marginTop: 4, fontSize: 11, color: t.resolution === 'reviewed' ? '#7c3aed' : '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ marginTop: 5, fontSize: 11, color: t.resolution === 'reviewed' ? '#7c3aed' : '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
                   {t.resolution === 'reviewed' ? <BookOpen size={11} /> : <XCircle size={11} />}
                   {t.resolution === 'reviewed' ? `Sent to review by ${t.closed_by_name}` : `Closed by ${t.closed_by_name}`}
                 </div>
               )}
-
-              {/* join/decline for escalated */}
               {t.status === 'escalated' && (
-                <div style={{ display: 'flex', gap: 7, marginTop: 6 }}>
+                <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
                   <button onClick={() => onAccept(t)} style={{ flex: 1, padding: '7px 0', borderRadius: 10, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                     <Check size={13} /> Join Chat
                   </button>
@@ -311,10 +293,8 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
                   </button>
                 </div>
               )}
-
-              {/* open closed tickets to read */}
               {(t.status === 'closed' || t.status === 'open') && (
-                <button onClick={() => onOpen(t)} style={{ marginTop: 6, width: '100%', padding: '6px 0', borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                <button onClick={() => onOpen(t)} style={{ marginTop: 7, width: '100%', padding: '6px 0', borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
                   View transcript
                 </button>
               )}
@@ -326,7 +306,7 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
   )
 })
 
-/* ─── Ticket viewer (read-only transcript) ──────────────────────── */
+/* ─── Ticket transcript viewer ───────────────────────────────────── */
 const TicketViewer = memo(function TicketViewer({ ticket, messages, myEmail, onClose }) {
   const st = STATUS_STYLE[ticket.status] || STATUS_STYLE.open
   return (
@@ -347,7 +327,7 @@ const TicketViewer = memo(function TicketViewer({ ticket, messages, myEmail, onC
         {messages.map((m, i) => <Bubble key={m.id || i} msg={m} myEmail={myEmail} />)}
         {ticket.closed_by_name && (
           <div style={{ textAlign: 'center', margin: '12px 0 4px' }}>
-            <span style={{ display: 'inline-block', fontSize: 11, padding: '4px 12px', borderRadius: 99, background: '#f8fafc', color: '#94a3b8', fontStyle: 'italic' }}>
+            <span style={{ fontSize: 11, padding: '4px 12px', borderRadius: 99, background: '#f8fafc', color: '#94a3b8', fontStyle: 'italic', display: 'inline-block' }}>
               {ticket.resolution === 'reviewed' ? `📋 Sent to review by ${ticket.closed_by_name}` : `🔒 Closed by ${ticket.closed_by_name}`}
             </span>
           </div>
@@ -357,10 +337,10 @@ const TicketViewer = memo(function TicketViewer({ ticket, messages, myEmail, onC
   )
 })
 
-/* ─── MessageArea (user) ─────────────────────────────────────────── */
+/* ─── Message areas ──────────────────────────────────────────────── */
 const UserMessageArea = memo(function UserMessageArea({ messages, myEmail, msgEndRef }) {
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 4px', minHeight: 0 }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 6px', minHeight: 0 }}>
       {messages.map((m, i) => <Bubble key={m.id || i} msg={m} myEmail={myEmail} />)}
       <div ref={msgEndRef} />
     </div>
@@ -369,8 +349,10 @@ const UserMessageArea = memo(function UserMessageArea({ messages, myEmail, msgEn
 
 const AdminMessageArea = memo(function AdminMessageArea({ messages, myEmail, adminEndRef }) {
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 4px', minHeight: 0 }}>
-      {messages.length === 0 && <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12.5, padding: '20px 0' }}>You joined — say hello 👋</div>}
+    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 6px', minHeight: 0 }}>
+      {messages.length === 0 && (
+        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: '24px 0' }}>You joined — say hello 👋</div>
+      )}
       {messages.map((m, i) => <Bubble key={m.id || i} msg={m} myEmail={myEmail} />)}
       <div ref={adminEndRef} />
     </div>
@@ -384,23 +366,26 @@ export default function FloatingChat() {
   const [open,  setOpen]  = useState(false)
   const [tab,   setTab]   = useState('home')
 
+  // user chat state
   const [session,  setSession]  = useState(null)
   const [messages, setMessages] = useState([])
   const [input,    setInput]    = useState('')
   const [sending,  setSending]  = useState(false)
   const [starting, setStarting] = useState(false)
 
-  const [activeSession,  setActiveSession]  = useState(null)
-  const [adminMessages,  setAdminMessages]  = useState([])
-  const [adminInput,     setAdminInput]     = useState('')
-  const [adminSending,   setAdminSending]   = useState(false)
-  const [escalated,      setEscalated]      = useState([])
-  const [escalatedCount, setEscalatedCount] = useState(0)
+  // admin chat state
+  const [activeSession,    setActiveSession]    = useState(null)
+  const [activeSessionStatus, setActiveSessionStatus] = useState('active')
+  const [adminMessages,    setAdminMessages]    = useState([])
+  const [adminInput,       setAdminInput]       = useState('')
+  const [adminSending,     setAdminSending]     = useState(false)
+  const [escalated,        setEscalated]        = useState([])
+  const [escalatedCount,   setEscalatedCount]   = useState(0)
 
   // tickets tab
   const [tickets,      setTickets]      = useState([])
   const [ticketFilter, setTicketFilter] = useState('all')
-  const [viewTicket,   setViewTicket]   = useState(null)   // ticket being viewed in transcript
+  const [viewTicket,   setViewTicket]   = useState(null)
   const [viewMessages, setViewMessages] = useState([])
 
   const msgEndRef     = useRef(null)
@@ -415,7 +400,7 @@ export default function FloatingChat() {
     fetch(path, { ...opts, headers: { 'x-api-key': key, 'Content-Type': 'application/json', ...(opts.headers || {}) } })
       .then(r => r.json()), [key])
 
-  /* polls — user messages */
+  /* poll — user messages + session status */
   useEffect(() => {
     clearInterval(polls.current.msg)
     if (!key || !session || session.status === 'closed') return
@@ -429,7 +414,7 @@ export default function FloatingChat() {
     return () => clearInterval(polls.current.msg)
   }, [key, session?.id, session?.status]) // eslint-disable-line
 
-  /* polls — escalated requests (superadmin) */
+  /* poll — escalated requests (superadmin) */
   useEffect(() => {
     clearInterval(polls.current.pending)
     if (!key || role !== 'superadmin') return
@@ -440,16 +425,26 @@ export default function FloatingChat() {
     return () => clearInterval(polls.current.pending)
   }, [key, role]) // eslint-disable-line
 
-  /* polls — admin active chat */
+  /* poll — admin active chat + detect if user closed it */
   useEffect(() => {
     clearInterval(polls.current.admin)
     if (!activeSession) return
-    const run = () => api(`/api/chat/sessions/${activeSession.id}/messages`).then(d => Array.isArray(d) && setAdminMessages(d)).catch(() => {})
+    const run = async () => {
+      // fetch messages
+      const msgs = await api(`/api/chat/sessions/${activeSession.id}/messages`).catch(() => null)
+      if (Array.isArray(msgs)) setAdminMessages(msgs)
+      // also check session status so we know if user ended the chat
+      const sessions = await api('/api/chat/sessions').catch(() => null)
+      if (Array.isArray(sessions)) {
+        const s = sessions.find(x => x.id === activeSession.id)
+        if (s) setActiveSessionStatus(s.status)
+      }
+    }
     run(); polls.current.admin = setInterval(run, 3000)
     return () => clearInterval(polls.current.admin)
   }, [activeSession?.id]) // eslint-disable-line
 
-  /* polls — tickets tab (superadmin) */
+  /* poll — tickets (superadmin) */
   useEffect(() => {
     clearInterval(polls.current.tickets)
     if (!key || role !== 'superadmin') return
@@ -458,7 +453,7 @@ export default function FloatingChat() {
     return () => clearInterval(polls.current.tickets)
   }, [key, role]) // eslint-disable-line
 
-  /* scroll only when count changes */
+  /* scroll on new messages */
   useEffect(() => {
     if (messages.length !== prevMsgLen.current) {
       prevMsgLen.current = messages.length
@@ -473,7 +468,7 @@ export default function FloatingChat() {
     }
   }, [adminMessages.length])
 
-  /* auto-focus on tab switch */
+  /* auto-focus input when switching to messages tab */
   useEffect(() => {
     if (tab === 'messages') setTimeout(() => (role === 'superadmin' ? adminInputRef : inputRef).current?.focus(), 80)
   }, [tab, session?.id, activeSession?.id]) // eslint-disable-line
@@ -497,7 +492,10 @@ export default function FloatingChat() {
     if (!text || sending || !session) return
     if (text.toLowerCase() === '!admincall') {
       setInput(''); setSending(true)
-      try { await api(`/api/chat/sessions/${session.id}/admincall`, { method: 'POST' }); setSession(p => ({ ...p, status: 'escalated' })) } catch {}
+      try {
+        await api(`/api/chat/sessions/${session.id}/admincall`, { method: 'POST' })
+        setSession(p => ({ ...p, status: 'escalated' }))
+      } catch {}
       setSending(false); setTimeout(() => inputRef.current?.focus(), 30); return
     }
     setSending(true); setInput('')
@@ -516,7 +514,7 @@ export default function FloatingChat() {
 
   async function acceptTicket(s) {
     await api(`/api/chat/sessions/${s.id}/accept`, { method: 'POST' })
-    setActiveSession(s); setAdminMessages([])
+    setActiveSession(s); setActiveSessionStatus('active'); setAdminMessages([])
     setEscalated(p => p.filter(x => x.id !== s.id)); setEscalatedCount(p => Math.max(0, p - 1))
     setTab('messages')
   }
@@ -548,6 +546,10 @@ export default function FloatingChat() {
     setActiveSession(null); setAdminMessages([]); setTab('tickets')
   }
 
+  function dismissClosedAdminChat() {
+    setActiveSession(null); setAdminMessages([]); setActiveSessionStatus('active'); setTab('tickets')
+  }
+
   async function openTicketTranscript(t) {
     const msgs = await api(`/api/chat/sessions/${t.id}/messages`).catch(() => [])
     setViewMessages(Array.isArray(msgs) ? msgs : [])
@@ -555,9 +557,10 @@ export default function FloatingChat() {
   }
 
   /* ── derived ── */
-  const isSuperAdmin  = role === 'superadmin'
-  const inUserChat    = tab === 'messages' && !isSuperAdmin && session && session.status !== 'closed'
-  const inAdminChat   = tab === 'messages' && isSuperAdmin && activeSession
+  const isSuperAdmin     = role === 'superadmin'
+  const inUserChat       = tab === 'messages' && !isSuperAdmin && session && session.status !== 'closed'
+  const inAdminChat      = tab === 'messages' && isSuperAdmin && activeSession
+  const adminChatClosed  = inAdminChat && activeSessionStatus === 'closed'
   const hasActiveSession = session && session.status !== 'closed'
 
   const banner = !isSuperAdmin && session?.status === 'escalated'
@@ -569,13 +572,13 @@ export default function FloatingChat() {
   return (
     <>
       <style>{`
-        @keyframes fc-pulse  { 0%{transform:scale(1);opacity:1} 100%{transform:scale(1.8);opacity:0} }
-        @keyframes fc-spin   { to{transform:rotate(360deg)} }
-        @keyframes fc-slidein{ from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes fc-pulse   { 0%{transform:scale(1);opacity:1} 100%{transform:scale(1.8);opacity:0} }
+        @keyframes fc-spin    { to{transform:rotate(360deg)} }
+        @keyframes fc-slidein { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
         .fc-win { animation: fc-slidein .2s ease both; }
       `}</style>
 
-      {/* floating button */}
+      {/* launcher button */}
       <button onClick={() => setOpen(o => !o)} style={{ position: 'fixed', bottom: 28, right: 28, zIndex: 9999, width: 60, height: 60, borderRadius: '50%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', border: 'none', cursor: 'pointer', boxShadow: '0 6px 24px rgba(26,101,232,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .15s' }}
         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
@@ -601,10 +604,9 @@ export default function FloatingChat() {
             : <HomeHeader label={label} role={role} avatar={avatar} escalatedCount={escalatedCount} onClose={() => setOpen(false)} />
           }
 
-          {/* content */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
 
-            {/* HOME */}
+            {/* ── HOME ── */}
             {tab === 'home' && (
               <HomeTab
                 role={role} escalatedCount={escalatedCount} starting={starting}
@@ -615,7 +617,7 @@ export default function FloatingChat() {
               />
             )}
 
-            {/* USER MESSAGES */}
+            {/* ── USER MESSAGES ── */}
             {tab === 'messages' && !isSuperAdmin && (
               <>
                 {starting && (
@@ -626,9 +628,9 @@ export default function FloatingChat() {
                 )}
                 {!starting && !session && (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '0 24px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 42 }}>💬</div>
+                    <div style={{ fontSize: 44 }}>💬</div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>No active conversation</div>
-                    <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>Press <strong>New Message</strong> on Home tab to start.</div>
+                    <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>Press <strong>New Message</strong> on the Home tab to start.</div>
                     <button onClick={startChat} style={{ padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>Start Chat</button>
                   </div>
                 )}
@@ -644,16 +646,13 @@ export default function FloatingChat() {
                   <>
                     {banner && <div style={{ flexShrink: 0, background: banner.bg, borderBottom: `1px solid ${banner.border}`, padding: '7px 14px', textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: banner.color }}>{banner.text}</div>}
                     <UserMessageArea messages={messages} myEmail={email} msgEndRef={msgEndRef} />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '3px 12px 0', flexShrink: 0 }}>
-                      <button onClick={endUserChat} style={{ fontSize: 11, color: '#cbd5e1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>End chat</button>
-                    </div>
                     <InputBar value={input} onChange={e => setInput(e.target.value)} onSend={sendMsg} disabled={sending} fwdRef={inputRef} />
                   </>
                 )}
               </>
             )}
 
-            {/* ADMIN MESSAGES */}
+            {/* ── ADMIN MESSAGES ── */}
             {tab === 'messages' && isSuperAdmin && (
               <>
                 {!activeSession && (
@@ -666,35 +665,38 @@ export default function FloatingChat() {
                     {escalatedCount > 0 && <button onClick={() => setTab('tickets')} style={{ padding: '9px 18px', borderRadius: 12, background: '#ef4444', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>🚨 {escalatedCount} Request{escalatedCount > 1 ? 's' : ''}</button>}
                   </div>
                 )}
-                {activeSession && (
+
+                {/* user closed the chat while admin was in it */}
+                {activeSession && adminChatClosed && (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '0 28px', textAlign: 'center' }}>
+                    <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f8fafc', border: '2px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <PhoneOff size={22} color="#94a3b8" />
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>Session closed</div>
+                    <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+                      <strong>{activeSession.created_by_name}</strong> has ended the chat and no longer needs assistance.
+                    </div>
+                    <button onClick={dismissClosedAdminChat} style={{ padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>
+                      Back to Tickets
+                    </button>
+                  </div>
+                )}
+
+                {/* active admin chat */}
+                {activeSession && !adminChatClosed && (
                   <>
                     <AdminMessageArea messages={adminMessages} myEmail={email} adminEndRef={adminEndRef} />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '3px 12px 0', flexShrink: 0 }}>
-                      <button onClick={endAdminChat} style={{ fontSize: 11, color: '#cbd5e1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Leave chat</button>
-                    </div>
-                    <InputBar value={adminInput} onChange={e => setAdminInput(e.target.value)} onSend={sendAdminMsg} disabled={adminSending} fwdRef={adminInputRef} />
+                    <InputBar value={adminInput} onChange={e => setAdminInput(e.target.value)} onSend={sendAdminMsg} disabled={adminSending} fwdRef={adminInputRef} placeholder={`Reply to ${activeSession.created_by_name}…`} />
                   </>
                 )}
               </>
             )}
 
-            {/* TICKETS TAB (superadmin only) */}
+            {/* ── TICKETS (superadmin) ── */}
             {tab === 'tickets' && isSuperAdmin && (
               viewTicket
-                ? <TicketViewer
-                    ticket={viewTicket}
-                    messages={viewMessages}
-                    myEmail={email}
-                    onClose={() => setViewTicket(null)}
-                  />
-                : <TicketsTab
-                    tickets={tickets}
-                    onAccept={acceptTicket}
-                    onDecline={declineTicket}
-                    onOpen={openTicketTranscript}
-                    filter={ticketFilter}
-                    setFilter={setTicketFilter}
-                  />
+                ? <TicketViewer ticket={viewTicket} messages={viewMessages} myEmail={email} onClose={() => setViewTicket(null)} />
+                : <TicketsTab tickets={tickets} onAccept={acceptTicket} onDecline={declineTicket} onOpen={openTicketTranscript} filter={ticketFilter} setFilter={setTicketFilter} />
             )}
           </div>
 
