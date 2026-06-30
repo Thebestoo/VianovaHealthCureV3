@@ -162,6 +162,10 @@ async function initDB() {
     // feature 15 – NLP notes
     `ALTER TABLE nlp_notes ADD COLUMN note_title TEXT`,
     `ALTER TABLE nlp_notes ADD COLUMN word_count INTEGER`,
+    // chat tickets — track who closed/reviewed each session
+    `ALTER TABLE chat_sessions ADD COLUMN closed_by_email TEXT`,
+    `ALTER TABLE chat_sessions ADD COLUMN closed_by_name TEXT`,
+    `ALTER TABLE chat_sessions ADD COLUMN resolution TEXT DEFAULT 'closed'`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -4237,8 +4241,19 @@ app.post('/api/chat/sessions/:id/decline', auth, async (req, res) => {
 })
 
 app.post('/api/chat/sessions/:id/close', auth, async (req, res) => {
+  const { resolution } = req.body || {}
   const now = new Date().toISOString()
-  await db.execute({ sql: `UPDATE chat_sessions SET status='closed', closed_at=? WHERE id=?`, args: [now, req.params.id] })
+  const closerName = req.user?.name || req.keyLabel || req.apiKey
+  await db.execute({
+    sql: `UPDATE chat_sessions SET status='closed', closed_at=?, closed_by_email=?, closed_by_name=?, resolution=? WHERE id=?`,
+    args: [now, req.apiKey, closerName, resolution || 'closed', req.params.id]
+  })
+  const msgId = randomUUID()
+  const closedMsg = resolution === 'reviewed'
+    ? `📋 Ticket sent to review by ${closerName}.`
+    : `🔒 Chat closed by ${closerName}.`
+  await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [msgId, req.params.id, 'system', 'System', 'system', closedMsg, now] })
   res.json({ ok: true })
 })
 

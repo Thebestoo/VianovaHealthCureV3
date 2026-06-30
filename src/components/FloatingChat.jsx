@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react'
-import { MessageCircle, X, Home, MessageSquare, Inbox, Send, Check, XCircle, ArrowRight, ChevronDown } from 'lucide-react'
+import { MessageCircle, X, Home, MessageSquare, Ticket, Send, Check, XCircle, ArrowRight, ChevronDown, Clock, CheckCircle, AlertCircle, BookOpen } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 /* ─── helpers ────────────────────────────────────────────────────── */
 const fmtTime = ts => new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+const fmtDate = ts => {
+  const d = new Date(ts)
+  const today = new Date()
+  if (d.toDateString() === today.toDateString()) return fmtTime(ts)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
 
 /* ─── Avatar ─────────────────────────────────────────────────────── */
 const GRAD = {
@@ -46,9 +52,6 @@ const InputBar = memo(function InputBar({ value, onChange, onSend, disabled, fwd
           }}
         ><Send size={14} color="#fff" /></button>
       </div>
-      <p style={{ margin: '5px 0 0', textAlign: 'center', fontSize: 10, color: '#d1d5db' }}>
-        Enter to send — type <strong>!admincall</strong> for live admin
-      </p>
     </div>
   )
 })
@@ -95,18 +98,23 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
 })
 
 /* ─── Headers ────────────────────────────────────────────────────── */
-const ChatHeader = memo(function ChatHeader({ name, subRole, userSrc, onEnd, onClose }) {
+const ChatHeader = memo(function ChatHeader({ name, subRole, onEnd, onReview, onClose, isAdmin }) {
   return (
     <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}>
       <div style={{ padding: '14px 14px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ position: 'relative' }}>
-          <Avatar name={name} size={38} role={subRole} src={userSrc} />
+          <Avatar name={name} size={38} role={subRole} />
           <span style={{ position: 'absolute', bottom: 1, right: 1, width: 9, height: 9, background: '#22c55e', borderRadius: '50%', border: '2px solid #1a65e8' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ color: 'rgba(255,255,255,.65)', fontSize: 10.5 }}>Chat with</div>
           <div style={{ color: '#fff', fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
         </div>
+        {isAdmin && (
+          <button onClick={onReview} style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', borderRadius: 8, padding: '4px 9px', color: '#fff', fontSize: 10, fontWeight: 600, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <BookOpen size={11} /> Review
+          </button>
+        )}
         <button onClick={onEnd} style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', borderRadius: 8, padding: '4px 10px', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>End</button>
         <button onClick={onClose} style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <ChevronDown size={16} color="#fff" />
@@ -145,8 +153,15 @@ const HomeHeader = memo(function HomeHeader({ label, role, avatar, escalatedCoun
 /* ─── TabBar ─────────────────────────────────────────────────────── */
 const TabBar = memo(function TabBar({ tab, setTab, isSuperAdmin, escalatedCount }) {
   const tabs = isSuperAdmin
-    ? [{ id: 'home', label: 'Home', Icon: Home }, { id: 'messages', label: 'Messages', Icon: MessageSquare }, { id: 'requests', label: 'Requests', Icon: Inbox, badge: escalatedCount }]
-    : [{ id: 'home', label: 'Home', Icon: Home }, { id: 'messages', label: 'Messages', Icon: MessageSquare }]
+    ? [
+        { id: 'home',     label: 'Home',     Icon: Home },
+        { id: 'messages', label: 'Messages',  Icon: MessageSquare },
+        { id: 'tickets',  label: 'Tickets',   Icon: Ticket, badge: escalatedCount },
+      ]
+    : [
+        { id: 'home',     label: 'Home',     Icon: Home },
+        { id: 'messages', label: 'Messages',  Icon: MessageSquare },
+      ]
   return (
     <div style={{ display: 'flex', borderTop: '1px solid #f1f5f9', background: '#fff', flexShrink: 0 }}>
       {tabs.map(t => (
@@ -161,7 +176,7 @@ const TabBar = memo(function TabBar({ tab, setTab, isSuperAdmin, escalatedCount 
 })
 
 /* ─── HomeTab ────────────────────────────────────────────────────── */
-const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, onNewChat, onGoMessages, onGoRequests, starting }) {
+const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, onNewChat, onGoMessages, onGoTickets, starting }) {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <button onClick={onNewChat} disabled={starting} style={{ borderRadius: 14, padding: '16px 18px', background: 'linear-gradient(135deg,#1a65e8,#7c3aed)', border: 'none', cursor: starting ? 'default' : 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, opacity: starting ? .7 : 1, boxShadow: '0 4px 20px rgba(26,101,232,.3)' }}>
@@ -191,7 +206,7 @@ const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, 
       </button>
 
       {role === 'superadmin' && escalatedCount > 0 && (
-        <button onClick={onGoRequests} style={{ borderRadius: 12, padding: '12px 14px', border: '1.5px solid #fecaca', background: '#fff7f7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 11 }}>
+        <button onClick={onGoTickets} style={{ borderRadius: 12, padding: '12px 14px', border: '1.5px solid #fecaca', background: '#fff7f7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 11 }}>
           <span style={{ background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 13, width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{escalatedCount}</span>
           <div style={{ flex: 1, textAlign: 'left' }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: '#dc2626' }}>Urgent admin requests</div>
@@ -217,43 +232,127 @@ const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, 
   )
 })
 
-/* ─── RequestsTab ────────────────────────────────────────────────── */
-const RequestsTab = memo(function RequestsTab({ escalated, onAccept, onDecline }) {
-  if (!escalated.length) return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: '0 24px' }}>
-      <div style={{ fontSize: 42 }}>✅</div>
-      <div style={{ fontWeight: 700, fontSize: 14, color: '#059669' }}>No urgent requests</div>
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>When a user sends !admincall it appears here.</div>
+/* ─── Status badge helper ────────────────────────────────────────── */
+const STATUS_STYLE = {
+  open:      { bg: '#eff6ff', color: '#1d6ef5', border: '#bfdbfe', label: 'Open',     Icon: Clock },
+  escalated: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', label: 'Urgent',   Icon: AlertCircle },
+  active:    { bg: '#f0fdf4', color: '#059669', border: '#bbf7d0', label: 'Active',   Icon: CheckCircle },
+  closed:    { bg: '#f8fafc', color: '#94a3b8', border: '#e2e8f0', label: 'Closed',   Icon: XCircle },
+  reviewed:  { bg: '#faf5ff', color: '#7c3aed', border: '#e9d5ff', label: 'Reviewed', Icon: BookOpen },
+}
+
+/* ─── TicketsTab ─────────────────────────────────────────────────── */
+const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOpen, filter, setFilter }) {
+  const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter)
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* filter pills */}
+      <div style={{ padding: '8px 12px 4px', display: 'flex', gap: 5, flexShrink: 0, overflowX: 'auto' }}>
+        {['all', 'escalated', 'active', 'open', 'closed'].map(f => (
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '3px 10px', borderRadius: 99, border: `1px solid ${filter === f ? '#1d6ef5' : '#e2e8f0'}`, background: filter === f ? '#1d6ef5' : '#fff', color: filter === f ? '#fff' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0, textTransform: 'capitalize' }}>
+            {f}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '6px 12px 10px' }}>
+        {filtered.length === 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: '100%', textAlign: 'center', padding: '0 24px' }}>
+            <div style={{ fontSize: 38 }}>🎫</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#64748b' }}>No {filter === 'all' ? '' : filter} tickets</div>
+            <div style={{ fontSize: 12, color: '#94a3b8' }}>All chat sessions appear here.</div>
+          </div>
+        )}
+        {filtered.map(t => {
+          const st = STATUS_STYLE[t.status] || STATUS_STYLE.open
+          const StatusIcon = st.Icon
+          return (
+            <div key={t.id} style={{ border: `1.5px solid ${st.border}`, borderRadius: 14, padding: '11px 12px', marginBottom: 8, background: '#fff' }}>
+              {/* ticket header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <Avatar name={t.created_by_name} size={30} role={t.created_by_role} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.created_by_name}</div>
+                  <div style={{ fontSize: 11, color: '#64748b', textTransform: 'capitalize' }}>{t.created_by_role}</div>
+                </div>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 99, background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                  <StatusIcon size={10} strokeWidth={2.5} /> {st.label}
+                </span>
+              </div>
+
+              {/* subject & meta */}
+              <div style={{ fontSize: 12, color: '#475569', marginBottom: 4, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                "{t.subject || 'General inquiry'}"
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, color: '#94a3b8', marginBottom: t.status === 'escalated' ? 8 : 0 }}>
+                <Clock size={11} />
+                {fmtDate(t.created_at)}
+                {t.msg_count > 0 && <><span>·</span><MessageSquare size={11} />{t.msg_count} msg{t.msg_count !== 1 ? 's' : ''}</>}
+                {t.admin_name && t.status === 'active' && <><span>·</span><span style={{ color: '#059669', fontWeight: 600 }}>w/ {t.admin_name}</span></>}
+              </div>
+
+              {/* closed/reviewed by */}
+              {(t.status === 'closed' || t.status === 'reviewed') && t.closed_by_name && (
+                <div style={{ marginTop: 4, fontSize: 11, color: t.resolution === 'reviewed' ? '#7c3aed' : '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {t.resolution === 'reviewed' ? <BookOpen size={11} /> : <XCircle size={11} />}
+                  {t.resolution === 'reviewed' ? `Sent to review by ${t.closed_by_name}` : `Closed by ${t.closed_by_name}`}
+                </div>
+              )}
+
+              {/* join/decline for escalated */}
+              {t.status === 'escalated' && (
+                <div style={{ display: 'flex', gap: 7, marginTop: 6 }}>
+                  <button onClick={() => onAccept(t)} style={{ flex: 1, padding: '7px 0', borderRadius: 10, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                    <Check size={13} /> Join Chat
+                  </button>
+                  <button onClick={() => onDecline(t)} style={{ flex: 1, padding: '7px 0', borderRadius: 10, background: '#fff', border: '1.5px solid #fca5a5', color: '#ef4444', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                    <XCircle size={13} /> Decline
+                  </button>
+                </div>
+              )}
+
+              {/* open closed tickets to read */}
+              {(t.status === 'closed' || t.status === 'open') && (
+                <button onClick={() => onOpen(t)} style={{ marginTop: 6, width: '100%', padding: '6px 0', borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                  View transcript
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
+})
+
+/* ─── Ticket viewer (read-only transcript) ──────────────────────── */
+const TicketViewer = memo(function TicketViewer({ ticket, messages, myEmail, onClose }) {
+  const st = STATUS_STYLE[ticket.status] || STATUS_STYLE.open
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
-      {escalated.map(s => (
-        <div key={s.id} style={{ border: '1.5px solid #fca5a5', borderRadius: 14, padding: '13px', marginBottom: 10, background: '#fff', boxShadow: '0 2px 10px rgba(239,68,68,.1)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <div style={{ position: 'relative' }}>
-              <Avatar name={s.created_by_name} size={38} role={s.created_by_role} />
-              <span style={{ position: 'absolute', bottom: 1, right: 1, width: 9, height: 9, background: '#22c55e', borderRadius: '50%', border: '2px solid #fff' }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 13.5, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.created_by_name}</span>
-                <span style={{ background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 99, flexShrink: 0 }}>URGENT</span>
-              </div>
-              <div style={{ fontSize: 11, color: '#64748b', textTransform: 'capitalize' }}>{s.created_by_role}</div>
-              {s.subject && <div style={{ fontSize: 11.5, color: '#475569', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>"{s.subject}"</div>}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => onAccept(s)} style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-              <Check size={14} /> Join Chat
-            </button>
-            <button onClick={() => onDecline(s)} style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: '#fff', border: '1.5px solid #fca5a5', color: '#ef4444', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-              <XCircle size={14} /> Decline
-            </button>
-          </div>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid #f1f5f9', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#64748b', display: 'flex', alignItems: 'center' }}>
+          <ArrowRight size={15} style={{ transform: 'rotate(180deg)' }} />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ticket.created_by_name}</div>
+          <div style={{ fontSize: 11, color: '#94a3b8' }}>{fmtDate(ticket.created_at)}</div>
         </div>
-      ))}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 99, background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 10, fontWeight: 700 }}>
+          <st.Icon size={10} strokeWidth={2.5} /> {st.label}
+        </span>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 8px' }}>
+        {messages.map((m, i) => <Bubble key={m.id || i} msg={m} myEmail={myEmail} />)}
+        {ticket.closed_by_name && (
+          <div style={{ textAlign: 'center', margin: '12px 0 4px' }}>
+            <span style={{ display: 'inline-block', fontSize: 11, padding: '4px 12px', borderRadius: 99, background: '#f8fafc', color: '#94a3b8', fontStyle: 'italic' }}>
+              {ticket.resolution === 'reviewed' ? `📋 Sent to review by ${ticket.closed_by_name}` : `🔒 Closed by ${ticket.closed_by_name}`}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   )
 })
@@ -298,6 +397,12 @@ export default function FloatingChat() {
   const [escalated,      setEscalated]      = useState([])
   const [escalatedCount, setEscalatedCount] = useState(0)
 
+  // tickets tab
+  const [tickets,      setTickets]      = useState([])
+  const [ticketFilter, setTicketFilter] = useState('all')
+  const [viewTicket,   setViewTicket]   = useState(null)   // ticket being viewed in transcript
+  const [viewMessages, setViewMessages] = useState([])
+
   const msgEndRef     = useRef(null)
   const adminEndRef   = useRef(null)
   const inputRef      = useRef(null)
@@ -310,7 +415,7 @@ export default function FloatingChat() {
     fetch(path, { ...opts, headers: { 'x-api-key': key, 'Content-Type': 'application/json', ...(opts.headers || {}) } })
       .then(r => r.json()), [key])
 
-  /* polls */
+  /* polls — user messages */
   useEffect(() => {
     clearInterval(polls.current.msg)
     if (!key || !session || session.status === 'closed') return
@@ -324,6 +429,7 @@ export default function FloatingChat() {
     return () => clearInterval(polls.current.msg)
   }, [key, session?.id, session?.status]) // eslint-disable-line
 
+  /* polls — escalated requests (superadmin) */
   useEffect(() => {
     clearInterval(polls.current.pending)
     if (!key || role !== 'superadmin') return
@@ -334,6 +440,7 @@ export default function FloatingChat() {
     return () => clearInterval(polls.current.pending)
   }, [key, role]) // eslint-disable-line
 
+  /* polls — admin active chat */
   useEffect(() => {
     clearInterval(polls.current.admin)
     if (!activeSession) return
@@ -341,6 +448,15 @@ export default function FloatingChat() {
     run(); polls.current.admin = setInterval(run, 3000)
     return () => clearInterval(polls.current.admin)
   }, [activeSession?.id]) // eslint-disable-line
+
+  /* polls — tickets tab (superadmin) */
+  useEffect(() => {
+    clearInterval(polls.current.tickets)
+    if (!key || role !== 'superadmin') return
+    const run = () => api('/api/chat/tickets').then(d => Array.isArray(d) && setTickets(d)).catch(() => {})
+    run(); polls.current.tickets = setInterval(run, 5000)
+    return () => clearInterval(polls.current.tickets)
+  }, [key, role]) // eslint-disable-line
 
   /* scroll only when count changes */
   useEffect(() => {
@@ -394,7 +510,7 @@ export default function FloatingChat() {
 
   async function endUserChat() {
     if (!session) return
-    await api(`/api/chat/sessions/${session.id}/close`, { method: 'POST' })
+    await api(`/api/chat/sessions/${session.id}/close`, { method: 'POST', body: JSON.stringify({ resolution: 'closed' }) })
     setSession(p => ({ ...p, status: 'closed' }))
   }
 
@@ -422,8 +538,20 @@ export default function FloatingChat() {
 
   async function endAdminChat() {
     if (!activeSession) return
-    await api(`/api/chat/sessions/${activeSession.id}/close`, { method: 'POST' })
+    await api(`/api/chat/sessions/${activeSession.id}/close`, { method: 'POST', body: JSON.stringify({ resolution: 'closed' }) })
     setActiveSession(null); setAdminMessages([]); setTab('home')
+  }
+
+  async function sendToReview() {
+    if (!activeSession) return
+    await api(`/api/chat/sessions/${activeSession.id}/close`, { method: 'POST', body: JSON.stringify({ resolution: 'reviewed' }) })
+    setActiveSession(null); setAdminMessages([]); setTab('tickets')
+  }
+
+  async function openTicketTranscript(t) {
+    const msgs = await api(`/api/chat/sessions/${t.id}/messages`).catch(() => [])
+    setViewMessages(Array.isArray(msgs) ? msgs : [])
+    setViewTicket(t)
   }
 
   /* ── derived ── */
@@ -465,7 +593,9 @@ export default function FloatingChat() {
             ? <ChatHeader
                 name={isSuperAdmin ? activeSession?.created_by_name : (session?.admin_name || 'Vianova Support')}
                 subRole={isSuperAdmin ? activeSession?.created_by_role : 'superadmin'}
+                isAdmin={isSuperAdmin}
                 onEnd={isSuperAdmin ? endAdminChat : endUserChat}
+                onReview={sendToReview}
                 onClose={() => setOpen(false)}
               />
             : <HomeHeader label={label} role={role} avatar={avatar} escalatedCount={escalatedCount} onClose={() => setOpen(false)} />
@@ -481,7 +611,7 @@ export default function FloatingChat() {
                 hasActiveSession={hasActiveSession}
                 onNewChat={startChat}
                 onGoMessages={() => setTab('messages')}
-                onGoRequests={() => setTab('requests')}
+                onGoTickets={() => setTab('tickets')}
               />
             )}
 
@@ -532,8 +662,8 @@ export default function FloatingChat() {
                       <MessageSquare size={22} color="#d1d5db" />
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: '#64748b' }}>No active chat</div>
-                    <div style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6 }}>Accept an <strong>!admincall</strong> from the Requests tab.</div>
-                    {escalatedCount > 0 && <button onClick={() => setTab('requests')} style={{ padding: '9px 18px', borderRadius: 12, background: '#ef4444', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>🚨 {escalatedCount} Request{escalatedCount > 1 ? 's' : ''}</button>}
+                    <div style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6 }}>Accept an <strong>!admincall</strong> from the Tickets tab.</div>
+                    {escalatedCount > 0 && <button onClick={() => setTab('tickets')} style={{ padding: '9px 18px', borderRadius: 12, background: '#ef4444', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>🚨 {escalatedCount} Request{escalatedCount > 1 ? 's' : ''}</button>}
                   </div>
                 )}
                 {activeSession && (
@@ -548,13 +678,27 @@ export default function FloatingChat() {
               </>
             )}
 
-            {/* REQUESTS */}
-            {tab === 'requests' && isSuperAdmin && (
-              <RequestsTab escalated={escalated} onAccept={acceptTicket} onDecline={declineTicket} />
+            {/* TICKETS TAB (superadmin only) */}
+            {tab === 'tickets' && isSuperAdmin && (
+              viewTicket
+                ? <TicketViewer
+                    ticket={viewTicket}
+                    messages={viewMessages}
+                    myEmail={email}
+                    onClose={() => setViewTicket(null)}
+                  />
+                : <TicketsTab
+                    tickets={tickets}
+                    onAccept={acceptTicket}
+                    onDecline={declineTicket}
+                    onOpen={openTicketTranscript}
+                    filter={ticketFilter}
+                    setFilter={setTicketFilter}
+                  />
             )}
           </div>
 
-          <TabBar tab={tab} setTab={setTab} isSuperAdmin={isSuperAdmin} escalatedCount={escalatedCount} />
+          <TabBar tab={tab} setTab={t => { setTab(t); setViewTicket(null) }} isSuperAdmin={isSuperAdmin} escalatedCount={escalatedCount} />
         </div>
       )}
     </>
