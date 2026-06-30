@@ -9,6 +9,7 @@ import {
   Receipt
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import FloatingChat from './FloatingChat.jsx'
 
 const NAV_GROUPS = [
   {
@@ -279,6 +280,8 @@ export default function Layout({ children }) {
           </button>
         ))}
       </nav>
+
+      <FloatingChat />
     </div>
   )
 }

@@ -102,6 +102,9 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS sdoh_assessments (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, housing TEXT, food_security TEXT, transportation TEXT, financial_strain TEXT, social_isolation TEXT, education TEXT, employment TEXT, safety TEXT, z_codes TEXT, ai_summary TEXT, resources_suggested TEXT, status TEXT NOT NULL DEFAULT 'active', assessed_at TEXT NOT NULL, created_at TEXT NOT NULL)`,
     // feature 19 – patient portal / chatbot
     `CREATE TABLE IF NOT EXISTS portal_intakes (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, chief_complaint TEXT, symptoms TEXT, symptom_duration TEXT, pain_scale INTEGER, phq9_score INTEGER, gad7_score INTEGER, phq9_answers TEXT, gad7_answers TEXT, triage_level TEXT, ai_recommendation TEXT, created_at TEXT NOT NULL)`,
+    // floating chat widget
+    `CREATE TABLE IF NOT EXISTS chat_sessions (id TEXT PRIMARY KEY, created_by_email TEXT NOT NULL, created_by_name TEXT NOT NULL, created_by_role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'waiting', admin_email TEXT, admin_name TEXT, subject TEXT, created_at TEXT NOT NULL, accepted_at TEXT, closed_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, sender_email TEXT NOT NULL, sender_name TEXT NOT NULL, sender_role TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL)`,
     // feature 14 – billing & coding automation
     `CREATE TABLE IF NOT EXISTS billing_claims (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, case_id TEXT, encounter_date TEXT, status TEXT NOT NULL DEFAULT 'draft', icd_codes TEXT, cpt_codes TEXT, hcpcs_codes TEXT, drg_code TEXT, drg_description TEXT, em_level TEXT, mdm_complexity TEXT, hcc_codes TEXT, total_charges REAL, confidence_scores TEXT, coding_queries TEXT, compliance_flags TEXT, fhir_claim TEXT, scrub_results TEXT, submitted_at TEXT, created_at TEXT NOT NULL)`,
     // feature 15 – NLP notes
@@ -4156,6 +4159,93 @@ if (existsSync(DIST)) {
     res.sendFile(join(DIST, 'index.html'))
   })
 }
+
+// ── Floating Chat Widget ───────────────────────────────────────────────────────
+
+app.post('/api/chat/sessions', auth, async (req, res) => {
+  const { subject } = req.body
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  const user = req.user
+  await db.execute({ sql: `INSERT INTO chat_sessions (id, created_by_email, created_by_name, created_by_role, subject, created_at) VALUES (?,?,?,?,?,?)`,
+    args: [id, req.apiKey, user?.name || req.apiKey, req.keyRole, subject || 'General inquiry', now] })
+  res.json({ id, status: 'waiting', created_at: now })
+})
+
+app.get('/api/chat/sessions', auth, async (req, res) => {
+  let rows
+  if (req.keyRole === 'superadmin') {
+    rows = (await db.execute({ sql: 'SELECT * FROM chat_sessions ORDER BY created_at DESC', args: [] })).rows
+  } else {
+    rows = (await db.execute({ sql: 'SELECT * FROM chat_sessions WHERE created_by_email = ? ORDER BY created_at DESC', args: [req.apiKey] })).rows
+  }
+  res.json(rows)
+})
+
+app.get('/api/chat/sessions/pending', auth, async (req, res) => {
+  if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
+  const rows = (await db.execute({ sql: `SELECT * FROM chat_sessions WHERE status = 'waiting' ORDER BY created_at DESC`, args: [] })).rows
+  res.json({ count: rows.length, sessions: rows })
+})
+
+app.get('/api/chat/stats', auth, async (req, res) => {
+  if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
+  const pending = (await db.execute({ sql: `SELECT COUNT(*) as c FROM chat_sessions WHERE status='waiting'`, args: [] })).rows[0].c
+  const active  = (await db.execute({ sql: `SELECT COUNT(*) as c FROM chat_sessions WHERE status='active'`, args: [] })).rows[0].c
+  const total   = (await db.execute({ sql: `SELECT COUNT(*) as c FROM chat_sessions`, args: [] })).rows[0].c
+  res.json({ pending, active, total })
+})
+
+app.post('/api/chat/sessions/:id/accept', auth, async (req, res) => {
+  if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
+  const now = new Date().toISOString()
+  const user = req.user
+  await db.execute({ sql: `UPDATE chat_sessions SET status='active', admin_email=?, admin_name=?, accepted_at=? WHERE id=?`,
+    args: [req.apiKey, user?.name || req.apiKey, now, req.params.id] })
+  const msgId = randomUUID()
+  await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [msgId, req.params.id, 'system', 'System', 'system', 'Support joined the chat', now] })
+  res.json({ ok: true })
+})
+
+app.post('/api/chat/sessions/:id/decline', auth, async (req, res) => {
+  if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
+  const now = new Date().toISOString()
+  await db.execute({ sql: `UPDATE chat_sessions SET status='declined' WHERE id=?`, args: [req.params.id] })
+  const msgId = randomUUID()
+  await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [msgId, req.params.id, 'system', 'System', 'system', 'No support available right now', now] })
+  res.json({ ok: true })
+})
+
+app.post('/api/chat/sessions/:id/close', auth, async (req, res) => {
+  const now = new Date().toISOString()
+  await db.execute({ sql: `UPDATE chat_sessions SET status='closed', closed_at=? WHERE id=?`, args: [now, req.params.id] })
+  res.json({ ok: true })
+})
+
+app.get('/api/chat/sessions/:id/messages', auth, async (req, res) => {
+  const session = (await db.execute({ sql: 'SELECT * FROM chat_sessions WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+  if (session.created_by_email !== req.apiKey && session.admin_email !== req.apiKey && req.keyRole !== 'superadmin')
+    return res.status(403).json({ error: 'Not authorized' })
+  const rows = (await db.execute({ sql: 'SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC', args: [req.params.id] })).rows
+  res.json(rows)
+})
+
+app.post('/api/chat/sessions/:id/messages', auth, async (req, res) => {
+  const { message } = req.body
+  if (!message?.trim()) return res.status(400).json({ error: 'Message required' })
+  const session = (await db.execute({ sql: 'SELECT * FROM chat_sessions WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+  if (session.created_by_email !== req.apiKey && session.admin_email !== req.apiKey && req.keyRole !== 'superadmin')
+    return res.status(403).json({ error: 'Not authorized' })
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [id, req.params.id, req.apiKey, req.user?.name || req.apiKey, req.keyRole, message.trim(), now] })
+  res.json({ id, session_id: req.params.id, sender_email: req.apiKey, sender_name: req.user?.name || req.apiKey, sender_role: req.keyRole, message: message.trim(), created_at: now })
+})
 
 // ── Global error handler — never leak stack traces to clients ─────────────────
 // eslint-disable-next-line no-unused-vars
