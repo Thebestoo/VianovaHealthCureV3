@@ -4164,7 +4164,7 @@ app.post('/api/chat/sessions', auth, async (req, res) => {
     args: [id, req.apiKey, user?.name || req.apiKey, req.keyRole, subject || 'General inquiry', 'open', now] })
   // Auto welcome message
   const welcomeId = randomUUID()
-  const greeting = `👋 Hello ${user?.name || 'there'}, welcome to Vianova Health Support!\n\nI'm here to help you with any questions about patient records, clinical workflows, or platform features.\n\nFeel free to type your question below — we'll get back to you shortly.`
+  const greeting = `Hello ${user?.name || 'there'}, welcome to Vianova Health Support!\n\nI'm here to help you with any questions about patient records, clinical workflows, or platform features.\n\nFeel free to type your question below — we'll get back to you shortly.`
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
     args: [welcomeId, id, 'system', 'Vianova Support', 'system', greeting, now] })
   res.json({ id, status: 'open', created_at: now })
@@ -4213,7 +4213,7 @@ app.post('/api/chat/sessions/:id/admincall', auth, async (req, res) => {
   await db.execute({ sql: `UPDATE chat_sessions SET status='escalated' WHERE id=?`, args: [req.params.id] })
   const msgId = randomUUID()
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
-    args: [msgId, req.params.id, 'system', 'System', 'system', '🚨 Admin call requested — a real admin will join shortly.', now] })
+    args: [msgId, req.params.id, 'system', 'System', 'system', '[URGENT] Admin call requested — a real admin will join shortly.', now] })
   res.json({ ok: true })
 })
 
@@ -4227,11 +4227,11 @@ app.post('/api/chat/sessions/:id/accept', auth, async (req, res) => {
   // Vianova Support hands off to the real admin
   const botMsgId = randomUUID()
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
-    args: [botMsgId, req.params.id, 'system', 'Vianova Support', 'system', `A live admin has joined your chat — I'll step aside now. You're in good hands! 👋\n\nHanding over to ${user?.name || 'Admin'}…`, now] })
+    args: [botMsgId, req.params.id, 'system', 'Vianova Support', 'system', `A live admin has joined your chat — I'll step aside now. You're in good hands!\n\nHanding over to ${user?.name || 'Admin'}…`, now] })
   const sysMsgId = randomUUID()
   const sysNow = new Date(Date.now() + 1).toISOString()
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
-    args: [sysMsgId, req.params.id, 'system', 'System', 'system', `✅ ${user?.name || 'Admin'} has joined the chat.`, sysNow] })
+    args: [sysMsgId, req.params.id, 'system', 'System', 'system', `[JOINED] ${user?.name || 'Admin'} has joined the chat.`, sysNow] })
   res.json({ ok: true })
 })
 
@@ -4259,12 +4259,11 @@ app.post('/api/chat/sessions/:id/close', auth, async (req, res) => {
   const msgId = randomUUID()
   let closedMsg
   if (resolution === 'reviewed') {
-    closedMsg = `📋 Ticket sent to review by ${closerName}.`
+    closedMsg = `[REVIEW] Ticket sent to review by ${closerName}.`
   } else if (closerIsUser && session?.admin_email) {
-    // user ended an active session — tell the admin they're no longer needed
-    closedMsg = `🔒 ${closerName} has ended the chat and no longer needs assistance. This ticket is now closed.`
+    closedMsg = `[CLOSED] ${closerName} has ended the chat and no longer needs assistance. This ticket is now closed.`
   } else {
-    closedMsg = `🔒 Chat closed by ${closerName}.`
+    closedMsg = `[CLOSED] Chat closed by ${closerName}.`
   }
   await db.execute({ sql: `INSERT INTO chat_messages (id, session_id, sender_email, sender_name, sender_role, message, created_at) VALUES (?,?,?,?,?,?,?)`,
     args: [msgId, req.params.id, 'system', 'System', 'system', closedMsg, now] })

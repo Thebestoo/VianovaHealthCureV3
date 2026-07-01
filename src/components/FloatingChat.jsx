@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { MessageCircle, X, Home, MessageSquare, Ticket, Send, Check, XCircle,
-         ArrowRight, ChevronDown, Clock, CheckCircle, AlertCircle, BookOpen, PhoneOff } from 'lucide-react'
+         ArrowRight, ChevronDown, Clock, CheckCircle, AlertCircle, BookOpen, PhoneOff,
+         AlertTriangle, Ban, Hospital, HandMetal, ShieldAlert, Lock } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 /* ─── helpers ────────────────────────────────────────────────────── */
@@ -81,7 +82,9 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
     if (msg.sender_name === 'Vianova Support') {
       return (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 14 }}>🏥</div>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Hospital size={16} color="#fff" strokeWidth={2} />
+          </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3, fontWeight: 600, letterSpacing: .3 }}>Vianova Support</div>
             <div style={{ background: '#f1f5f9', borderRadius: '3px 16px 16px 16px', padding: '11px 13px', fontSize: 13.5, lineHeight: 1.65, color: '#1e293b' }}>
@@ -92,17 +95,22 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
         </div>
       )
     }
-    const urgent = msg.message.startsWith('🚨')
-    const closed = msg.message.startsWith('🔒') || msg.message.includes('no longer needs assistance')
+    const urgent  = msg.message.startsWith('[URGENT]')
+    const closed  = msg.message.startsWith('[CLOSED]') || msg.message.includes('no longer needs assistance')
+    const review  = msg.message.startsWith('[REVIEW]')
+    const joined  = msg.message.startsWith('[JOINED]')
+    const SysIcon = urgent ? AlertTriangle : closed ? Lock : review ? BookOpen : joined ? CheckCircle : null
+    const sysColor = urgent ? '#dc2626' : closed ? '#64748b' : review ? '#7c3aed' : joined ? '#059669' : '#94a3b8'
+    const sysBg    = urgent ? '#fef2f2' : closed ? '#f8fafc' : review ? '#faf5ff' : joined ? '#f0fdf4' : '#f1f5f9'
+    const sysBorder = urgent ? '1px solid #fecaca' : closed ? '1px solid #e2e8f0' : review ? '1px solid #e9d5ff' : joined ? '1px solid #bbf7d0' : 'none'
+    // strip the leading marker tag for display
+    const displayText = msg.message.replace(/^\[(URGENT|CLOSED|REVIEW|JOINED)\]\s*/, '')
     return (
       <div style={{ textAlign: 'center', margin: '10px 0' }}>
-        <span style={{
-          display: 'inline-block', fontSize: 11, padding: '5px 14px', borderRadius: 99,
-          background: urgent ? '#fef2f2' : closed ? '#f8fafc' : '#f1f5f9',
-          color: urgent ? '#dc2626' : closed ? '#64748b' : '#94a3b8',
-          border: urgent ? '1px solid #fecaca' : closed ? '1px solid #e2e8f0' : 'none',
-          fontWeight: 500, fontStyle: urgent ? 'normal' : 'italic',
-        }}>{msg.message}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '5px 14px', borderRadius: 99, background: sysBg, color: sysColor, border: sysBorder, fontWeight: 500, fontStyle: (!urgent && !closed && !review && !joined) ? 'italic' : 'normal' }}>
+          {SysIcon && <SysIcon size={11} strokeWidth={2.5} />}
+          {displayText}
+        </span>
       </div>
     )
   }
@@ -273,7 +281,9 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
       <div style={{ flex: 1, overflowY: 'auto', padding: '6px 12px 10px' }}>
         {filtered.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, height: '100%', textAlign: 'center', padding: '0 24px' }}>
-            <div style={{ fontSize: 38 }}>🎫</div>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Ticket size={24} color="#d1d5db" strokeWidth={1.5} />
+            </div>
             <div style={{ fontWeight: 700, fontSize: 14, color: '#64748b' }}>No {filter === 'all' ? '' : filter} tickets</div>
             <div style={{ fontSize: 12, color: '#94a3b8' }}>All chat sessions appear here.</div>
           </div>
@@ -348,8 +358,9 @@ const TicketViewer = memo(function TicketViewer({ ticket, messages, myEmail, onC
         {messages.map((m, i) => <Bubble key={m.id || i} msg={m} myEmail={myEmail} />)}
         {ticket.closed_by_name && (
           <div style={{ textAlign: 'center', margin: '12px 0 4px' }}>
-            <span style={{ fontSize: 11, padding: '4px 12px', borderRadius: 99, background: '#f8fafc', color: '#94a3b8', fontStyle: 'italic', display: 'inline-block' }}>
-              {ticket.resolution === 'reviewed' ? `📋 Sent to review by ${ticket.closed_by_name}` : `🔒 Closed by ${ticket.closed_by_name}`}
+            <span style={{ fontSize: 11, padding: '4px 12px', borderRadius: 99, background: '#f8fafc', color: '#94a3b8', fontStyle: 'italic', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              {ticket.resolution === 'reviewed' ? <BookOpen size={11} /> : <Lock size={11} />}
+              {ticket.resolution === 'reviewed' ? `Sent to review by ${ticket.closed_by_name}` : `Closed by ${ticket.closed_by_name}`}
             </span>
           </div>
         )}
@@ -372,7 +383,10 @@ const AdminMessageArea = memo(function AdminMessageArea({ messages, myEmail, adm
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 6px', minHeight: 0 }}>
       {messages.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: '24px 0' }}>You joined — say hello 👋</div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '28px 0', color: '#94a3b8' }}>
+          <HandMetal size={22} color="#d1d5db" strokeWidth={1.5} />
+          <span style={{ fontSize: 13 }}>You joined — say hello</span>
+        </div>
       )}
       {messages.map((m, i) => <Bubble key={m.id || i} msg={m} myEmail={myEmail} />)}
       <div ref={adminEndRef} />
@@ -653,9 +667,9 @@ export default function FloatingChat() {
   const hasActiveSession = session && session.status !== 'closed'
 
   const banner = !isSuperAdmin && session?.status === 'escalated'
-    ? { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', text: '🚨 Admin call sent — joining shortly…' }
+    ? { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', Icon: ShieldAlert, text: 'Admin call sent — joining shortly…' }
     : !isSuperAdmin && session?.status === 'active'
-    ? { bg: '#f0fdf4', color: '#059669', border: '#bbf7d0', text: `✅ ${session.admin_name || 'Admin'} joined the chat` }
+    ? { bg: '#f0fdf4', color: '#059669', border: '#bbf7d0', Icon: CheckCircle,  text: `${session.admin_name || 'Admin'} joined the chat` }
     : null
 
   return (
@@ -717,7 +731,9 @@ export default function FloatingChat() {
                 )}
                 {!starting && !session && (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '0 24px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 44 }}>💬</div>
+                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <MessageSquare size={26} color="#1d6ef5" strokeWidth={1.5} />
+                    </div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>No active conversation</div>
                     <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>Press <strong>New Message</strong> on the Home tab to start.</div>
                     <button onClick={startChat} style={{ padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>Start Chat</button>
@@ -725,7 +741,9 @@ export default function FloatingChat() {
                 )}
                 {!starting && session && session.status === 'closed' && (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '0 24px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 44 }}>✅</div>
+                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <CheckCircle size={28} color="#059669" strokeWidth={1.5} />
+                    </div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>Chat ended</div>
                     <div style={{ fontSize: 13, color: '#64748b' }}>Thank you for reaching out!</div>
                     <button onClick={() => { setSession(null); setMessages([]) }} style={{ marginTop: 8, padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>New Chat</button>
@@ -733,7 +751,11 @@ export default function FloatingChat() {
                 )}
                 {!starting && session && session.status !== 'closed' && (
                   <>
-                    {banner && <div style={{ flexShrink: 0, background: banner.bg, borderBottom: `1px solid ${banner.border}`, padding: '7px 14px', textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: banner.color }}>{banner.text}</div>}
+                    {banner && (
+                      <div style={{ flexShrink: 0, background: banner.bg, borderBottom: `1px solid ${banner.border}`, padding: '7px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, color: banner.color }}>
+                        <banner.Icon size={13} strokeWidth={2.5} /> {banner.text}
+                      </div>
+                    )}
                     <UserMessageArea messages={messages} myEmail={email} msgEndRef={msgEndRef} />
                     <InputBar value={input} onChange={e => setInput(e.target.value)} onSend={sendMsg} disabled={sending} fwdRef={inputRef} />
                   </>
@@ -751,7 +773,7 @@ export default function FloatingChat() {
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: '#64748b' }}>No active chat</div>
                     <div style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6 }}>Accept an <strong>!admincall</strong> from the Tickets tab.</div>
-                    {escalatedCount > 0 && <button onClick={() => setTab('tickets')} style={{ padding: '9px 18px', borderRadius: 12, background: '#ef4444', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>🚨 {escalatedCount} Request{escalatedCount > 1 ? 's' : ''}</button>}
+                    {escalatedCount > 0 && <button onClick={() => setTab('tickets')} style={{ padding: '9px 18px', borderRadius: 12, background: '#ef4444', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}><ShieldAlert size={14} /> {escalatedCount} Request{escalatedCount > 1 ? 's' : ''}</button>}
                   </div>
                 )}
 
@@ -794,19 +816,25 @@ export default function FloatingChat() {
           {/* ── Strike warning overlay (shows on top of any tab) ── */}
           {strikeShow && !timedOut && (
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(254,226,226,.92)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 10, borderRadius: 20, animation: 'fc-slidein .18s ease both' }}>
-              <div style={{ fontSize: 46 }}>⚠️</div>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(185,28,28,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AlertTriangle size={30} color="#b91c1c" strokeWidth={2} />
+              </div>
               <div style={{ fontWeight: 900, fontSize: 22, color: '#b91c1c', letterSpacing: -.5 }}>Strike {strikes}</div>
               <div style={{ fontWeight: 600, fontSize: 14, color: '#dc2626' }}>
                 {3 - strikes} more {3 - strikes === 1 ? 'strike' : 'strikes'} before timeout
               </div>
-              <div style={{ fontSize: 12, color: '#ef4444', marginTop: 2 }}>Keep it respectful 🙏</div>
+              <div style={{ fontSize: 12, color: '#ef4444', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Check size={11} /> Keep it respectful
+              </div>
             </div>
           )}
 
           {/* ── Timeout overlay ── */}
           {timedOut && (
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(127,29,29,.93)', backdropFilter: 'blur(3px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 10, borderRadius: 20 }}>
-              <div style={{ fontSize: 50 }}>🚫</div>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Ban size={34} color="#fff" strokeWidth={1.8} />
+              </div>
               <div style={{ fontWeight: 900, fontSize: 20, color: '#fff', letterSpacing: -.5 }}>Timeout</div>
               <div style={{ fontWeight: 600, fontSize: 13, color: '#fca5a5', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
                 You've been timed out for inappropriate language.
