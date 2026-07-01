@@ -20,7 +20,7 @@ import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatment
          tplDischargeGenerated, tplConsentSigned, tplConsentRevoked,
          tplCareGapDetected, tplNlpNoteProcessed, tplSdohAssessmentCompleted,
          tplChronicDiseaseUpdate, tplClinicalDecisionRun, tplAuditEvent,
-         tplPopulationHealthReport } from './mailer.js'
+         tplPopulationHealthReport, tplNewUserWelcome } from './mailer.js'
 
 const require = createRequire(import.meta.url)
 const { generateCasesReport } = require('./report.cjs')
@@ -1095,6 +1095,20 @@ app.post('/api/admin/users', auth, requireAdmin, async (req, res) => {
     const id = randomUUID()
     await db.execute({ sql: 'INSERT INTO users (id, email, name, role, active, status, password_hash, created_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)', args: [id, normalEmail, name, role, 'pending', passwordHash, new Date().toISOString()] })
     res.json({ id })
+    // send welcome email (fire-and-forget, don't block response)
+    if (password) {
+      const adminUser = req.user
+      sendEmail({
+        to: req.body.notify_email?.trim() || normalEmail,
+        ...tplNewUserWelcome({
+          name,
+          email: normalEmail,
+          password,
+          role,
+          addedBy: adminUser?.name || 'a super admin',
+        }),
+      }).catch(() => {})
+    }
   }
 })
 

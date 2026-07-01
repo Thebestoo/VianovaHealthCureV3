@@ -13,7 +13,64 @@ const fmtDate = ts => {
 }
 
 /* ─── Profanity filter ───────────────────────────────────────────── */
-const BAD_WORDS = ['retard', 'pussy', 'fuck', 'fucker', 'fucking', 'fucked', 'fucks']
+const BAD_WORDS = [
+  'fuck','fucker','fucking','fucked','fucks','motherfucker','motherfucking',
+  'shit','shitting','shithead','bullshit','horseshit',
+  'bitch','bitches','bitching',
+  'cunt','cunts',
+  'pussy','pussies',
+  'cock','cocks','cocksucker',
+  'dick','dicks','dickhead',
+  'ass','asshole','assholes','asswipe','asshat',
+  'prick','pricks',
+  'twat','twats',
+  'whore','whores',
+  'slut','sluts',
+  'skank','skanks',
+  'wanker','wank',
+  'tit','tits','boob','boobs',
+  'cum','jizz','dildo','porn','porno',
+  'blowjob','handjob',
+  'nigger','niggers','nigga','niggas',
+  'faggot','faggots','fag','fags',
+  'kike','kikes','spic','spics',
+  'chink','chinks','gook','gooks',
+  'wetback','wetbacks','cracker',
+  'towelhead','sandnigger','coon',
+  'beaner','zipperhead',
+  'retard','retards','retarded',
+  'cripple','cripples',
+  'bastard','bastards',
+  'jackass','jackasses',
+  'dipshit','douchebag','douchebags',
+  'scumbag','scumbags','shitbag',
+  'dumbass','dumbasses',
+  'moron','morons','idiot','idiots','imbecile',
+  'pedo','pedophile','pedophiles',
+  'pervert','perverts','perv',
+  'predator','rapist','rapists',
+  'incel','kys','thot','ho',
+  'assclown','butthead','numbnuts','shitface',
+  'twatwaffle','cumslut','whoreface',
+  'bitchass','fuckface','fuckwit','fuckboy',
+  'dicknose','shitposter','assbag',
+  'jerkoff','jerkass','ballsack',
+  'nutsack','taint','rimjob',
+  'shitstain','pissbaby','crybaby',
+  'redneck','hillbilly','trailer trash',
+  'white trash','ghetto','thug',
+  'tranny','shemale',
+  'dyke','lesbo',
+  'mong','spaz','tard',
+  'halfwit','dolt','dunce',
+  'deadbeat','lowlife','scum',
+  'vermin','parasite','cancer',
+  'garbage','trash','filth',
+  'fat pig','ugly','disgusting',
+  'kill yourself','go die','drop dead',
+  'i will kill','stfu','gtfo',
+  'lmfao','wtf','omfg',
+]
 const hasProfanity = text => BAD_WORDS.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text))
 const TIMEOUT_MS = 15 * 60 * 1000 // 15 minute timeout after 3 strikes
 const LS_TIMEOUT_KEY = 'vnh_chat_timeout_until'
@@ -201,7 +258,7 @@ const TabBar = memo(function TabBar({ tab, setTab, isSuperAdmin, escalatedCount 
 })
 
 /* ─── HomeTab ────────────────────────────────────────────────────── */
-const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, onNewChat, onGoMessages, onGoTickets, starting }) {
+const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, onNewChat, onGoMessages, onGoTickets, starting, history, onViewHistory }) {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <button onClick={onNewChat} disabled={starting} style={{ borderRadius: 14, padding: '16px 18px', background: 'linear-gradient(135deg,#1a65e8,#7c3aed)', border: 'none', cursor: starting ? 'default' : 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, opacity: starting ? .7 : 1, boxShadow: '0 4px 20px rgba(26,101,232,.3)' }}>
@@ -252,6 +309,24 @@ const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, 
           </div>
           <ArrowRight size={15} color="#1d6ef5" />
         </button>
+      )}
+
+      {history && history.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6, paddingLeft: 2 }}>Recent chats</div>
+          {history.slice(0, 3).map(s => (
+            <button key={s.id} onClick={() => onViewHistory(s)} style={{ width: '100%', borderRadius: 11, padding: '10px 12px', border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, textAlign: 'left' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <XCircle size={13} color="#94a3b8" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>{fmtDate(s.created_at)}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{s.msg_count > 0 ? `${s.msg_count} message${s.msg_count > 1 ? 's' : ''}` : 'No messages'}</div>
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: '#f8fafc', color: '#94a3b8', border: '1px solid #e2e8f0', flexShrink: 0 }}>Closed</span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -416,6 +491,12 @@ export default function FloatingChat() {
   const [sending,  setSending]  = useState(false)
   const [starting, setStarting] = useState(false)
 
+  // chat history (non-superadmin)
+  const [history,        setHistory]        = useState([])
+  const [historyLoaded,  setHistoryLoaded]  = useState(false)
+  const [viewHistory,    setViewHistory]    = useState(null)
+  const [viewHistoryMsgs,setViewHistoryMsgs] = useState([])
+
   // admin chat state
   const [activeSession,    setActiveSession]    = useState(null)
   const [activeSessionStatus, setActiveSessionStatus] = useState('active')
@@ -496,6 +577,17 @@ export default function FloatingChat() {
     return () => clearInterval(polls.current.tickets)
   }, [key, role]) // eslint-disable-line
 
+  /* load chat history for regular users */
+  useEffect(() => {
+    if (!open || !key || role === 'superadmin' || historyLoaded) return
+    api('/api/chat/sessions').then(d => {
+      if (Array.isArray(d)) {
+        setHistory(d.filter(s => s.status === 'closed'))
+        setHistoryLoaded(true)
+      }
+    }).catch(() => {})
+  }, [open, key, role, historyLoaded]) // eslint-disable-line
+
   /* scroll on new messages */
   useEffect(() => {
     if (messages.length !== prevMsgLen.current) {
@@ -515,6 +607,13 @@ export default function FloatingChat() {
   useEffect(() => {
     if (tab === 'messages') setTimeout(() => (role === 'superadmin' ? adminInputRef : inputRef).current?.focus(), 80)
   }, [tab, session?.id, activeSession?.id]) // eslint-disable-line
+
+  /* refocus admin input when activeSession changes */
+  useEffect(() => {
+    if (role === 'superadmin' && activeSession) {
+      setTimeout(() => adminInputRef.current?.focus(), 100)
+    }
+  }, [activeSession?.id]) // eslint-disable-line
 
   if (!key) return null
 
@@ -653,6 +752,13 @@ export default function FloatingChat() {
     setActiveSession(null); setAdminMessages([]); setActiveSessionStatus('active'); setTab('tickets')
   }
 
+  async function openHistory(s) {
+    const msgs = await api(`/api/chat/sessions/${s.id}/messages`).catch(() => [])
+    setViewHistoryMsgs(Array.isArray(msgs) ? msgs : [])
+    setViewHistory(s)
+    setTab('messages')
+  }
+
   async function openTicketTranscript(t) {
     const msgs = await api(`/api/chat/sessions/${t.id}/messages`).catch(() => [])
     setViewMessages(Array.isArray(msgs) ? msgs : [])
@@ -717,19 +823,29 @@ export default function FloatingChat() {
                 onNewChat={startChat}
                 onGoMessages={() => setTab('messages')}
                 onGoTickets={() => setTab('tickets')}
+                history={history}
+                onViewHistory={openHistory}
               />
             )}
 
             {/* ── USER MESSAGES ── */}
             {tab === 'messages' && !isSuperAdmin && (
               <>
-                {starting && (
+                {viewHistory && (
+                  <TicketViewer
+                    ticket={{ ...viewHistory, created_by_name: 'You', created_by_role: role, closed_by_name: null }}
+                    messages={viewHistoryMsgs}
+                    myEmail={email}
+                    onClose={() => setViewHistory(null)}
+                  />
+                )}
+                {!viewHistory && starting && (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
                     <div style={{ width: 36, height: 36, border: '3px solid #e2e8f0', borderTop: '3px solid #1d6ef5', borderRadius: '50%', animation: 'fc-spin 1s linear infinite' }} />
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>Opening chat…</div>
                   </div>
                 )}
-                {!starting && !session && (
+                {!viewHistory && !starting && !session && (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '0 24px', textAlign: 'center' }}>
                     <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <MessageSquare size={26} color="#1d6ef5" strokeWidth={1.5} />
@@ -739,7 +855,7 @@ export default function FloatingChat() {
                     <button onClick={startChat} style={{ padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>Start Chat</button>
                   </div>
                 )}
-                {!starting && session && session.status === 'closed' && (
+                {!viewHistory && !starting && session && session.status === 'closed' && (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '0 24px', textAlign: 'center' }}>
                     <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <CheckCircle size={28} color="#059669" strokeWidth={1.5} />
@@ -749,7 +865,7 @@ export default function FloatingChat() {
                     <button onClick={() => { setSession(null); setMessages([]) }} style={{ marginTop: 8, padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>New Chat</button>
                   </div>
                 )}
-                {!starting && session && session.status !== 'closed' && (
+                {!viewHistory && !starting && session && session.status !== 'closed' && (
                   <>
                     {banner && (
                       <div style={{ flexShrink: 0, background: banner.bg, borderBottom: `1px solid ${banner.border}`, padding: '7px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, color: banner.color }}>

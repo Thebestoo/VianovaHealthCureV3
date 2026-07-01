@@ -948,6 +948,45 @@ export function tplAuditEvent({ eventType, actor, resourceType, patientId, detai
   }
 }
 
+export function tplNewUserWelcome({ name, email, password, role, addedBy }) {
+  const roleLabel = role === 'superadmin' ? 'Super Admin' : 'Doctor'
+  const subject = 'Welcome to Vianova Health — Your account is ready'
+  const html = `
+<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f8fafc;font-family:'Helvetica Neue',Arial,sans-serif;">
+<div style="max-width:560px;margin:40px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">
+  <div style="background:linear-gradient(135deg,#0e7490,#0369a1);padding:32px 36px;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <div style="width:40px;height:40px;background:rgba(255,255,255,.15);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      </div>
+      <span style="color:#fff;font-weight:700;font-size:18px;">Vianova Health</span>
+    </div>
+    <h1 style="color:#fff;font-size:26px;font-weight:800;margin:0 0 8px;letter-spacing:-.02em;">Welcome, ${name}!</h1>
+    <p style="color:rgba(255,255,255,.7);font-size:14px;margin:0;">Your account has been created by ${addedBy}</p>
+  </div>
+  <div style="padding:32px 36px;">
+    <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 24px;">You've been added to the <strong>Vianova Health Cure Analyzer System</strong> as a <strong style="color:#0e7490;">${roleLabel}</strong>. Use the credentials below to sign in.</p>
+    <div style="background:#f1f5f9;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+      <div style="margin-bottom:14px;">
+        <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Login Email</div>
+        <div style="font-size:15px;font-weight:600;color:#0f172a;">${email}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Temporary Password</div>
+        <div style="font-size:15px;font-weight:600;color:#0f172a;font-family:monospace;background:#e2e8f0;padding:6px 12px;border-radius:8px;display:inline-block;">${password}</div>
+      </div>
+    </div>
+    <a href="https://vianova-health.onrender.com/login" style="display:block;text-align:center;background:linear-gradient(135deg,#0e7490,#0369a1);color:#fff;font-weight:700;font-size:14px;padding:14px 24px;border-radius:12px;text-decoration:none;margin-bottom:24px;">Sign In to Vianova Health</a>
+    <p style="color:#94a3b8;font-size:12px;line-height:1.6;margin:0;">Please change your password after your first login. If you have any issues, contact your system administrator.</p>
+  </div>
+  <div style="background:#f8fafc;padding:16px 36px;text-align:center;border-top:1px solid #e2e8f0;">
+    <p style="color:#cbd5e1;font-size:11px;margin:0;">Vianova Health · Cure Analyzer System v2.0</p>
+  </div>
+</div>
+</body></html>`
+  return { subject, html, text: `Welcome ${name}! Your Vianova Health account is ready. Email: ${email} | Password: ${password} | Sign in at https://vianova-health.onrender.com/login` }
+}
+
 export function tplPopulationHealthReport({ cohortName, memberCount, highRiskCount, programType, criteria }) {
   const critSummary = typeof criteria === 'object' ? JSON.stringify(criteria).slice(0, 120) : String(criteria || '—')
   return {

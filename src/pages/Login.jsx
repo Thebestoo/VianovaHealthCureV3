@@ -106,6 +106,14 @@ export default function Login() {
           background: radial-gradient(circle, rgba(6,78,59,.4) 0%, transparent 70%);
           pointer-events: none;
         }
+        .login-left-glow3 {
+          position: absolute;
+          top: 40%; left: 30%;
+          width: 300px; height: 300px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(99,102,241,.2) 0%, transparent 70%);
+          pointer-events: none;
+        }
 
         /* ── RIGHT ── */
         .login-right {
@@ -196,6 +204,7 @@ export default function Login() {
           <div className="login-left-grid" />
           <div className="login-left-glow" />
           <div className="login-left-glow2" />
+          <div className="login-left-glow3" />
 
           {/* Logo */}
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 13, marginBottom: 'auto' }}>
@@ -226,17 +235,38 @@ export default function Login() {
             </div>
 
             <h1 style={{
-              color: '#fff', fontSize: 40, fontWeight: 900,
+              color: '#fff', fontSize: 44, fontWeight: 900,
               lineHeight: 1.1, letterSpacing: '-.03em',
               marginBottom: 20,
             }}>
               The smarter way<br />
-              <span style={{ color: '#38bdf8' }}>to deliver care</span>
+              <span style={{ color: '#5eead4' }}>to deliver care</span>
             </h1>
 
-            <p style={{ color: 'rgba(255,255,255,.45)', fontSize: 14, lineHeight: 1.8, marginBottom: 44, maxWidth: 360 }}>
+            <p style={{ color: 'rgba(255,255,255,.45)', fontSize: 14, lineHeight: 1.8, marginBottom: 28, maxWidth: 360 }}>
               AI-assisted diagnostics, real-time care gap alerts, and population health tools — built for modern clinical teams.
             </p>
+
+            {/* Stats grid */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 32,
+            }}>
+              {[
+                { value: '12,400+', label: 'Patients managed' },
+                { value: '99.9%',   label: 'Uptime SLA'       },
+                { value: '2.1s',    label: 'Avg AI response'  },
+                { value: 'HIPAA',   label: 'Compliant'        },
+              ].map(s => (
+                <div key={s.label} style={{
+                  background: 'rgba(255,255,255,.05)',
+                  border: '1px solid rgba(255,255,255,.08)',
+                  borderRadius: 12, padding: '14px 16px',
+                }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 800, fontSize: 18, letterSpacing: '-.02em' }}>{s.value}</div>
+                  <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 11, marginTop: 3 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
 
             {/* Feature list */}
             <div>
