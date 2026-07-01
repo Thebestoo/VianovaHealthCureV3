@@ -208,22 +208,23 @@ export default function Login() {
 
           {/* Logo */}
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 'auto' }}>
-            <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 32, width: 'auto' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'rgba(14,116,144,.2)', border: '1px solid rgba(14,116,144,.4)',
+                borderRadius: 99, padding: '4px 13px',
+                width: 'fit-content',
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2dd4bf', display: 'block', animation: 'pulse 2s infinite' }} />
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#5eead4', letterSpacing: '.06em', textTransform: 'uppercase' }}>Live Platform</span>
+              </div>
+              <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 32, width: 'auto' }} />
+            </div>
             <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 11, letterSpacing: '.04em', textAlign: 'center' }}>CURE ANALYZER SYSTEM</div>
           </div>
 
           {/* Hero copy */}
           <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingBottom: 20 }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: 'rgba(14,116,144,.2)', border: '1px solid rgba(14,116,144,.4)',
-              borderRadius: 99, padding: '4px 13px', marginBottom: 24,
-              width: 'fit-content',
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2dd4bf', display: 'block', animation: 'pulse 2s infinite' }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#5eead4', letterSpacing: '.06em', textTransform: 'uppercase' }}>Live Platform</span>
-            </div>
-
             <h1 style={{
               color: '#fff', fontSize: 44, fontWeight: 900,
               lineHeight: 1.1, letterSpacing: '-.03em',
