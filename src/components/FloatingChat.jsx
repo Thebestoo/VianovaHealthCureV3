@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { MessageCircle, X, Home, MessageSquare, Ticket, Send, Check, XCircle,
          ArrowRight, ChevronDown, Clock, CheckCircle, AlertCircle, BookOpen, PhoneOff,
-         AlertTriangle, Ban, Hospital, HandMetal, ShieldAlert, Lock } from 'lucide-react'
+         AlertTriangle, Ban, HandMetal, ShieldAlert, Lock } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 /* ─── helpers ────────────────────────────────────────────────────── */
@@ -139,8 +139,8 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
     if (msg.sender_name === 'Vianova Support') {
       return (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Hospital size={16} color="#fff" strokeWidth={2} />
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#fff', border: '1.5px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+            <img src="/vianova-logo.svg" alt="Vianova Health" style={{ width: 20, height: 'auto' }} />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3, fontWeight: 600, letterSpacing: .3 }}>Vianova Support</div>
@@ -189,7 +189,10 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
 const ChatHeader = memo(function ChatHeader({ name, subRole, onEnd, onReview, onClose, isAdmin }) {
   return (
     <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}>
-      <div style={{ padding: '14px 14px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: '10px 14px 0' }}>
+        <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 15, width: 'auto', filter: 'brightness(0) invert(1)', opacity: .9 }} />
+      </div>
+      <div style={{ padding: '10px 14px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ position: 'relative' }}>
           <Avatar name={name} size={38} role={subRole} />
           <span style={{ position: 'absolute', bottom: 1, right: 1, width: 9, height: 9, background: '#22c55e', borderRadius: '50%', border: '2px solid #1a65e8' }} />
@@ -221,7 +224,10 @@ const ChatHeader = memo(function ChatHeader({ name, subRole, onEnd, onReview, on
 const HomeHeader = memo(function HomeHeader({ label, role, avatar, escalatedCount, onClose }) {
   return (
     <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}>
-      <div style={{ padding: '16px 14px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: '12px 14px 0' }}>
+        <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 15, width: 'auto', filter: 'brightness(0) invert(1)', opacity: .9 }} />
+      </div>
+      <div style={{ padding: '10px 14px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Avatar name={label} size={38} role={role} src={avatar || undefined} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ color: 'rgba(255,255,255,.65)', fontSize: 10.5 }}>Welcome back,</div>
@@ -273,8 +279,8 @@ const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, 
       </button>
 
       <div style={{ borderRadius: 12, padding: '12px 14px', border: '1.5px solid #bbf7d0', background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 11 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg,#059669,#34d399)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Check size={16} color="#fff" strokeWidth={2.5} />
+        <div style={{ width: 32, height: 32, borderRadius: 9, background: '#fff', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+          <img src="/vianova-logo.svg" alt="Vianova Health" style={{ width: 20, height: 'auto' }} />
         </div>
         <div>
           <div style={{ color: '#047857', fontWeight: 700, fontSize: 12.5 }}>All Systems Operational</div>
