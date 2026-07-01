@@ -342,7 +342,7 @@ const STATUS_STYLE = {
 }
 
 /* ─── TicketsTab ─────────────────────────────────────────────────── */
-const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOpen, filter, setFilter }) {
+const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOpen, onCloseTicket, filter, setFilter }) {
   const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter)
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -402,6 +402,11 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
               {(t.status === 'closed' || t.status === 'open') && (
                 <button onClick={() => onOpen(t)} style={{ marginTop: 7, width: '100%', padding: '6px 0', borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
                   View transcript
+                </button>
+              )}
+              {(t.status === 'open' || t.status === 'active') && (
+                <button onClick={() => { if (window.confirm(`Close this ticket from ${t.created_by_name}?`)) onCloseTicket(t) }} style={{ marginTop: 7, width: '100%', padding: '6px 0', borderRadius: 10, background: '#fff', border: '1.5px solid #fecaca', color: '#ef4444', fontWeight: 600, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                  <Lock size={12} /> Close ticket
                 </button>
               )}
             </div>
@@ -752,6 +757,13 @@ export default function FloatingChat() {
     setActiveSession(null); setAdminMessages([]); setActiveSessionStatus('active'); setTab('tickets')
   }
 
+  async function closeTicket(t) {
+    await api(`/api/chat/sessions/${t.id}/close`, { method: 'POST', body: JSON.stringify({ resolution: 'closed' }) })
+    setTickets(p => p.map(x => x.id === t.id ? { ...x, status: 'closed', resolution: 'closed', closed_by_name: label } : x))
+    setEscalated(p => p.filter(x => x.id !== t.id)); setEscalatedCount(p => Math.max(0, p - (t.status === 'escalated' ? 1 : 0)))
+    if (activeSession?.id === t.id) { setActiveSession(null); setAdminMessages([]) }
+  }
+
   async function openHistory(s) {
     const msgs = await api(`/api/chat/sessions/${s.id}/messages`).catch(() => [])
     setViewHistoryMsgs(Array.isArray(msgs) ? msgs : [])
@@ -923,7 +935,7 @@ export default function FloatingChat() {
             {tab === 'tickets' && isSuperAdmin && (
               viewTicket
                 ? <TicketViewer ticket={viewTicket} messages={viewMessages} myEmail={email} onClose={() => setViewTicket(null)} />
-                : <TicketsTab tickets={tickets} onAccept={acceptTicket} onDecline={declineTicket} onOpen={openTicketTranscript} filter={ticketFilter} setFilter={setTicketFilter} />
+                : <TicketsTab tickets={tickets} onAccept={acceptTicket} onDecline={declineTicket} onOpen={openTicketTranscript} onCloseTicket={closeTicket} filter={ticketFilter} setFilter={setTicketFilter} />
             )}
           </div>
 
