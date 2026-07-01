@@ -134,9 +134,9 @@ export default function Layout({ children }) {
       {/* ── Desktop sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
             <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 26, width: 'auto' }} />
-            <div className="tagline">Cure Analyzer System</div>
+            <div className="tagline" style={{ textAlign: 'center' }}>Cure Analyzer System</div>
           </div>
         </div>
 

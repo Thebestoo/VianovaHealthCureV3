@@ -207,9 +207,9 @@ export default function Login() {
           <div className="login-left-glow3" />
 
           {/* Logo */}
-          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 'auto' }}>
+          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 'auto' }}>
             <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 32, width: 'auto' }} />
-            <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 11, letterSpacing: '.04em' }}>CURE ANALYZER SYSTEM</div>
+            <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 11, letterSpacing: '.04em', textAlign: 'center' }}>CURE ANALYZER SYSTEM</div>
           </div>
 
           {/* Hero copy */}
