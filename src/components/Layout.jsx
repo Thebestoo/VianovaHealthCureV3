@@ -134,14 +134,9 @@ export default function Layout({ children }) {
       {/* ── Desktop sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 12px rgba(255,255,255,.15)' }}>
-              <HeartPulse size={20} color="#fff" />
-            </div>
-            <div>
-              <div className="brand">Vianova Health</div>
-              <div className="tagline">Cure Analyzer System</div>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 26, width: 'auto' }} />
+            <div className="tagline">Cure Analyzer System</div>
           </div>
         </div>
 

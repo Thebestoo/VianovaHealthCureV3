@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  HeartPulse, ArrowRight, Loader2, Eye, EyeOff,
+  ArrowRight, Loader2, Eye, EyeOff,
   ShieldCheck, TrendingUp, Users, Lock, Zap, CheckCircle2
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
@@ -207,19 +207,9 @@ export default function Login() {
           <div className="login-left-glow3" />
 
           {/* Logo */}
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 13, marginBottom: 'auto' }}>
-            <div style={{
-              width: 46, height: 46, borderRadius: 14,
-              background: 'linear-gradient(135deg, #0e7490, #0c6580)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 0 1px rgba(255,255,255,.1), 0 8px 24px rgba(14,116,144,.4)',
-            }}>
-              <HeartPulse size={22} color="#fff" />
-            </div>
-            <div>
-              <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, letterSpacing: '-.01em' }}>Vianova Health</div>
-              <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 11, letterSpacing: '.04em', marginTop: 1 }}>CURE ANALYZER SYSTEM</div>
-            </div>
+          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 'auto' }}>
+            <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 32, width: 'auto' }} />
+            <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 11, letterSpacing: '.04em' }}>CURE ANALYZER SYSTEM</div>
           </div>
 
           {/* Hero copy */}
