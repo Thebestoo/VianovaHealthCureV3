@@ -121,6 +121,7 @@ async function initDB() {
     `ALTER TABLE users ADD COLUMN notify_email TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
+    `ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`,
     // rename owner_key → owner_email in patient tables if created with old schema
     `ALTER TABLE gen_patients RENAME COLUMN owner_key TO owner_email`,
     `ALTER TABLE rpm_patients RENAME COLUMN owner_key TO owner_email`,
@@ -727,7 +728,7 @@ app.post('/api/auth/login', async (req, res) => {
     } catch (e) { logError('email_failed', e.message, 'POST /api/auth/login', null, { to: dest }) }
   })()
 
-  res.json({ token, role: user.role, label: displayName, email: user.email })
+  res.json({ token, role: user.role, label: displayName, email: user.email, avatar: user.avatar || '' })
 })
 
 // ── POST /api/auth/logout — invalidate the session token ─────────────────────
@@ -758,7 +759,7 @@ app.post('/api/auth/verify', async (req, res) => {
     if (user) {
       const displayName = user.role === 'doctor' ? `Dr. ${user.name}` : user.name
       const stats = await keyStats(user.email, user.role)
-      return res.json({ role: user.role, label: displayName, stats, email: user.email })
+      return res.json({ role: user.role, label: displayName, stats, email: user.email, avatar: user.avatar || '' })
     }
   }
   // Fall back to legacy key
@@ -767,6 +768,15 @@ app.post('/api/auth/verify', async (req, res) => {
   await logUpdate('auth_login', `${row.role} key "${row.label}" connected`, { role: row.role, label: row.label })
   const stats = await keyStats(key, row.role)
   res.json({ role: row.role, label: row.label, stats })
+})
+
+// ── PUT /api/account/avatar — persist the caller's profile picture server-side ─
+app.put('/api/account/avatar', auth, async (req, res) => {
+  const { avatar } = req.body || {}
+  if (avatar && (typeof avatar !== 'string' || avatar.length > 300000))
+    return res.status(400).json({ error: 'Avatar too large' })
+  await db.execute({ sql: 'UPDATE users SET avatar = ? WHERE id = ?', args: [avatar || '', req.user.id] })
+  res.json({ ok: true })
 })
 
 // ── GET /api/logs/updates ─────────────────────────────────────────────────────
@@ -1298,6 +1308,7 @@ function toArrServer(v) {
   try { const r = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(r) ? r.filter(Boolean) : r ? [String(r)] : [] }
   catch { return String(v).split(',').map(s => s.trim()).filter(Boolean) }
 }
+function safeParseArr(v) { try { const r = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(r) ? r : (r ? [r] : []) } catch { return [] } }
 function computeQuality(p) {
   let s = 0
   if (p.name?.trim())    s += 20
@@ -3122,7 +3133,8 @@ app.get('/api/sdoh', auth, async (req, res) => {
     const args = [req.apiKey]
     if (patient_id) { sql += ' AND s.patient_id = ?'; args.push(patient_id) }
     sql += ' ORDER BY s.created_at DESC'
-    res.json((await db.execute({ sql, args })).rows)
+    const rows = (await db.execute({ sql, args })).rows
+    res.json(rows.map(r => ({ ...r, z_codes: safeParseArr(r.z_codes), resources_suggested: safeParseArr(r.resources_suggested) })))
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -3335,7 +3347,7 @@ app.get('/api/patients/:patientId/complete-record', auth, async (req, res) => {
         appointments: appts.rows,
         discharge_summaries: discharge.rows,
         consents: consents.rows,
-        sdoh_assessment: sdoh.rows[0] || null,
+        sdoh_assessment: sdoh.rows[0] ? { ...sdoh.rows[0], z_codes: safeParseArr(sdoh.rows[0].z_codes), resources_suggested: safeParseArr(sdoh.rows[0].resources_suggested) } : null,
         adverse_events: adverse.rows,
         portal_intakes: intakes.rows,
       },
@@ -4185,12 +4197,15 @@ app.post('/api/chat/sessions', auth, async (req, res) => {
 })
 
 // List sessions (user sees own, superadmin sees all)
+const SESSION_AVATAR_JOIN = `LEFT JOIN users u1 ON u1.email = cs.created_by_email LEFT JOIN users u2 ON u2.email = cs.admin_email`
+const SESSION_AVATAR_COLS = `u1.avatar as created_by_avatar, u2.avatar as admin_avatar`
+
 app.get('/api/chat/sessions', auth, async (req, res) => {
   let rows
   if (req.keyRole === 'superadmin') {
-    rows = (await db.execute({ sql: 'SELECT * FROM chat_sessions ORDER BY created_at DESC', args: [] })).rows
+    rows = (await db.execute({ sql: `SELECT cs.*, ${SESSION_AVATAR_COLS} FROM chat_sessions cs ${SESSION_AVATAR_JOIN} ORDER BY cs.created_at DESC`, args: [] })).rows
   } else {
-    rows = (await db.execute({ sql: 'SELECT * FROM chat_sessions WHERE created_by_email = ? ORDER BY created_at DESC', args: [req.apiKey] })).rows
+    rows = (await db.execute({ sql: `SELECT cs.*, ${SESSION_AVATAR_COLS} FROM chat_sessions cs ${SESSION_AVATAR_JOIN} WHERE cs.created_by_email = ? ORDER BY cs.created_at DESC`, args: [req.apiKey] })).rows
   }
   res.json(rows)
 })
@@ -4198,14 +4213,14 @@ app.get('/api/chat/sessions', auth, async (req, res) => {
 // Pending = only escalated (!admincall) sessions — not all new chats
 app.get('/api/chat/sessions/pending', auth, async (req, res) => {
   if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
-  const rows = (await db.execute({ sql: `SELECT * FROM chat_sessions WHERE status = 'escalated' ORDER BY created_at DESC`, args: [] })).rows
+  const rows = (await db.execute({ sql: `SELECT cs.*, ${SESSION_AVATAR_COLS} FROM chat_sessions cs ${SESSION_AVATAR_JOIN} WHERE cs.status = 'escalated' ORDER BY cs.created_at DESC`, args: [] })).rows
   res.json({ count: rows.length, sessions: rows })
 })
 
 // All tickets for admin view
 app.get('/api/chat/tickets', auth, async (req, res) => {
   if (req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Admin only' })
-  const rows = (await db.execute({ sql: `SELECT cs.*, (SELECT COUNT(*) FROM chat_messages cm WHERE cm.session_id = cs.id) as msg_count FROM chat_sessions cs ORDER BY cs.created_at DESC`, args: [] })).rows
+  const rows = (await db.execute({ sql: `SELECT cs.*, ${SESSION_AVATAR_COLS}, (SELECT COUNT(*) FROM chat_messages cm WHERE cm.session_id = cs.id) as msg_count FROM chat_sessions cs ${SESSION_AVATAR_JOIN} ORDER BY cs.created_at DESC`, args: [] })).rows
   res.json(rows)
 })
 
@@ -4289,7 +4304,7 @@ app.get('/api/chat/sessions/:id/messages', auth, async (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found' })
   if (session.created_by_email !== req.apiKey && session.admin_email !== req.apiKey && req.keyRole !== 'superadmin')
     return res.status(403).json({ error: 'Not authorized' })
-  const rows = (await db.execute({ sql: 'SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC', args: [req.params.id] })).rows
+  const rows = (await db.execute({ sql: `SELECT cm.*, u.avatar as sender_avatar FROM chat_messages cm LEFT JOIN users u ON u.email = cm.sender_email WHERE cm.session_id = ? ORDER BY cm.created_at ASC`, args: [req.params.id] })).rows
   res.json(rows)
 })
 

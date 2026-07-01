@@ -349,15 +349,15 @@ export default function Interoperability() {
                         {res.sdoh_assessment.assessed_at && (
                           <div style={{ fontSize: 13, color: 'var(--text2)' }}>Assessed: {res.sdoh_assessment.assessed_at?.slice(0, 10)}</div>
                         )}
-                        {res.sdoh_assessment.z_codes && res.sdoh_assessment.z_codes.length > 0 && (
+                        {Array.isArray(res.sdoh_assessment.z_codes) && res.sdoh_assessment.z_codes.length > 0 && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                             {res.sdoh_assessment.z_codes.map((z, i) => (
                               <span key={i} style={{ padding: '3px 10px', borderRadius: 99, background: '#ede9fe', color: '#6d28d9', fontSize: 12, fontWeight: 700 }}>{z}</span>
                             ))}
                           </div>
                         )}
-                        {res.sdoh_assessment.summary && (
-                          <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{res.sdoh_assessment.summary}</div>
+                        {(res.sdoh_assessment.ai_summary || res.sdoh_assessment.summary) && (
+                          <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{res.sdoh_assessment.ai_summary || res.sdoh_assessment.summary}</div>
                         )}
                       </div>
                     ) : (
