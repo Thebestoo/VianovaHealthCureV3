@@ -63,6 +63,26 @@ function buildConditionBreakdown(cases) {
   return Object.entries(counts).map(([name, count]) => ({ name, count })).filter(x => x.count > 0)
 }
 
+function AnimatedNumber({ value }) {
+  const [display, setDisplay] = useState(0)
+  useEffect(() => {
+    const target = Number(value) || 0
+    if (target === 0) { setDisplay(0); return }
+    const duration = 600
+    const start = performance.now()
+    let raf
+    const tick = (now) => {
+      const progress = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setDisplay(Math.round(target * eased))
+      if (progress < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value])
+  return display
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const { key } = useKey()
@@ -111,35 +131,38 @@ export default function Dashboard() {
           <div className="stat-icon" style={{ background: '#e0f2fe' }}>
             <Users size={18} color="#0e7490" />
           </div>
-          <div className="stat-val">{stats.total}</div>
+          <div className="stat-val"><AnimatedNumber value={stats.total} /></div>
           <div className="stat-label">Total Cases</div>
         </div>
         <div className="card stat-card">
-          <div className="stat-icon" style={{ background: '#fee2e2' }}>
+          <div className="stat-icon" style={{ background: '#fee2e2', position: 'relative' }}>
             <AlertTriangle size={18} color="#dc2626" />
+            {stats.urgent > 0 && (
+              <span style={{ position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: '#dc2626', animation: 'pulse 1.6s ease-in-out infinite' }} />
+            )}
           </div>
-          <div className="stat-val">{stats.urgent}</div>
+          <div className="stat-val"><AnimatedNumber value={stats.urgent} /></div>
           <div className="stat-label">Urgent / Emergency</div>
         </div>
         <div className="card stat-card">
           <div className="stat-icon" style={{ background: '#fef3c7' }}>
             <Clock size={18} color="#d97706" />
           </div>
-          <div className="stat-val">{stats.pending}</div>
+          <div className="stat-val"><AnimatedNumber value={stats.pending} /></div>
           <div className="stat-label">Pending Review</div>
         </div>
         <div className="card stat-card">
           <div className="stat-icon" style={{ background: '#d1fae5' }}>
             <CheckCircle size={18} color="#059669" />
           </div>
-          <div className="stat-val">{stats.approved}</div>
+          <div className="stat-val"><AnimatedNumber value={stats.approved} /></div>
           <div className="stat-label">Approved</div>
         </div>
       </div>
 
       <div style={{ padding: '0 32px 24px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-          <div className="card">
+          <div className="card hoverable animate-fade-up" style={{ animationDelay: '.1s' }}>
             <div className="card-header">
               <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <TrendingUp size={15} /> Cases Over Time
@@ -164,14 +187,14 @@ export default function Dashboard() {
                     <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} />
                     <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Area type="monotone" dataKey="count" stroke="#0284c7" strokeWidth={2} fill="url(#colorCases)" />
+                    <Area type="monotone" dataKey="count" stroke="#0284c7" strokeWidth={2.5} fill="url(#colorCases)" isAnimationActive animationDuration={900} animationEasing="ease-out" />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
             </div>
           </div>
 
-          <div className="card">
+          <div className="card hoverable animate-fade-up" style={{ animationDelay: '.16s' }}>
             <div className="card-header">
               <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <BarChart3 size={15} /> Condition Breakdown
@@ -189,8 +212,8 @@ export default function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: '#64748b' }} width={100} />
-                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} cursor={{ fill: 'rgba(2,132,199,.06)' }} />
+                    <Bar dataKey="count" radius={[0, 4, 4, 0]} isAnimationActive animationDuration={800} animationEasing="ease-out">
                       {breakdown.map((entry, i) => (
                         <Cell key={i} fill={CATEGORY_COLORS[entry.name] || '#64748b'} />
                       ))}
@@ -206,7 +229,7 @@ export default function Dashboard() {
       <div style={{ padding: '0 32px 24px' }}>
         {/* follow-up reminders */}
         {followUps.length > 0 && (
-          <div style={{ marginBottom: 20, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+          <div className="animate-fade-up" style={{ animationDelay: '.22s', marginBottom: 20, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
             <div style={{ padding: '13px 18px', borderBottom: '1px solid #f1f5f9', background: '#fafbfc', display: 'flex', alignItems: 'center', gap: 8 }}>
               <CalendarClock size={15} color="#0e7490" />
               <span style={{ fontWeight: 700, fontSize: 13 }}>Upcoming Follow-ups</span>
@@ -214,10 +237,10 @@ export default function Dashboard() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {followUps.map((c, i) => (
-                <div key={c.case_id} style={{
+                <div key={c.case_id} className="followup-row" style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: '11px 18px',
                   borderBottom: i < followUps.length - 1 ? '1px solid #f1f5f9' : 'none',
-                  cursor: 'pointer'
+                  cursor: 'pointer', transition: 'background .15s ease'
                 }} onClick={() => navigate(`/cases/${c.case_id}`)}>
                   <div style={{
                     width: 38, height: 38, borderRadius: 10, flexShrink: 0,
@@ -253,7 +276,7 @@ export default function Dashboard() {
       </div>
 
       <div style={{ padding: '0 32px 24px' }}>
-        <div className="card">
+        <div className="card animate-fade-up" style={{ animationDelay: '.28s' }}>
           <div className="card-header">
             <span className="card-title">Recent Cases</span>
             <button className="btn btn-secondary btn-sm" onClick={() => navigate('/cases')}>

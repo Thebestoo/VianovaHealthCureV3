@@ -288,20 +288,38 @@ th {
 }
 td { padding: 13px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
+tr td { transition: background .15s ease; }
 tr:hover td { background: #fafcff; }
-.table-action { background: none; border: none; padding: 5px 8px; border-radius: 6px; color: var(--primary); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.table-action { background: none; border: none; padding: 5px 8px; border-radius: 6px; color: var(--primary); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background .15s ease; }
 .table-action:hover { background: var(--primary-light); }
+.followup-row:hover { background: #f8fafc; }
 
 /* ── review panel ── */
 .review-layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; padding: 24px 32px; }
 .review-sidebar { position: sticky; top: 80px; }
 
 /* ── stats ── */
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 24px 32px 0; }
-.stat-card { padding: 20px 22px; }
-.stat-card .stat-val { font-size: 30px; font-weight: 800; letter-spacing: -.02em; color: var(--text); }
-.stat-card .stat-label { font-size: 12px; font-weight: 500; color: var(--text2); margin-top: 5px; text-transform: uppercase; letter-spacing: .04em; }
-.stat-card .stat-icon { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; padding: 24px 32px 0; }
+.stat-card { padding: 22px 24px; border-radius: 14px; cursor: default; }
+.stat-card .stat-val { font-size: 34px; font-weight: 800; letter-spacing: -.02em; color: var(--text); line-height: 1.1; }
+.stat-card .stat-label { font-size: 13px; font-weight: 600; color: var(--text2); margin-top: 5px; text-transform: uppercase; letter-spacing: .04em; }
+.stat-card .stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; transition: transform .25s ease; }
+.stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(15,23,42,.08); }
+.stat-card:hover .stat-icon { transform: scale(1.08) rotate(-4deg); }
+.stat-card { animation: fadeInUp .5s ease both; }
+.stat-card:nth-child(1) { animation-delay: .02s; }
+.stat-card:nth-child(2) { animation-delay: .08s; }
+.stat-card:nth-child(3) { animation-delay: .14s; }
+.stat-card:nth-child(4) { animation-delay: .2s; }
+
+/* ── entrance / hover animations ── */
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(1.3); } }
+.animate-fade-up { animation: fadeInUp .5s ease both; }
+.animate-fade-in { animation: fadeIn .4s ease both; }
+.card.hoverable { transition: box-shadow .25s ease, transform .25s ease; }
+.card.hoverable:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(15,23,42,.08); }
 
 /* ── misc ── */
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
