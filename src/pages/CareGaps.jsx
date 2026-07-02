@@ -212,7 +212,7 @@ export default function CareGaps() {
             { label: 'High Priority', value: highPriority.length, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
             { label: 'Closed This Month', value: closedThisMonth.length, color: '#059669', bg: '#f0fdf4', border: '#a7f3d0' },
           ].map(s => (
-            <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 14, padding: '22px 28px', minWidth: 190, flex: '1 1 190px' }}>
+            <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 14, padding: '22px 28px', minWidth: 190, flex: '1 1 190px', textAlign: 'center' }}>
               <div style={{ fontSize: 34, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
               <div style={{ fontSize: 13, color: s.color, fontWeight: 600, marginTop: 5 }}>{s.label}</div>
             </div>

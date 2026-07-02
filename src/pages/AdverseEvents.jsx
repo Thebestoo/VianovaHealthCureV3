@@ -41,7 +41,7 @@ function signalStrengthStyle(s) {
 
 function StatCard({ label, value, color, bg, border }) {
   return (
-    <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, padding: '22px 24px' }}>
+    <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, padding: '22px 24px', textAlign: 'center' }}>
       <div style={{ fontSize: 34, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
       <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 600, marginTop: 5 }}>{label}</div>
     </div>

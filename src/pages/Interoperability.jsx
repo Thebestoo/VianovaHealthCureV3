@@ -257,7 +257,7 @@ export default function Interoperability() {
                 {/* Stat tiles */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20 }}>
                   {statCards.map(c => (
-                    <div key={c.label} className="card" style={{ padding: '22px 24px', borderLeft: `4px solid ${c.color}`, borderRadius: 14 }}>
+                    <div key={c.label} className="card" style={{ padding: '22px 24px', borderLeft: `4px solid ${c.color}`, borderRadius: 14, textAlign: 'center' }}>
                       <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--text)', lineHeight: 1.1 }}>{c.value}</div>
                       <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600, marginTop: 5 }}>{c.label}</div>
                     </div>

@@ -112,7 +112,7 @@ export default function CasesPanel({ apiKey }) {
           { label: 'Pending',       val: data.by_status.PENDING_REVIEW || 0,      color: 'var(--warning)' },
           { label: 'Emergency',     val: data.cases.filter(c => c.emergency_detected).length, color: 'var(--danger)' },
         ].map(s => (
-          <div key={s.label} className="card" style={{ padding: '22px 24px', borderRadius: 14 }}>
+          <div key={s.label} className="card" style={{ padding: '22px 24px', borderRadius: 14, textAlign: 'center' }}>
             <div style={{ fontSize: 34, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.val}</div>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 5 }}>{s.label}</div>
           </div>
