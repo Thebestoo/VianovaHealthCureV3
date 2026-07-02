@@ -205,12 +205,13 @@ export default function Login() {
 
           {/* Logo */}
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
               <div style={{
+                position: 'absolute', top: -18, left: -14,
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 background: 'rgba(14,116,144,.2)', border: '1px solid rgba(14,116,144,.4)',
                 borderRadius: 99, padding: '4px 13px',
-                width: 'fit-content',
+                width: 'fit-content', whiteSpace: 'nowrap',
               }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2dd4bf', display: 'block', animation: 'pulse 2s infinite' }} />
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#5eead4', letterSpacing: '.06em', textTransform: 'uppercase' }}>Live Platform</span>
