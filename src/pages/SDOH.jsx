@@ -195,37 +195,37 @@ export default function SDOH() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, padding: '20px 32px 0' }}>
-        <div className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Home size={18} color="var(--primary)" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, padding: '24px 32px 0' }}>
+        <div className="card" style={{ padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 18, borderRadius: 14 }}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Home size={24} color="var(--primary)" />
           </div>
           <div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>{assessments.length}</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>Total Assessments</div>
+            <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)', lineHeight: 1.1 }}>{assessments.length}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 4 }}>Total Assessments</div>
           </div>
         </div>
-        <div className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14, borderLeft: totalActive ? '3px solid #f59e0b' : undefined }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: 18 }}>⚡</span>
+        <div className="card" style={{ padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 18, borderRadius: 14, borderLeft: totalActive ? '3px solid #f59e0b' : undefined }}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: 22 }}>⚡</span>
           </div>
           <div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: totalActive ? '#d97706' : 'var(--text)', lineHeight: 1 }}>{totalActive}</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>Active</div>
+            <div style={{ fontSize: 32, fontWeight: 800, color: totalActive ? '#d97706' : 'var(--text)', lineHeight: 1.1 }}>{totalActive}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 4 }}>Active</div>
           </div>
         </div>
-        <div className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14, borderLeft: totalHighNeed ? '3px solid var(--danger)' : undefined }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: totalHighNeed ? 'var(--danger-light)' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: 18 }}>🔴</span>
+        <div className="card" style={{ padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 18, borderRadius: 14, borderLeft: totalHighNeed ? '3px solid var(--danger)' : undefined }}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, background: totalHighNeed ? 'var(--danger-light)' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: 22 }}>🔴</span>
           </div>
           <div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: totalHighNeed ? 'var(--danger)' : 'var(--text)', lineHeight: 1 }}>{totalHighNeed}</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>High Need</div>
+            <div style={{ fontSize: 32, fontWeight: 800, color: totalHighNeed ? 'var(--danger)' : 'var(--text)', lineHeight: 1.1 }}>{totalHighNeed}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 4 }}>High Need</div>
           </div>
         </div>
       </div>
 
-      <div style={{ padding: '20px 32px 32px' }}>
+      <div style={{ padding: '24px 32px 32px' }}>
         {/* Filter */}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, boxShadow: 'var(--shadow)', flexWrap: 'wrap' }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>Patient</label>

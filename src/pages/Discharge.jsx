@@ -426,7 +426,7 @@ export default function Discharge() {
       </div>
 
       {/* stats strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 20, marginBottom: 28 }}>
         {[
           { label: 'Total', value: total,      icon: FileText,  color: '#0f766e', bg: '#f0fdf4' },
           { label: 'High Risk', value: highRisk, icon: AlertTriangle, color: '#b91c1c', bg: '#fee2e2' },
@@ -434,11 +434,11 @@ export default function Discharge() {
           { label: 'Pending TX', value: pending, icon: Clock,   color: '#b45309', bg: '#fef3c7' },
           { label: 'Transmitted', value: transmitted, icon: Send, color: '#6d28d9', bg: '#faf5ff' },
         ].map(s => (
-          <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <s.icon size={18} color={s.color} />
+          <div key={s.label} style={{ background: s.bg, borderRadius: 14, padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <s.icon size={24} color={s.color} />
             <div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
-              <div style={{ fontSize: 11, color: s.color, opacity: .75, marginTop: 2 }}>{s.label}</div>
+              <div style={{ fontSize: 30, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
+              <div style={{ fontSize: 13, color: s.color, opacity: .75, marginTop: 3 }}>{s.label}</div>
             </div>
           </div>
         ))}

@@ -522,7 +522,7 @@ export default function NLPNotes() {
           </div>
         </div>
         {/* Stats strip */}
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 20 }}>
           {[
             { label: 'Total Notes', value: stats.total ?? '—' },
             { label: 'Processed', value: stats.processed ?? '—' },
@@ -530,9 +530,9 @@ export default function NLPNotes() {
             { label: 'Phenotypes Found', value: stats.phenotypes_found ?? '—' },
             { label: 'Avg Acuity', value: notes.filter(n=>n.acuity_score!=null).length ? (notes.filter(n=>n.acuity_score!=null).reduce((s,n)=>s+Number(n.acuity_score),0)/notes.filter(n=>n.acuity_score!=null).length).toFixed(1) : '—' },
           ].map(s => (
-            <div key={s.label} style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#0f766e' }}>{s.value}</div>
-              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>{s.label}</div>
+            <div key={s.label} style={{ background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 14, padding: '22px 28px', minWidth: 150, flex: '1 1 150px', textAlign: 'center' }}>
+              <div style={{ fontSize: 34, fontWeight: 800, color: '#0f766e', lineHeight: 1.1 }}>{s.value}</div>
+              <div style={{ fontSize: 13, color: '#0f766e', fontWeight: 600, marginTop: 5 }}>{s.label}</div>
             </div>
           ))}
         </div>

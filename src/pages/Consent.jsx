@@ -581,7 +581,7 @@ export default function Consent() {
         </div>
 
         {/* Stats strip */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 20, marginBottom: 28 }}>
           {[
             { label: 'Total Consents', value: stats.total, color: '#1d4ed8', bg: '#dbeafe', icon: ShieldCheck },
             { label: 'Active', value: stats.active, color: '#065f46', bg: '#d1fae5', icon: CheckCircle2 },
@@ -589,11 +589,11 @@ export default function Consent() {
             { label: 'Violations', value: stats.violations, color: '#991b1b', bg: '#fee2e2', icon: AlertTriangle },
             { label: 'Pending Deletion', value: stats.pendingDeletion, color: '#7c2d12', bg: '#ffedd5', icon: X },
           ].map(({ label, value, color, bg, icon: Icon }) => (
-            <div key={label} style={{ background: bg, borderRadius: 10, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Icon size={20} color={color} />
+            <div key={label} style={{ background: bg, borderRadius: 14, padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+              <Icon size={26} color={color} />
               <div>
-                <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
-                <div style={{ fontSize: 11, fontWeight: 600, color, opacity: .7 }}>{label}</div>
+                <div style={{ fontSize: 30, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color, opacity: .75, marginTop: 3 }}>{label}</div>
               </div>
             </div>
           ))}

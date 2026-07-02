@@ -413,11 +413,11 @@ function StatsStrip({ stats }) {
     { label: 'Pending Queries', value: stats.pending_queries ?? '—', warn: stats.pending_queries > 0 },
   ]
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 24 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 20, marginBottom: 28 }}>
       {items.map(s => (
-        <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: s.warn ? '#dc2626' : '#4f46e5' }}>{s.value}</div>
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{s.label}</div>
+        <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '22px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: 34, fontWeight: 800, color: s.warn ? '#dc2626' : '#4f46e5', lineHeight: 1.1 }}>{s.value}</div>
+          <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 600, marginTop: 5 }}>{s.label}</div>
         </div>
       ))}
     </div>

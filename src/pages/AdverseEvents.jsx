@@ -41,9 +41,9 @@ function signalStrengthStyle(s) {
 
 function StatCard({ label, value, color, bg, border }) {
   return (
-    <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 12, padding: '16px 20px' }}>
-      <div style={{ fontSize: 26, fontWeight: 800, color }}>{value}</div>
-      <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 600, marginTop: 2 }}>{label}</div>
+    <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, padding: '22px 24px' }}>
+      <div style={{ fontSize: 34, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 600, marginTop: 5 }}>{label}</div>
     </div>
   )
 }
@@ -415,7 +415,7 @@ export default function AdverseEvents() {
           </div>
 
           {/* stats strip */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 20, marginBottom: 8 }}>
             <StatCard label="Total Events" value={stats.total} color="#374151" bg="#f9fafb" border="#e5e7eb" />
             <StatCard label="Open" value={stats.open} color="#1d4ed8" bg="#eff6ff" border="#bfdbfe" />
             <StatCard label="Serious" value={stats.serious} color="#b91c1c" bg="#fee2e2" border="#fecaca" />

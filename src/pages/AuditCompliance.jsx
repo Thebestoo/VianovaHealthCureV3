@@ -115,7 +115,7 @@ export default function AuditCompliance() {
                   </div>
                 </div>
                 {/* Metrics grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
                   {[
                     { label: 'Patients', value: report.metrics.patients, color: '#2563eb' },
                     { label: 'Active Consents', value: report.metrics.active_consents, color: '#059669' },
@@ -124,9 +124,9 @@ export default function AuditCompliance() {
                     { label: 'Open Adverse Events', value: report.metrics.open_adverse_events, color: report.metrics.open_adverse_events > 0 ? '#d97706' : '#9ca3af' },
                     { label: 'Open Care Gaps', value: report.metrics.open_care_gaps, color: '#0891b2' },
                   ].map(m => (
-                    <div key={m.label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: m.color }}>{m.value}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>{m.label}</div>
+                    <div key={m.label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: '22px 24px' }}>
+                      <div style={{ fontSize: 34, fontWeight: 800, color: m.color, lineHeight: 1.1 }}>{m.value}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600, marginTop: 5 }}>{m.label}</div>
                     </div>
                   ))}
                 </div>
