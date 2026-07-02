@@ -66,7 +66,6 @@ export default function Login() {
         .login-root {
           min-height: 100vh;
           display: flex;
-          font-family: 'Inter', sans-serif;
           background: #fff;
         }
 
@@ -137,7 +136,6 @@ export default function Login() {
           border: 1.5px solid #e2e8f0;
           border-radius: 12px;
           font-size: 14px;
-          font-family: 'Inter', sans-serif;
           color: #0f172a;
           outline: none;
           background: #fff;
@@ -158,7 +156,6 @@ export default function Login() {
           border-radius: 12px;
           font-size: 14px;
           font-weight: 700;
-          font-family: 'Inter', sans-serif;
           letter-spacing: .01em;
           display: flex;
           align-items: center;

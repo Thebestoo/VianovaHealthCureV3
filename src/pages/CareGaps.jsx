@@ -206,21 +206,21 @@ export default function CareGaps() {
         )}
 
         {/* Stats */}
-        <div style={{ display: 'flex', gap: 14, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 20, marginBottom: 28, flexWrap: 'wrap' }}>
           {[
-            { label: 'Open Gaps', value: openGaps.length, color: '#1d4ed8', bg: '#eff6ff' },
-            { label: 'High Priority', value: highPriority.length, color: '#dc2626', bg: '#fef2f2' },
-            { label: 'Closed This Month', value: closedThisMonth.length, color: '#059669', bg: '#f0fdf4' },
+            { label: 'Open Gaps', value: openGaps.length, color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe' },
+            { label: 'High Priority', value: highPriority.length, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+            { label: 'Closed This Month', value: closedThisMonth.length, color: '#059669', bg: '#f0fdf4', border: '#a7f3d0' },
           ].map(s => (
-            <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: '14px 20px', minWidth: 130 }}>
-              <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: 12, color: s.color, fontWeight: 600, marginTop: 1 }}>{s.label}</div>
+            <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 14, padding: '22px 28px', minWidth: 190, flex: '1 1 190px' }}>
+              <div style={{ fontSize: 34, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
+              <div style={{ fontSize: 13, color: s.color, fontWeight: 600, marginTop: 5 }}>{s.label}</div>
             </div>
           ))}
         </div>
 
         {/* Filter chips */}
-        <div style={{ display: 'flex', gap: 7, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
           {['all', 'open', 'closed', 'suppressed'].map(f => (
             <Chip key={f} label={f.charAt(0).toUpperCase() + f.slice(1)} active={filter === f} onClick={() => setFilter(f)} />
           ))}
@@ -238,7 +238,7 @@ export default function CareGaps() {
             <div style={{ fontSize: 13 }}>Select a patient and click "Detect Gaps" to run AI analysis.</div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {displayed.map(gap => {
               const pStyle = PRIORITY_STYLES[gap.priority] || PRIORITY_STYLES.low
               const sStyle = STATUS_STYLES[gap.status] || STATUS_STYLES.open
@@ -247,8 +247,8 @@ export default function CareGaps() {
               const outreachBusy = outreachLoading[gap.id]
 
               return (
-                <div key={gap.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-                  <div style={{ padding: '16px 20px' }}>
+                <div key={gap.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,.03)' }}>
+                  <div style={{ padding: '20px 24px' }}>
                     {/* Header row */}
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
