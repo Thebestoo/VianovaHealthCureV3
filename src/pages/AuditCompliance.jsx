@@ -107,10 +107,10 @@ export default function AuditCompliance() {
               {/* Score + Metrics */}
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, marginBottom: 28, alignItems: 'start' }}>
                 {/* Score circle */}
-                <div style={{ textAlign: 'center', padding: '24px 32px', background: '#fff', border: '1px solid var(--border)', borderRadius: 14 }}>
-                  <div style={{ fontSize: 56, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>Compliance Score</div>
-                  <div style={{ marginTop: 10, padding: '4px 12px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: score >= 80 ? '#d1fae5' : score >= 60 ? '#fef3c7' : '#fee2e2', color: scoreColor, display: 'inline-block' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '28px 32px', background: '#fff', border: '1px solid var(--border)', borderRadius: 14, minWidth: 200 }}>
+                  <div style={{ fontSize: 56, fontWeight: 800, color: scoreColor, lineHeight: 1.1 }}>{score}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 6 }}>Compliance Score</div>
+                  <div style={{ marginTop: 12, padding: '5px 14px', borderRadius: 99, fontSize: 11, fontWeight: 700, letterSpacing: '.03em', background: score >= 80 ? '#d1fae5' : score >= 60 ? '#fef3c7' : '#fee2e2', color: scoreColor, whiteSpace: 'nowrap' }}>
                     {score >= 80 ? 'GOOD' : score >= 60 ? 'REVIEW NEEDED' : 'ACTION REQUIRED'}
                   </div>
                 </div>
