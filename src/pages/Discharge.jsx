@@ -434,12 +434,10 @@ export default function Discharge() {
           { label: 'Pending TX', value: pending, icon: Clock,   color: '#b45309', bg: '#fef3c7' },
           { label: 'Transmitted', value: transmitted, icon: Send, color: '#6d28d9', bg: '#faf5ff' },
         ].map(s => (
-          <div key={s.label} style={{ background: s.bg, borderRadius: 14, padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 14 }}>
-            <s.icon size={24} color={s.color} />
-            <div>
-              <div style={{ fontSize: 30, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
-              <div style={{ fontSize: 13, color: s.color, opacity: .75, marginTop: 3 }}>{s.label}</div>
-            </div>
+          <div key={s.label} style={{ background: s.bg, borderRadius: 14, padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
+            <s.icon size={22} color={s.color} />
+            <div style={{ fontSize: 28, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
+            <div style={{ fontSize: 13, color: s.color, opacity: .75 }}>{s.label}</div>
           </div>
         ))}
       </div>

@@ -195,32 +195,26 @@ export default function PopulationHealth() {
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, padding: '24px 32px 0' }}>
-        <div className="card" style={{ padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 18, borderRadius: 14 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Users2 size={24} color="var(--primary)" />
+        <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, borderRadius: 14 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Users2 size={22} color="var(--primary)" />
           </div>
-          <div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)', lineHeight: 1.1 }}>{cohorts.length}</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 4 }}>Total Cohorts</div>
-          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', lineHeight: 1.1 }}>{cohorts.length}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>Total Cohorts</div>
         </div>
-        <div className="card" style={{ padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 18, borderRadius: 14 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--success-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <UserCheck size={24} color="var(--success)" />
+        <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, borderRadius: 14 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--success-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <UserCheck size={22} color="var(--success)" />
           </div>
-          <div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)', lineHeight: 1.1 }}>{totalEnrolled}</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 4 }}>Total Enrolled</div>
-          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', lineHeight: 1.1 }}>{totalEnrolled}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>Total Enrolled</div>
         </div>
-        <div className="card" style={{ padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 18, borderRadius: 14, borderLeft: highRiskCount ? '3px solid var(--danger)' : undefined }}>
-          <div style={{ width: 52, height: 52, borderRadius: 12, background: highRiskCount ? 'var(--danger-light)' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <AlertTriangle size={24} color={highRiskCount ? 'var(--danger)' : 'var(--text3)'} />
+        <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, borderRadius: 14, borderTop: highRiskCount ? '3px solid var(--danger)' : undefined }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: highRiskCount ? 'var(--danger-light)' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <AlertTriangle size={22} color={highRiskCount ? 'var(--danger)' : 'var(--text3)'} />
           </div>
-          <div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: highRiskCount ? 'var(--danger)' : 'var(--text)', lineHeight: 1.1 }}>{highRiskCount}</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 4 }}>High Risk</div>
-          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: highRiskCount ? 'var(--danger)' : 'var(--text)', lineHeight: 1.1 }}>{highRiskCount}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>High Risk</div>
         </div>
       </div>
 

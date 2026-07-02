@@ -589,12 +589,10 @@ export default function Consent() {
             { label: 'Violations', value: stats.violations, color: '#991b1b', bg: '#fee2e2', icon: AlertTriangle },
             { label: 'Pending Deletion', value: stats.pendingDeletion, color: '#7c2d12', bg: '#ffedd5', icon: X },
           ].map(({ label, value, color, bg, icon: Icon }) => (
-            <div key={label} style={{ background: bg, borderRadius: 14, padding: '22px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-              <Icon size={26} color={color} />
-              <div>
-                <div style={{ fontSize: 30, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color, opacity: .75, marginTop: 3 }}>{label}</div>
-              </div>
+            <div key={label} style={{ background: bg, borderRadius: 14, padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
+              <Icon size={24} color={color} />
+              <div style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color, opacity: .75 }}>{label}</div>
             </div>
           ))}
         </div>

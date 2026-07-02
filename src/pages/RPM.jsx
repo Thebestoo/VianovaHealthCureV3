@@ -186,12 +186,12 @@ export default function RPM() {
                     const st  = statusFor(cfg.key, val)
                     const Icon = cfg.icon
                     return (
-                      <div key={cfg.key} style={{ background: STATUS_BG[st], border: `1px solid ${STATUS_COLORS[st]}33`, borderRadius: 14, padding: '22px 24px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <div key={cfg.key} style={{ background: STATUS_BG[st], border: `1px solid ${STATUS_COLORS[st]}33`, borderRadius: 14, padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
                           <Icon size={16} color={cfg.color} />
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>{cfg.label}</span>
                         </div>
-                        <div style={{ fontSize: 32, fontWeight: 800, color: STATUS_COLORS[st], lineHeight: 1.1 }}>
+                        <div style={{ fontSize: 30, fontWeight: 800, color: STATUS_COLORS[st], lineHeight: 1.1 }}>
                           {val ?? '—'}
                         </div>
                         <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>{cfg.unit} · normal {cfg.normal[0]}–{cfg.normal[1]}</div>
