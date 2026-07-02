@@ -207,14 +207,14 @@ export default function Login() {
           <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 'auto' }}>
             <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
               <div style={{
-                position: 'absolute', top: -18, left: -14,
-                display: 'inline-flex', alignItems: 'center', gap: 6,
+                position: 'absolute', top: -26, left: -24,
+                display: 'inline-flex', alignItems: 'center', gap: 5,
                 background: 'rgba(14,116,144,.2)', border: '1px solid rgba(14,116,144,.4)',
-                borderRadius: 99, padding: '4px 13px',
+                borderRadius: 99, padding: '3px 11px',
                 width: 'fit-content', whiteSpace: 'nowrap',
               }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2dd4bf', display: 'block', animation: 'pulse 2s infinite' }} />
-                <span style={{ fontSize: 11, fontWeight: 600, color: '#5eead4', letterSpacing: '.06em', textTransform: 'uppercase' }}>Live Platform</span>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#2dd4bf', display: 'block', animation: 'pulse 2s infinite' }} />
+                <span style={{ fontSize: 10, fontWeight: 600, color: '#5eead4', letterSpacing: '.06em', textTransform: 'uppercase' }}>Live Platform</span>
               </div>
               <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 32, width: 'auto' }} />
             </div>
