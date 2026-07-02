@@ -105,16 +105,16 @@ export default function CasesPanel({ apiKey }) {
       </div>
 
       {/* top stat row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 20, marginBottom: 28 }}>
         {[
           { label: 'Total Cases',   val: data.total,                              color: 'var(--primary)' },
           { label: 'Approved',      val: data.by_status.APPROVED || 0,            color: 'var(--success)' },
           { label: 'Pending',       val: data.by_status.PENDING_REVIEW || 0,      color: 'var(--warning)' },
           { label: 'Emergency',     val: data.cases.filter(c => c.emergency_detected).length, color: 'var(--danger)' },
         ].map(s => (
-          <div key={s.label} className="card" style={{ padding: '16px 18px' }}>
-            <div style={{ fontSize: 24, fontWeight: 700, color: s.color }}>{s.val}</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>{s.label}</div>
+          <div key={s.label} className="card" style={{ padding: '22px 24px', borderRadius: 14 }}>
+            <div style={{ fontSize: 34, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.val}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 5 }}>{s.label}</div>
           </div>
         ))}
       </div>

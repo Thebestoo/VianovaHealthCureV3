@@ -164,7 +164,7 @@ function OverviewTab({ summary, isSuperAdmin, setTab }) {
             </button>
           </div>
           <div className="card-body">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
               <Stat label="Updates Logged" value={summary?.updates ?? '…'} color="var(--primary)" />
               <Stat label="Errors Logged"  value={summary?.errors  ?? '…'} color="var(--danger)"  />
             </div>
@@ -188,9 +188,9 @@ function OverviewTab({ summary, isSuperAdmin, setTab }) {
 
 function Stat({ label, value, color }) {
   return (
-    <div style={{ padding: '14px 16px', background: 'var(--surface2)', borderRadius: 8, textAlign: 'center' }}>
-      <div style={{ fontSize: 28, fontWeight: 700, color }}>{value}</div>
-      <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>{label}</div>
+    <div style={{ padding: '20px 20px', background: 'var(--surface2)', borderRadius: 14, textAlign: 'center' }}>
+      <div style={{ fontSize: 32, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginTop: 4 }}>{label}</div>
     </div>
   )
 }

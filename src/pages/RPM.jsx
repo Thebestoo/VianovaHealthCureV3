@@ -180,23 +180,23 @@ export default function RPM() {
                     <RefreshCw size={12} /> Refresh
                   </button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
                   {VITALS_CONFIG.map(cfg => {
                     const val = latest[cfg.key]
                     const st  = statusFor(cfg.key, val)
                     const Icon = cfg.icon
                     return (
-                      <div key={cfg.key} style={{ background: STATUS_BG[st], border: `1px solid ${STATUS_COLORS[st]}33`, borderRadius: 10, padding: '14px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
-                          <Icon size={14} color={cfg.color} />
-                          <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>{cfg.label}</span>
+                      <div key={cfg.key} style={{ background: STATUS_BG[st], border: `1px solid ${STATUS_COLORS[st]}33`, borderRadius: 14, padding: '22px 24px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                          <Icon size={16} color={cfg.color} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>{cfg.label}</span>
                         </div>
-                        <div style={{ fontSize: 26, fontWeight: 700, color: STATUS_COLORS[st], lineHeight: 1 }}>
+                        <div style={{ fontSize: 32, fontWeight: 800, color: STATUS_COLORS[st], lineHeight: 1.1 }}>
                           {val ?? '—'}
                         </div>
-                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{cfg.unit} · normal {cfg.normal[0]}–{cfg.normal[1]}</div>
-                        {st === 'critical' && <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#ef4444', fontWeight: 600 }}><AlertTriangle size={11} /> CRITICAL</div>}
-                        {st === 'warning'  && <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#f59e0b', fontWeight: 600 }}><AlertTriangle size={11} /> Out of range</div>}
+                        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>{cfg.unit} · normal {cfg.normal[0]}–{cfg.normal[1]}</div>
+                        {st === 'critical' && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#ef4444', fontWeight: 600 }}><AlertTriangle size={12} /> CRITICAL</div>}
+                        {st === 'warning'  && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#f59e0b', fontWeight: 600 }}><AlertTriangle size={12} /> Out of range</div>}
                       </div>
                     )
                   })}

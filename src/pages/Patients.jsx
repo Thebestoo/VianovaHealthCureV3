@@ -793,9 +793,9 @@ export default function Patients() {
                           { label: 'Duplicates skipped', val: csvResult.duplicates, color: '#d97706', bg: '#fef3c7' },
                           { label: 'Errors', val: csvResult.errors, color: '#dc2626', bg: '#fee2e2' },
                         ].map(s => (
-                          <div key={s.label} style={{ padding: '10px 18px', borderRadius: 10, background: s.bg, textAlign: 'center' }}>
-                            <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.val}</div>
-                            <div style={{ fontSize: 11, color: s.color, fontWeight: 600 }}>{s.label}</div>
+                          <div key={s.label} style={{ padding: '16px 22px', borderRadius: 14, background: s.bg, textAlign: 'center' }}>
+                            <div style={{ fontSize: 28, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.val}</div>
+                            <div style={{ fontSize: 12, color: s.color, fontWeight: 600, marginTop: 3 }}>{s.label}</div>
                           </div>
                         ))}
                       </div>

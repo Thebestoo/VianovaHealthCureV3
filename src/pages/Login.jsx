@@ -237,7 +237,7 @@ export default function Login() {
 
             {/* Stats grid */}
             <div style={{
-              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 32,
+              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32,
             }}>
               {[
                 { value: '12,400+', label: 'Patients managed' },
@@ -248,10 +248,10 @@ export default function Login() {
                 <div key={s.label} style={{
                   background: 'rgba(255,255,255,.05)',
                   border: '1px solid rgba(255,255,255,.08)',
-                  borderRadius: 12, padding: '14px 16px',
+                  borderRadius: 14, padding: '18px 20px',
                 }}>
-                  <div style={{ color: '#38bdf8', fontWeight: 800, fontSize: 18, letterSpacing: '-.02em' }}>{s.value}</div>
-                  <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 11, marginTop: 3 }}>{s.label}</div>
+                  <div style={{ color: '#38bdf8', fontWeight: 800, fontSize: 24, letterSpacing: '-.02em' }}>{s.value}</div>
+                  <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 12, marginTop: 4 }}>{s.label}</div>
                 </div>
               ))}
             </div>
