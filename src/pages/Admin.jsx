@@ -47,6 +47,7 @@ export default function Admin() {
   const [editPassword, setEditPassword] = useState(null)
   const [passwordVal, setPasswordVal]   = useState('')
   const [savingPassword, setSavingPassword] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
 
   async function load() {
     setLoading(true)
@@ -91,13 +92,13 @@ export default function Admin() {
   }
 
   async function handleDelete(user) {
-    if (!window.confirm(`Delete ${user.name}? This will revoke their sessions.`)) return
     setDeleting(user.id)
     try {
       await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE', headers: { 'x-api-key': key } })
       setUsers(prev => prev.filter(u => u.id !== user.id))
     } catch {}
     setDeleting(null)
+    setConfirmDelete(null)
   }
 
   async function handleApprove(user) {
@@ -169,15 +170,17 @@ export default function Admin() {
   const activeUsers = users.filter(u => !(u.status === 'pending' && (u.active === 1 || u.active === true)))
 
   const [query, setQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState('all')
   const filteredActiveUsers = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return activeUsers
-    return activeUsers.filter(u =>
-      (u.name || '').toLowerCase().includes(q) ||
-      (u.email || '').toLowerCase().includes(q) ||
-      (u.notify_email || '').toLowerCase().includes(q)
-    )
-  }, [activeUsers, query])
+    return activeUsers.filter(u => {
+      if (roleFilter !== 'all' && u.role !== roleFilter) return false
+      if (!q) return true
+      return (u.name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.notify_email || '').toLowerCase().includes(q)
+    })
+  }, [activeUsers, query, roleFilter])
 
   const totalUsers = users.length
   const activeCount = users.filter(u => (u.active === 1 || u.active === true) && u.status !== 'pending').length
@@ -224,22 +227,49 @@ export default function Admin() {
           <strong>Notification Email:</strong> If a user's login email is a custom domain without mail hosting (e.g. <em>name@vianova.ai</em>), set a <strong>Notification Email</strong> — case alerts will be sent there instead.
         </div>
 
-        {/* Search */}
-        <div style={{ position: 'relative', marginBottom: 20, maxWidth: 340 }}>
-          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-          <input
-            type="text"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search users by name or email…"
-            style={{ width: '100%', padding: '9px 12px 9px 36px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-          />
+        {/* Search + role filter */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: 340 }}>
+            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+            <input
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search users by name or email…"
+              style={{ width: '100%', padding: '9px 12px 9px 36px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[
+              { key: 'all', label: 'All' },
+              { key: 'doctor', label: 'Doctors' },
+              { key: 'superadmin', label: 'Super Admins' },
+            ].map(f => (
+              <button
+                key={f.key}
+                onClick={() => setRoleFilter(f.key)}
+                style={{
+                  padding: '7px 14px', borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  border: roleFilter === f.key ? '1.5px solid #0ea5e9' : '1px solid #e5e7eb',
+                  background: roleFilter === f.key ? '#e0f2fe' : '#fff',
+                  color: roleFilter === f.key ? '#0369a1' : '#6b7280',
+                  transition: 'all .15s ease',
+                }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#6b7280' }}>
-            <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px', display: 'block' }} />
-            Loading users…
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            {[0, 1, 2, 3, 4].map(i => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderBottom: i < 4 ? '1px solid #f3f4f6' : 'none' }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#f1f5f9', animation: 'shimmer 1.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
+                <div style={{ height: 12, width: `${140 + (i % 3) * 40}px`, borderRadius: 6, background: '#f1f5f9', animation: 'shimmer 1.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
+                <div style={{ height: 12, width: 90, borderRadius: 6, background: '#f1f5f9', marginLeft: 'auto', animation: 'shimmer 1.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
+              </div>
+            ))}
           </div>
         ) : (
           <>
@@ -280,7 +310,7 @@ export default function Admin() {
                                 Approve
                               </button>
                               <button
-                                onClick={() => handleDelete(u)}
+                                onClick={() => setConfirmDelete(u)}
                                 disabled={deleting === u.id}
                                 style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: '#dc2626', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
                                 {deleting === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <XCircle size={13} />}
@@ -308,7 +338,7 @@ export default function Admin() {
                 </thead>
                 <tbody>
                   {filteredActiveUsers.length === 0 && (
-                    <tr><td colSpan={7} style={{ padding: '32px 14px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No users match your search.</td></tr>
+                    <tr><td colSpan={7} style={{ padding: '32px 14px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No users match your search or filter.</td></tr>
                   )}
                   {filteredActiveUsers.map((u, i) => (
                     <tr key={u.id} className="followup-row" style={{ borderBottom: i < filteredActiveUsers.length - 1 ? '1px solid #f3f4f6' : 'none', transition: 'background .15s ease' }}>
@@ -408,7 +438,7 @@ export default function Admin() {
                             {u.active ? 'Deactivate' : 'Activate'}
                           </button>
                           {u.role !== 'superadmin' && (
-                            <button onClick={() => handleDelete(u)} disabled={deleting === u.id}
+                            <button onClick={() => setConfirmDelete(u)} disabled={deleting === u.id}
                               style={{ padding: '5px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#dc2626' }}>
                               {deleting === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={12} />}
                               Delete
@@ -470,11 +500,26 @@ export default function Admin() {
               </div>
               <div style={{ marginBottom: 18 }}>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Role</label>
-                <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}>
-                  <option value="doctor">Doctor</option>
-                  <option value="superadmin">Super Admin</option>
-                </select>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[
+                    { value: 'doctor', label: 'Doctor' },
+                    { value: 'superadmin', label: 'Super Admin' },
+                  ].map(r => (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, role: r.value }))}
+                      style={{
+                        flex: 1, padding: '9px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                        border: form.role === r.value ? '1.5px solid #0ea5e9' : '1.5px solid #d1d5db',
+                        background: form.role === r.value ? '#e0f2fe' : '#fff',
+                        color: form.role === r.value ? '#0369a1' : '#374151',
+                        transition: 'all .15s ease',
+                      }}>
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               {error && (
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#dc2626', marginBottom: 14 }}>{error}</div>
@@ -490,7 +535,39 @@ export default function Admin() {
         </div>
       )}
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 16 }}
+          onClick={e => e.target === e.currentTarget && setConfirmDelete(null)}>
+          <div className="animate-fade-up" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 380, boxShadow: '0 24px 64px rgba(0,0,0,.24)', padding: '24px 24px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Trash2 size={19} color="#dc2626" />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Delete {confirmDelete.name}?</div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>This will revoke their sessions immediately.</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
+              <button type="button" onClick={() => setConfirmDelete(null)} className="btn btn-secondary btn-sm">Cancel</button>
+              <button
+                type="button"
+                onClick={() => handleDelete(confirmDelete)}
+                disabled={deleting === confirmDelete.id}
+                style={{ padding: '7px 16px', border: 'none', borderRadius: 7, background: '#dc2626', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {deleting === confirmDelete.id ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={13} />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes shimmer { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
+      `}</style>
     </div>
   )
 }
