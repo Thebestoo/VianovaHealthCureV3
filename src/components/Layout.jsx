@@ -6,7 +6,7 @@ import {
   Users, LogIn, Menu, X, AlertCircle, FlaskConical, CalendarDays,
   ClipboardList, ShieldAlert, AlertOctagon, Users2, FileText,
   Lightbulb, Home, Activity, GitMerge, ClipboardCheck,
-  Receipt, Settings
+  Receipt, Settings, MessageSquare
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import FloatingChat from './FloatingChat.jsx'
@@ -18,6 +18,7 @@ const NAV_GROUPS = [
       { label: 'Patients',  icon: Users,           path: '/patients'  },
       { label: 'All Cases', icon: FolderOpen,      path: '/cases'     },
       { label: 'New Case',  icon: PlusCircle,      path: '/cases/new' },
+      { label: 'Channels',  icon: MessageSquare,   path: '/channels'  },
     ],
   },
   {

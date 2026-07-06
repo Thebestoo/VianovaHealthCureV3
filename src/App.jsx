@@ -30,6 +30,7 @@ const ChronicDisease   = lazy(() => import('./pages/ChronicDisease.jsx'))
 const Interoperability = lazy(() => import('./pages/Interoperability.jsx'))
 const AuditCompliance  = lazy(() => import('./pages/AuditCompliance.jsx'))
 const Billing          = lazy(() => import('./pages/Billing.jsx'))
+const Channels         = lazy(() => import('./pages/Channels.jsx'))
 
 function PageLoader() {
   return (
@@ -85,6 +86,7 @@ function AppRoutes() {
               <Route path="/audit-compliance" element={<P component={AuditCompliance} />} />
               <Route path="/billing"          element={<P component={Billing} />} />
               <Route path="/admin"            element={<P component={Admin} />} />
+              <Route path="/channels"         element={<P component={Channels} />} />
             </Routes>
           </Suspense>
         </Layout>

@@ -105,6 +105,10 @@ async function initDB() {
     // floating chat widget
     `CREATE TABLE IF NOT EXISTS chat_sessions (id TEXT PRIMARY KEY, created_by_email TEXT NOT NULL, created_by_name TEXT NOT NULL, created_by_role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'waiting', admin_email TEXT, admin_name TEXT, subject TEXT, created_at TEXT NOT NULL, accepted_at TEXT, closed_at TEXT)`,
     `CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, sender_email TEXT NOT NULL, sender_name TEXT NOT NULL, sender_role TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    // doctor channels (invite-only group chat)
+    `CREATE TABLE IF NOT EXISTS channels (id TEXT PRIMARY KEY, name TEXT NOT NULL, rules TEXT NOT NULL DEFAULT '', head_doctor_id TEXT NOT NULL, head_doctor_name TEXT NOT NULL, created_by_email TEXT NOT NULL, created_by_name TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS channel_members (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, user_id TEXT NOT NULL, user_name TEXT NOT NULL, user_email TEXT NOT NULL, member_role TEXT NOT NULL DEFAULT 'member', status TEXT NOT NULL DEFAULT 'invited', invited_by_name TEXT, created_at TEXT NOT NULL, responded_at TEXT, UNIQUE(channel_id, user_id))`,
+    `CREATE TABLE IF NOT EXISTS channel_messages (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, sender_id TEXT, sender_name TEXT NOT NULL, sender_email TEXT, type TEXT NOT NULL DEFAULT 'message', message TEXT NOT NULL, meta TEXT, created_at TEXT NOT NULL)`,
     // feature 14 – billing & coding automation
     `CREATE TABLE IF NOT EXISTS billing_claims (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, case_id TEXT, encounter_date TEXT, status TEXT NOT NULL DEFAULT 'draft', icd_codes TEXT, cpt_codes TEXT, hcpcs_codes TEXT, drg_code TEXT, drg_description TEXT, em_level TEXT, mdm_complexity TEXT, hcc_codes TEXT, total_charges REAL, confidence_scores TEXT, coding_queries TEXT, compliance_flags TEXT, fhir_claim TEXT, scrub_results TEXT, submitted_at TEXT, created_at TEXT NOT NULL)`,
     // feature 15 – NLP notes
@@ -1204,6 +1208,132 @@ app.delete('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
   await db.execute({ sql: 'DELETE FROM sessions WHERE user_id = ?', args: [req.params.id] })
   await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [req.params.id] })
   res.json({ ok: true })
+})
+
+// ── Doctor Channels (invite-only group chat) ────────────────────────────────────
+const DEFAULT_CHANNEL_RULES = 'No racism, hate speech, or discrimination of any kind.\nNo harassment or personal attacks.\nKeep discussion professional and patient-related.\nRespect patient confidentiality (no PHI outside secure systems).'
+
+async function getMembership(channelId, userId) {
+  return (await db.execute({ sql: 'SELECT * FROM channel_members WHERE channel_id = ? AND user_id = ?', args: [channelId, userId] })).rows[0]
+}
+
+// List channels visible to the current user: superadmin sees all, doctors see channels they're invited to or joined
+app.get('/api/channels', auth, async (req, res) => {
+  let channels
+  if (req.user.role === 'superadmin') {
+    channels = (await db.execute({ sql: 'SELECT * FROM channels ORDER BY created_at DESC', args: [] })).rows
+  } else {
+    channels = (await db.execute({
+      sql: `SELECT c.*, cm.status as my_status, cm.member_role as my_role FROM channels c
+            INNER JOIN channel_members cm ON cm.channel_id = c.id
+            WHERE cm.user_id = ? ORDER BY c.created_at DESC`,
+      args: [req.user.id],
+    })).rows
+  }
+  res.json({ channels })
+})
+
+// Create a channel (superadmin only) — assigns a head doctor who is auto-joined
+app.post('/api/channels', auth, requireAdmin, async (req, res) => {
+  const { name, rules, head_doctor_id } = req.body
+  if (!name?.trim() || !head_doctor_id) return res.status(400).json({ error: 'name and head_doctor_id required' })
+  const headDoctor = (await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [head_doctor_id] })).rows[0]
+  if (!headDoctor) return res.status(404).json({ error: 'Head doctor not found' })
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  await db.execute({
+    sql: 'INSERT INTO channels (id, name, rules, head_doctor_id, head_doctor_name, created_by_email, created_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [id, name.trim(), (rules?.trim()) || DEFAULT_CHANNEL_RULES, headDoctor.id, headDoctor.name, req.user.email, req.user.name, now],
+  })
+  await db.execute({
+    sql: 'INSERT INTO channel_members (id, channel_id, user_id, user_name, user_email, member_role, status, created_at, responded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [randomUUID(), id, headDoctor.id, headDoctor.name, headDoctor.email, 'head', 'joined', now, now],
+  })
+  await db.execute({
+    sql: 'INSERT INTO channel_messages (id, channel_id, sender_name, type, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    args: [randomUUID(), id, 'System', 'system', `Channel created. ${headDoctor.name} is the Head Doctor.`, now],
+  })
+  res.json({ id })
+})
+
+// Members of a channel — only members (or superadmin) can view
+app.get('/api/channels/:id/members', auth, async (req, res) => {
+  const channel = (await db.execute({ sql: 'SELECT * FROM channels WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!channel) return res.status(404).json({ error: 'Channel not found' })
+  const membership = await getMembership(req.params.id, req.user.id)
+  if (req.user.role !== 'superadmin' && (!membership || membership.status !== 'joined')) return res.status(403).json({ error: 'Not a member' })
+  const members = (await db.execute({ sql: 'SELECT user_id, user_name, user_email, member_role, status, created_at FROM channel_members WHERE channel_id = ? ORDER BY created_at ASC', args: [req.params.id] })).rows
+  res.json({ channel, members })
+})
+
+// Messages — only joined members (or superadmin) can read
+app.get('/api/channels/:id/messages', auth, async (req, res) => {
+  const channel = (await db.execute({ sql: 'SELECT * FROM channels WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!channel) return res.status(404).json({ error: 'Channel not found' })
+  const membership = await getMembership(req.params.id, req.user.id)
+  if (req.user.role !== 'superadmin' && (!membership || membership.status !== 'joined')) return res.status(403).json({ error: 'Not a member' })
+  const messages = (await db.execute({ sql: 'SELECT * FROM channel_messages WHERE channel_id = ? ORDER BY created_at ASC', args: [req.params.id] })).rows
+  res.json({ channel, messages })
+})
+
+// Post a normal chat message — joined members only
+app.post('/api/channels/:id/messages', auth, async (req, res) => {
+  const { message } = req.body
+  if (!message?.trim()) return res.status(400).json({ error: 'message required' })
+  const membership = await getMembership(req.params.id, req.user.id)
+  if (!membership || membership.status !== 'joined') return res.status(403).json({ error: 'Not a member of this channel' })
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  await db.execute({
+    sql: 'INSERT INTO channel_messages (id, channel_id, sender_id, sender_name, sender_email, type, message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [id, req.params.id, req.user.id, req.user.name, req.user.email, 'message', message.trim(), now],
+  })
+  res.json({ id, created_at: now })
+})
+
+// /invite command — head doctor only. Invites a doctor by name or email.
+app.post('/api/channels/:id/invite', auth, async (req, res) => {
+  const { query } = req.body
+  if (!query?.trim()) return res.status(400).json({ error: 'query required' })
+  const channel = (await db.execute({ sql: 'SELECT * FROM channels WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!channel) return res.status(404).json({ error: 'Channel not found' })
+  const membership = await getMembership(req.params.id, req.user.id)
+  if (!membership || membership.member_role !== 'head' || membership.status !== 'joined') {
+    return res.status(403).json({ error: 'Only the Head Doctor can invite members' })
+  }
+  const q = query.trim().toLowerCase()
+  const candidate = (await db.execute({
+    sql: `SELECT * FROM users WHERE role = 'doctor' AND (LOWER(email) = ? OR LOWER(name) LIKE ?) LIMIT 1`,
+    args: [q, `%${q}%`],
+  })).rows[0]
+  if (!candidate) return res.status(404).json({ error: `No doctor found matching "${query}"` })
+  const existing = await getMembership(req.params.id, candidate.id)
+  if (existing) return res.status(400).json({ error: `${candidate.name} is already invited or a member` })
+  const now = new Date().toISOString()
+  await db.execute({
+    sql: 'INSERT INTO channel_members (id, channel_id, user_id, user_name, user_email, member_role, status, invited_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [randomUUID(), req.params.id, candidate.id, candidate.name, candidate.email, 'member', 'invited', req.user.name, now],
+  })
+  await db.execute({
+    sql: 'INSERT INTO channel_messages (id, channel_id, sender_id, sender_name, sender_email, type, message, meta, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [randomUUID(), req.params.id, req.user.id, req.user.name, req.user.email, 'invite', `${req.user.name} invited ${candidate.name} to join the channel.`, JSON.stringify({ invited_user_id: candidate.id, invited_user_name: candidate.name, rules: channel.rules }), now],
+  })
+  res.json({ ok: true, invited: { id: candidate.id, name: candidate.name } })
+})
+
+// Accept / decline an invite
+app.post('/api/channels/:id/respond', auth, async (req, res) => {
+  const { accept } = req.body
+  const membership = await getMembership(req.params.id, req.user.id)
+  if (!membership || membership.status !== 'invited') return res.status(400).json({ error: 'No pending invite for this channel' })
+  const now = new Date().toISOString()
+  const newStatus = accept ? 'joined' : 'declined'
+  await db.execute({ sql: 'UPDATE channel_members SET status = ?, responded_at = ? WHERE id = ?', args: [newStatus, now, membership.id] })
+  await db.execute({
+    sql: 'INSERT INTO channel_messages (id, channel_id, sender_name, type, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    args: [randomUUID(), req.params.id, 'System', 'system', accept ? `${req.user.name} joined the channel.` : `${req.user.name} declined the invite.`, now],
+  })
+  res.json({ ok: true, status: newStatus })
 })
 
 // ── Health / ping ──────────────────────────────────────────────────────────────
