@@ -1288,9 +1288,11 @@ app.post('/api/channels/:id/messages', auth, async (req, res) => {
   const { message } = req.body
   if (!message?.trim()) return res.status(400).json({ error: 'message required' })
   const membership = await getMembership(req.params.id, req.user.id)
-  if (!membership || membership.status !== 'joined') return res.status(403).json({ error: 'Not a member of this channel' })
-  if (membership.muted_until && new Date(membership.muted_until) > new Date()) {
-    return res.status(403).json({ error: `You are timed out until ${new Date(membership.muted_until).toLocaleString()}` })
+  if (req.user.role !== 'superadmin') {
+    if (!membership || membership.status !== 'joined') return res.status(403).json({ error: 'Not a member of this channel' })
+    if (membership.muted_until && new Date(membership.muted_until) > new Date()) {
+      return res.status(403).json({ error: `You are timed out until ${new Date(membership.muted_until).toLocaleString()}` })
+    }
   }
   const id = randomUUID()
   const now = new Date().toISOString()

@@ -227,8 +227,6 @@ export default function Channels() {
           await api(`/api/channels/${selectedId}/rules`, { method: 'POST', body: JSON.stringify({ action: 'remove', rule }) })
           toast.success('Rule removed')
         }
-      } else if (isSuperAdmin) {
-        toast.error('Admin can only use commands here: /kick, /ban, /timeout, /warn, /addrule, /removerule')
       } else {
         await api(`/api/channels/${selectedId}/messages`, { method: 'POST', body: JSON.stringify({ message: text }) })
       }
