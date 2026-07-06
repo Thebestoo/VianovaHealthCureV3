@@ -1,8 +1,32 @@
-import React, { useState, useEffect } from 'react'
-import { ShieldCheck, Plus, Trash2, X, Loader2, ToggleLeft, ToggleRight, Mail, Edit3, Save, Lock, CheckCircle, XCircle } from 'lucide-react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { ShieldCheck, Plus, Trash2, X, Loader2, ToggleLeft, ToggleRight, Mail, Edit3, Save, Lock, CheckCircle, XCircle, Users, Search, UserPlus } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 const EMPTY_FORM = { name: '', email: '', role: 'doctor', password: '' }
+
+const AVATAR_PALETTE = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#6366f1', '#ef4444', '#14b8a6']
+
+function avatarColor(str) {
+  let hash = 0
+  for (let i = 0; i < (str || '').length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length]
+}
+
+function initials(name) {
+  return (name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?'
+}
+
+function UserAvatar({ name }) {
+  return (
+    <div style={{
+      width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+      background: avatarColor(name), color: '#fff', fontWeight: 700, fontSize: 13,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      {initials(name)}
+    </div>
+  )
+}
 
 export default function Admin() {
   const { key } = useKey()
@@ -144,6 +168,21 @@ export default function Admin() {
   const pendingUsers = users.filter(u => (u.status === 'pending') && (u.active === 1 || u.active === true))
   const activeUsers = users.filter(u => !(u.status === 'pending' && (u.active === 1 || u.active === true)))
 
+  const [query, setQuery] = useState('')
+  const filteredActiveUsers = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return activeUsers
+    return activeUsers.filter(u =>
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.notify_email || '').toLowerCase().includes(q)
+    )
+  }, [activeUsers, query])
+
+  const totalUsers = users.length
+  const activeCount = users.filter(u => (u.active === 1 || u.active === true) && u.status !== 'pending').length
+  const adminCount = users.filter(u => u.role === 'superadmin').length
+
   return (
     <div>
       <div className="topbar">
@@ -157,10 +196,44 @@ export default function Admin() {
 
       <div style={{ padding: '24px 32px' }}>
 
+        {/* Stats row */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginBottom: 28 }}>
+          {[
+            { label: 'Total Users', value: totalUsers, icon: Users, bg: '#eff6ff', color: '#1d4ed8' },
+            { label: 'Active', value: activeCount, icon: CheckCircle, bg: '#ecfdf5', color: '#059669' },
+            { label: 'Pending Approval', value: pendingUsers.length, icon: ShieldCheck, bg: '#fffbeb', color: '#d97706' },
+            { label: 'Super Admins', value: adminCount, icon: UserPlus, bg: '#f3e8ff', color: '#7c3aed' },
+          ].map((s, idx) => (
+            <div key={s.label} className="stat-card animate-fade-up" style={{
+              flex: '1 1 190px', minWidth: 170, background: '#fff', border: '1px solid var(--border)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8,
+              animationDelay: `${idx * 0.06}s`,
+            }}>
+              <div className="stat-icon" style={{ width: 40, height: 40, borderRadius: 12, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <s.icon size={19} color={s.color} />
+              </div>
+              <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1, color: '#111827' }}>{s.value}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
         {/* Info banner */}
         <div style={{ marginBottom: 20, padding: '12px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, fontSize: 13, color: '#1e40af' }}>
           <Mail size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'text-bottom' }} />
           <strong>Notification Email:</strong> If a user's login email is a custom domain without mail hosting (e.g. <em>name@vianova.ai</em>), set a <strong>Notification Email</strong> — case alerts will be sent there instead.
+        </div>
+
+        {/* Search */}
+        <div style={{ position: 'relative', marginBottom: 20, maxWidth: 340 }}>
+          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+          <input
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search users by name or email…"
+            style={{ width: '100%', padding: '9px 12px 9px 36px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+          />
         </div>
 
         {loading ? (
@@ -172,12 +245,12 @@ export default function Admin() {
           <>
             {/* Pending Approval section */}
             {pendingUsers.length > 0 && (
-              <div style={{ marginBottom: 24 }}>
+              <div className="animate-fade-up" style={{ marginBottom: 24 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#d97706', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <ShieldCheck size={16} />
                   Pending Approval ({pendingUsers.length})
                 </div>
-                <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1.5px solid #fde68a' }}>
+                <div className="card hoverable" style={{ padding: 0, overflow: 'hidden', border: '1.5px solid #fde68a' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
@@ -189,7 +262,12 @@ export default function Admin() {
                     <tbody>
                       {pendingUsers.map((u, i) => (
                         <tr key={u.id} style={{ borderBottom: i < pendingUsers.length - 1 ? '1px solid #fef3c7' : 'none' }}>
-                          <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>{u.name}</td>
+                          <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <UserAvatar name={u.name} />
+                              {u.name}
+                            </div>
+                          </td>
                           <td style={{ padding: '12px 14px', color: '#374151' }}>{u.email}</td>
                           <td style={{ padding: '12px 14px' }}>{roleBadge(u.role)}</td>
                           <td style={{ padding: '12px 14px' }}>
@@ -219,7 +297,7 @@ export default function Admin() {
             )}
 
             {/* All users table */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="card hoverable animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
@@ -229,12 +307,17 @@ export default function Admin() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activeUsers.map((u, i) => (
-                    <tr key={u.id} style={{ borderBottom: i < activeUsers.length - 1 ? '1px solid #f3f4f6' : 'none' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-                      onMouseLeave={e => e.currentTarget.style.background = ''}
-                    >
-                      <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>{u.name}</td>
+                  {filteredActiveUsers.length === 0 && (
+                    <tr><td colSpan={7} style={{ padding: '32px 14px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No users match your search.</td></tr>
+                  )}
+                  {filteredActiveUsers.map((u, i) => (
+                    <tr key={u.id} className="followup-row" style={{ borderBottom: i < filteredActiveUsers.length - 1 ? '1px solid #f3f4f6' : 'none', transition: 'background .15s ease' }}>
+                      <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <UserAvatar name={u.name} />
+                          {u.name}
+                        </div>
+                      </td>
                       <td style={{ padding: '12px 14px', color: '#374151' }}>{u.email}</td>
 
                       {/* Notification email — inline editable */}
@@ -344,11 +427,16 @@ export default function Admin() {
 
       {/* Create modal */}
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
+        <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
           onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+          <div className="animate-fade-up" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>Add User</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UserPlus size={17} color="#1d4ed8" />
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>Add User</div>
+              </div>
               <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#9ca3af' }}><X size={18} /></button>
             </div>
             <form onSubmit={handleCreate} noValidate style={{ padding: '20px 24px' }}>
