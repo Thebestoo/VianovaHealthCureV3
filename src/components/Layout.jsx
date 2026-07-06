@@ -317,7 +317,7 @@ export default function Layout({ children }) {
         ))}
       </nav>
 
-      <FloatingChat />
+      {!pathname.startsWith('/channels') && <FloatingChat />}
 
       {/* ── Profile Settings Modal ── */}
       {settingsOpen && (
