@@ -17,10 +17,18 @@ export function KeyProvider({ children }) {
   const [avatar, setAvatarState] = useState(() => localStorage.getItem(LS_AVATAR) || '')
   const [stats,  setStats]       = useState(null)
 
-  const setAvatar = useCallback((dataUrl) => {
+  const setAvatar = useCallback((dataUrl, apiKey) => {
     if (dataUrl) localStorage.setItem(LS_AVATAR, dataUrl)
     else localStorage.removeItem(LS_AVATAR)
     setAvatarState(dataUrl || '')
+    const k = apiKey || localStorage.getItem(LS_KEY)
+    if (k) {
+      fetch('/api/account/avatar', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': k },
+        body: JSON.stringify({ avatar: dataUrl || '' }),
+      }).catch(() => {})
+    }
   }, [])
 
   // connect(apiKey) — backward compat: validates a session token via /api/auth/verify
@@ -42,6 +50,7 @@ export function KeyProvider({ children }) {
     setLabelState(data.label)
     setEmailState(data.email || '')
     setStats(data.stats || null)
+    if (data.avatar) { localStorage.setItem(LS_AVATAR, data.avatar); setAvatarState(data.avatar) }
 
     toast.success(
       `Connected as ${data.label}`,
@@ -63,7 +72,7 @@ export function KeyProvider({ children }) {
   }, [])
 
   // loginWithOTP — called by Login page after successful OTP verification
-  const loginWithOTP = useCallback((token, role, labelStr, userEmail) => {
+  const loginWithOTP = useCallback((token, role, labelStr, userEmail, userAvatar) => {
     localStorage.setItem(LS_KEY,   token)
     localStorage.setItem(LS_ROLE,  role)
     localStorage.setItem(LS_LABEL, labelStr)
@@ -73,6 +82,7 @@ export function KeyProvider({ children }) {
     setLabelState(labelStr)
     setEmailState(userEmail || '')
     setStats(null)
+    if (userAvatar) { localStorage.setItem(LS_AVATAR, userAvatar); setAvatarState(userAvatar) }
 
     toast.success(
       `Welcome, ${labelStr}`,
@@ -132,7 +142,10 @@ export function KeyProvider({ children }) {
         return
       }
       const data = await res.json()
-      if (res.ok) setStats(data.stats || null)
+      if (res.ok) {
+        setStats(data.stats || null)
+        if (data.avatar) { localStorage.setItem(LS_AVATAR, data.avatar); setAvatarState(data.avatar) }
+      }
     } catch {}
   }, [key])
 

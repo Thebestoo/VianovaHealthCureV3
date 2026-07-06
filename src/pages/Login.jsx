@@ -42,7 +42,7 @@ export default function Login() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Login failed')
-      loginWithOTP(data.token, data.role, data.label, data.email)
+      loginWithOTP(data.token, data.role, data.label, data.email, data.avatar)
       navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(err.message)
