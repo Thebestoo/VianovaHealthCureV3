@@ -171,6 +171,9 @@ async function initDB() {
     `ALTER TABLE chat_sessions ADD COLUMN closed_by_email TEXT`,
     `ALTER TABLE chat_sessions ADD COLUMN closed_by_name TEXT`,
     `ALTER TABLE chat_sessions ADD COLUMN resolution TEXT DEFAULT 'closed'`,
+    // channel moderation
+    `ALTER TABLE channel_members ADD COLUMN muted_until TEXT`,
+    `ALTER TABLE channel_members ADD COLUMN warnings INTEGER NOT NULL DEFAULT 0`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -1226,7 +1229,7 @@ app.get('/api/channels', auth, async (req, res) => {
     channels = (await db.execute({
       sql: `SELECT c.*, cm.status as my_status, cm.member_role as my_role FROM channels c
             INNER JOIN channel_members cm ON cm.channel_id = c.id
-            WHERE cm.user_id = ? ORDER BY c.created_at DESC`,
+            WHERE cm.user_id = ? AND cm.status NOT IN ('kicked', 'banned') ORDER BY c.created_at DESC`,
       args: [req.user.id],
     })).rows
   }
@@ -1282,6 +1285,9 @@ app.post('/api/channels/:id/messages', auth, async (req, res) => {
   if (!message?.trim()) return res.status(400).json({ error: 'message required' })
   const membership = await getMembership(req.params.id, req.user.id)
   if (!membership || membership.status !== 'joined') return res.status(403).json({ error: 'Not a member of this channel' })
+  if (membership.muted_until && new Date(membership.muted_until) > new Date()) {
+    return res.status(403).json({ error: `You are timed out until ${new Date(membership.muted_until).toLocaleString()}` })
+  }
   const id = randomUUID()
   const now = new Date().toISOString()
   await db.execute({
@@ -1289,6 +1295,97 @@ app.post('/api/channels/:id/messages', auth, async (req, res) => {
     args: [id, req.params.id, req.user.id, req.user.name, req.user.email, 'message', message.trim(), now],
   })
   res.json({ id, created_at: now })
+})
+
+// Look up a channel member by name/email query (used by admin moderation commands)
+async function findMemberByQuery(channelId, query) {
+  const q = query.trim().toLowerCase()
+  return (await db.execute({
+    sql: `SELECT * FROM channel_members WHERE channel_id = ? AND (LOWER(user_email) = ? OR LOWER(user_name) LIKE ?) LIMIT 1`,
+    args: [channelId, q, `%${q}%`],
+  })).rows[0]
+}
+
+async function postSystemMessage(channelId, message) {
+  await db.execute({
+    sql: 'INSERT INTO channel_messages (id, channel_id, sender_name, type, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    args: [randomUUID(), channelId, 'System', 'system', message, new Date().toISOString()],
+  })
+}
+
+// /kick — super admin only. Removes a member; they can be re-invited later.
+app.post('/api/channels/:id/kick', auth, requireAdmin, async (req, res) => {
+  const { query } = req.body
+  if (!query?.trim()) return res.status(400).json({ error: 'query required' })
+  const member = await findMemberByQuery(req.params.id, query)
+  if (!member) return res.status(404).json({ error: `No member found matching "${query}"` })
+  if (member.member_role === 'head') return res.status(400).json({ error: 'Cannot kick the Head Doctor — reassign the channel first' })
+  await db.execute({ sql: `UPDATE channel_members SET status = 'kicked', responded_at = ? WHERE id = ?`, args: [new Date().toISOString(), member.id] })
+  await postSystemMessage(req.params.id, `${member.user_name} was kicked by admin.`)
+  res.json({ ok: true })
+})
+
+// /ban — super admin only. Removes a member and blocks future invites.
+app.post('/api/channels/:id/ban', auth, requireAdmin, async (req, res) => {
+  const { query } = req.body
+  if (!query?.trim()) return res.status(400).json({ error: 'query required' })
+  const member = await findMemberByQuery(req.params.id, query)
+  if (!member) return res.status(404).json({ error: `No member found matching "${query}"` })
+  if (member.member_role === 'head') return res.status(400).json({ error: 'Cannot ban the Head Doctor — reassign the channel first' })
+  await db.execute({ sql: `UPDATE channel_members SET status = 'banned', responded_at = ? WHERE id = ?`, args: [new Date().toISOString(), member.id] })
+  await postSystemMessage(req.params.id, `${member.user_name} was banned by admin.`)
+  res.json({ ok: true })
+})
+
+// /timeout — super admin only. Mutes a member for N minutes (default 10).
+app.post('/api/channels/:id/timeout', auth, requireAdmin, async (req, res) => {
+  const { query, minutes } = req.body
+  if (!query?.trim()) return res.status(400).json({ error: 'query required' })
+  const member = await findMemberByQuery(req.params.id, query)
+  if (!member) return res.status(404).json({ error: `No member found matching "${query}"` })
+  const mins = Number(minutes) > 0 ? Number(minutes) : 10
+  const until = new Date(Date.now() + mins * 60000).toISOString()
+  await db.execute({ sql: 'UPDATE channel_members SET muted_until = ? WHERE id = ?', args: [until, member.id] })
+  await postSystemMessage(req.params.id, `${member.user_name} was timed out for ${mins} minute${mins === 1 ? '' : 's'} by admin.`)
+  res.json({ ok: true, until })
+})
+
+// /warn — super admin only. Logs a warning against a member.
+app.post('/api/channels/:id/warn', auth, requireAdmin, async (req, res) => {
+  const { query, reason } = req.body
+  if (!query?.trim()) return res.status(400).json({ error: 'query required' })
+  const member = await findMemberByQuery(req.params.id, query)
+  if (!member) return res.status(404).json({ error: `No member found matching "${query}"` })
+  await db.execute({ sql: 'UPDATE channel_members SET warnings = warnings + 1 WHERE id = ?', args: [member.id] })
+  const suffix = reason?.trim() ? `: ${reason.trim()}` : ''
+  await postSystemMessage(req.params.id, `⚠️ ${member.user_name} was warned by admin${suffix} (warning #${member.warnings + 1}).`)
+  res.json({ ok: true, warnings: member.warnings + 1 })
+})
+
+// /addrule and /removerule — super admin only. Edits the channel's rules list.
+app.post('/api/channels/:id/rules', auth, requireAdmin, async (req, res) => {
+  const { action, rule } = req.body
+  if (!rule?.trim()) return res.status(400).json({ error: 'rule required' })
+  const channel = (await db.execute({ sql: 'SELECT * FROM channels WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!channel) return res.status(404).json({ error: 'Channel not found' })
+  const lines = (channel.rules || '').split('\n').map(l => l.trim()).filter(Boolean)
+  let newLines, message
+  if (action === 'remove') {
+    const idx = Number(rule)
+    const target = Number.isInteger(idx) && String(idx) === rule.trim()
+      ? lines[idx - 1]
+      : lines.find(l => l.toLowerCase().includes(rule.trim().toLowerCase()))
+    if (!target) return res.status(404).json({ error: `No matching rule found for "${rule}"` })
+    newLines = lines.filter(l => l !== target)
+    message = `Rule removed by admin: "${target}"`
+  } else {
+    newLines = [...lines, rule.trim()]
+    message = `Rule added by admin: "${rule.trim()}"`
+  }
+  const newRules = newLines.join('\n')
+  await db.execute({ sql: 'UPDATE channels SET rules = ? WHERE id = ?', args: [newRules, req.params.id] })
+  await postSystemMessage(req.params.id, message)
+  res.json({ ok: true, rules: newRules })
 })
 
 // /invite command — head doctor only. Invites a doctor by name or email.
@@ -1308,6 +1405,7 @@ app.post('/api/channels/:id/invite', auth, async (req, res) => {
   })).rows[0]
   if (!candidate) return res.status(404).json({ error: `No doctor found matching "${query}"` })
   const existing = await getMembership(req.params.id, candidate.id)
+  if (existing?.status === 'banned') return res.status(403).json({ error: `${candidate.name} is banned from this channel` })
   if (existing) return res.status(400).json({ error: `${candidate.name} is already invited or a member` })
   const now = new Date().toISOString()
   await db.execute({

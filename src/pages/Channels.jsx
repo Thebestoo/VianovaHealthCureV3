@@ -101,7 +101,7 @@ export default function Channels() {
 
   useEffect(() => {
     if (!selectedId || myStatus !== 'joined') return
-    api(`/api/channels/${selectedId}/members`).then(d => setMembers(d.members || [])).catch(() => {})
+    api(`/api/channels/${selectedId}/members`).then(d => setMembers((d.members || []).filter(m => m.status === 'joined'))).catch(() => {})
   }, [selectedId, myStatus, api, messages.length])
 
   useEffect(() => {
@@ -139,6 +139,11 @@ export default function Channels() {
     setResponding(false)
   }
 
+  async function requireSuperAdmin() {
+    if (!isSuperAdmin) { toast.error('Only admin can use this command'); return false }
+    return true
+  }
+
   async function handleSend(e) {
     e.preventDefault()
     const text = input.trim()
@@ -155,11 +160,54 @@ export default function Channels() {
       } else if (text === '/admin') {
         await api('/api/chat/sessions', { method: 'POST', body: JSON.stringify({ subject: `Admin help requested from #${selected?.name}` }) })
         toast.success('Admin has been notified — check the support chat bubble.')
+      } else if (text.startsWith('/kick ')) {
+        if (await requireSuperAdmin()) {
+          const query = text.slice(6).trim()
+          await api(`/api/channels/${selectedId}/kick`, { method: 'POST', body: JSON.stringify({ query }) })
+          toast.success(`${query} kicked`)
+        }
+      } else if (text.startsWith('/ban ')) {
+        if (await requireSuperAdmin()) {
+          const query = text.slice(5).trim()
+          await api(`/api/channels/${selectedId}/ban`, { method: 'POST', body: JSON.stringify({ query }) })
+          toast.success(`${query} banned`)
+        }
+      } else if (text.startsWith('/timeout ')) {
+        if (await requireSuperAdmin()) {
+          const parts = text.slice(9).trim().split(/\s+/)
+          const minutes = Number(parts[parts.length - 1])
+          const hasMinutes = !isNaN(minutes) && parts.length > 1
+          const query = (hasMinutes ? parts.slice(0, -1) : parts).join(' ')
+          await api(`/api/channels/${selectedId}/timeout`, { method: 'POST', body: JSON.stringify({ query, minutes: hasMinutes ? minutes : undefined }) })
+          toast.success(`${query} timed out`)
+        }
+      } else if (text.startsWith('/warn ')) {
+        if (await requireSuperAdmin()) {
+          const rest = text.slice(6).trim()
+          const [query, reason = ''] = rest.includes('|') ? rest.split('|').map(s => s.trim()) : [rest, '']
+          await api(`/api/channels/${selectedId}/warn`, { method: 'POST', body: JSON.stringify({ query, reason }) })
+          toast.success(`${query} warned`)
+        }
+      } else if (text.startsWith('/addrule ')) {
+        if (await requireSuperAdmin()) {
+          const rule = text.slice(9).trim()
+          await api(`/api/channels/${selectedId}/rules`, { method: 'POST', body: JSON.stringify({ action: 'add', rule }) })
+          toast.success('Rule added')
+        }
+      } else if (text.startsWith('/removerule ')) {
+        if (await requireSuperAdmin()) {
+          const rule = text.slice(12).trim()
+          await api(`/api/channels/${selectedId}/rules`, { method: 'POST', body: JSON.stringify({ action: 'remove', rule }) })
+          toast.success('Rule removed')
+        }
+      } else if (isSuperAdmin) {
+        toast.error('Admin can only use commands here: /kick, /ban, /timeout, /warn, /addrule, /removerule')
       } else {
         await api(`/api/channels/${selectedId}/messages`, { method: 'POST', body: JSON.stringify({ message: text }) })
       }
       setInput('')
       await loadMessages()
+      await loadChannels()
     } catch (err) { toast.error(err.message) }
     setSending(false)
   }
@@ -320,7 +368,11 @@ export default function Channels() {
                   type="text"
                   value={input}
                   onChange={e => setInput(e.target.value)}
-                  placeholder={isHead ? 'Message #' + selected.name + '  (try /invite Dr. Name, /info, /admin)' : 'Message #' + selected.name + '  (try /info, /admin)'}
+                  placeholder={
+                    isSuperAdmin ? 'Message #' + selected.name + '  (try /kick, /ban, /timeout, /warn, /addrule, /removerule)'
+                    : isHead ? 'Message #' + selected.name + '  (try /invite Dr. Name, /info, /admin)'
+                    : 'Message #' + selected.name + '  (try /info, /admin)'
+                  }
                   style={{ flex: 1, padding: '10px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13.5, outline: 'none' }}
                 />
                 <button type="submit" disabled={sending || !input.trim()}
@@ -347,12 +399,20 @@ export default function Channels() {
             <div style={{ padding: '18px 22px' }}>
               {selected.rules.split('\n').map((r, i) => (
                 <div key={i} style={{ fontSize: 13.5, color: '#374151', marginBottom: 8, display: 'flex', gap: 8 }}>
-                  <Check size={14} color="#059669" style={{ marginTop: 2, flexShrink: 0 }} />{r}
+                  <Check size={14} color="#059669" style={{ marginTop: 2, flexShrink: 0 }} />
+                  {isSuperAdmin && <span style={{ color: '#9ca3af', fontVariantNumeric: 'tabular-nums' }}>{i + 1}.</span>}
+                  {r}
                 </div>
               ))}
               <div style={{ marginTop: 14, fontSize: 12, color: '#9ca3af' }}>
                 Head Doctor: <strong style={{ color: '#374151' }}>{selected.head_doctor_name}</strong>
               </div>
+              {isSuperAdmin && (
+                <div style={{ marginTop: 14, padding: '10px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 11.5, color: '#6b7280', lineHeight: 1.6 }}>
+                  <strong style={{ color: '#374151' }}>Admin commands:</strong><br />
+                  /addrule &lt;text&gt; · /removerule &lt;number or text&gt; · /kick &lt;name&gt; · /ban &lt;name&gt; · /timeout &lt;name&gt; [minutes] · /warn &lt;name&gt; [| reason]
+                </div>
+              )}
             </div>
           </div>
         </div>
