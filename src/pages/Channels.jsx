@@ -15,7 +15,10 @@ function avatarColor(str) {
 function initials(name) {
   return (name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?'
 }
-function Avatar({ name, size = 32 }) {
+function Avatar({ name, size = 32, src }) {
+  if (src) {
+    return <img src={src} alt={name} style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} />
+  }
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
@@ -411,7 +414,7 @@ export default function Channels() {
                   const mine = m.sender_email === email
                   return (
                     <div key={m.id} style={{ display: 'flex', gap: 10, flexDirection: mine ? 'row-reverse' : 'row' }}>
-                      <Avatar name={m.sender_name} size={30} />
+                      <Avatar name={m.sender_name} size={30} src={m.sender_avatar} />
                       <div style={{ maxWidth: '65%' }}>
                         <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 3, textAlign: mine ? 'right' : 'left' }}>
                           {m.sender_name} · {timeAgo(m.created_at)}

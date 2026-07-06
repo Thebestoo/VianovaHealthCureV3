@@ -173,7 +173,7 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
   }
   return (
     <div style={{ display: 'flex', flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 7, marginBottom: 12 }}>
-      {!mine && <Avatar name={msg.sender_name} size={26} role={msg.sender_role} />}
+      {!mine && <Avatar name={msg.sender_name} size={26} role={msg.sender_role} src={msg.sender_avatar} />}
       <div style={{ maxWidth: '74%' }}>
         {!mine && <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3, paddingLeft: 2, fontWeight: 600 }}>{msg.sender_name}</div>}
         <div style={{ padding: '9px 13px', fontSize: 13.5, lineHeight: 1.55, borderRadius: mine ? '16px 16px 3px 16px' : '3px 16px 16px 16px', background: mine ? 'linear-gradient(135deg,#1d6ef5,#0ea5e9)' : '#f1f5f9', color: mine ? '#fff' : '#1e293b', wordBreak: 'break-word' }}>

@@ -1269,7 +1269,12 @@ app.get('/api/channels/:id/members', auth, async (req, res) => {
   if (!channel) return res.status(404).json({ error: 'Channel not found' })
   const membership = await getMembership(req.params.id, req.user.id)
   if (req.user.role !== 'superadmin' && (!membership || membership.status !== 'joined')) return res.status(403).json({ error: 'Not a member' })
-  const members = (await db.execute({ sql: 'SELECT user_id, user_name, user_email, member_role, status, created_at FROM channel_members WHERE channel_id = ? ORDER BY created_at ASC', args: [req.params.id] })).rows
+  const members = (await db.execute({
+    sql: `SELECT cm.user_id, cm.user_name, cm.user_email, cm.member_role, cm.status, cm.created_at, u.avatar
+          FROM channel_members cm LEFT JOIN users u ON u.email = cm.user_email
+          WHERE cm.channel_id = ? ORDER BY cm.created_at ASC`,
+    args: [req.params.id],
+  })).rows
   res.json({ channel, members })
 })
 
@@ -1279,7 +1284,12 @@ app.get('/api/channels/:id/messages', auth, async (req, res) => {
   if (!channel) return res.status(404).json({ error: 'Channel not found' })
   const membership = await getMembership(req.params.id, req.user.id)
   if (req.user.role !== 'superadmin' && (!membership || membership.status !== 'joined')) return res.status(403).json({ error: 'Not a member' })
-  const messages = (await db.execute({ sql: 'SELECT * FROM channel_messages WHERE channel_id = ? ORDER BY created_at ASC', args: [req.params.id] })).rows
+  const messages = (await db.execute({
+    sql: `SELECT cm.*, u.avatar as sender_avatar FROM channel_messages cm
+          LEFT JOIN users u ON u.email = cm.sender_email
+          WHERE cm.channel_id = ? ORDER BY cm.created_at ASC`,
+    args: [req.params.id],
+  })).rows
   res.json({ channel, messages })
 })
 
