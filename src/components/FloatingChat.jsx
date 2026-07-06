@@ -186,7 +186,7 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
 })
 
 /* ─── Blue gradient header (chat view) ──────────────────────────── */
-const ChatHeader = memo(function ChatHeader({ name, subRole, onEnd, onReview, onClose, isAdmin }) {
+const ChatHeader = memo(function ChatHeader({ name, subRole, avatar, onEnd, onReview, onClose, isAdmin }) {
   return (
     <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}>
       <div style={{ padding: '10px 14px 0' }}>
@@ -194,7 +194,7 @@ const ChatHeader = memo(function ChatHeader({ name, subRole, onEnd, onReview, on
       </div>
       <div style={{ padding: '10px 14px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ position: 'relative' }}>
-          <Avatar name={name} size={38} role={subRole} />
+          <Avatar name={name} size={38} role={subRole} src={avatar || undefined} />
           <span style={{ position: 'absolute', bottom: 1, right: 1, width: 9, height: 9, background: '#22c55e', borderRadius: '50%', border: '2px solid #1a65e8' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -374,7 +374,7 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
           return (
             <div key={t.id} style={{ border: `1.5px solid ${st.border}`, borderRadius: 14, padding: '11px 12px', marginBottom: 8, background: '#fff' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <Avatar name={t.created_by_name} size={30} role={t.created_by_role} />
+                <Avatar name={t.created_by_name} size={30} role={t.created_by_role} src={t.created_by_avatar} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.created_by_name}</div>
                   <div style={{ fontSize: 11, color: '#64748b', textTransform: 'capitalize' }}>{t.created_by_role}</div>
@@ -823,6 +823,7 @@ export default function FloatingChat() {
             ? <ChatHeader
                 name={isSuperAdmin ? activeSession?.created_by_name : (session?.admin_name || 'Vianova Support')}
                 subRole={isSuperAdmin ? activeSession?.created_by_role : 'superadmin'}
+                avatar={isSuperAdmin ? activeSession?.created_by_avatar : session?.admin_avatar}
                 isAdmin={isSuperAdmin}
                 onEnd={isSuperAdmin ? endAdminChat : endUserChat}
                 onReview={sendToReview}
