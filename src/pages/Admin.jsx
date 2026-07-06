@@ -16,7 +16,14 @@ function initials(name) {
   return (name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?'
 }
 
-function UserAvatar({ name }) {
+function UserAvatar({ name, src }) {
+  if (src) {
+    return (
+      <img src={src} alt={name} style={{
+        width: 34, height: 34, borderRadius: '50%', flexShrink: 0, objectFit: 'cover',
+      }} />
+    )
+  }
   return (
     <div style={{
       width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
@@ -294,7 +301,7 @@ export default function Admin() {
                         <tr key={u.id} style={{ borderBottom: i < pendingUsers.length - 1 ? '1px solid #fef3c7' : 'none' }}>
                           <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <UserAvatar name={u.name} />
+                              <UserAvatar name={u.name} src={u.avatar} />
                               {u.name}
                             </div>
                           </td>
@@ -344,7 +351,7 @@ export default function Admin() {
                     <tr key={u.id} className="followup-row" style={{ borderBottom: i < filteredActiveUsers.length - 1 ? '1px solid #f3f4f6' : 'none', transition: 'background .15s ease' }}>
                       <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <UserAvatar name={u.name} />
+                          <UserAvatar name={u.name} src={u.avatar} />
                           {u.name}
                         </div>
                       </td>

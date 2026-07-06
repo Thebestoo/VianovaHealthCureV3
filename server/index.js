@@ -1082,7 +1082,7 @@ app.get('/api/share/:token', async (req, res) => {
 
 // ── Admin routes ───────────────────────────────────────────────────────────────
 app.get('/api/admin/users', auth, requireAdmin, async (req, res) => {
-  const users = (await db.execute({ sql: 'SELECT id, email, notify_email, name, role, active, status, password_hash, created_at FROM users ORDER BY created_at DESC', args: [] })).rows
+  const users = (await db.execute({ sql: 'SELECT id, email, notify_email, name, role, active, status, avatar, password_hash, created_at FROM users ORDER BY created_at DESC', args: [] })).rows
   res.json({
     users: users.map(u => ({
       ...u,
