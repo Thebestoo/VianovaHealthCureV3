@@ -174,6 +174,10 @@ async function initDB() {
     // channel moderation
     `ALTER TABLE channel_members ADD COLUMN muted_until TEXT`,
     `ALTER TABLE channel_members ADD COLUMN warnings INTEGER NOT NULL DEFAULT 0`,
+    // channel admin calls
+    `ALTER TABLE channel_messages ADD COLUMN resolved INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE channel_messages ADD COLUMN resolved_by TEXT`,
+    `ALTER TABLE channel_messages ADD COLUMN resolved_at TEXT`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -1295,6 +1299,42 @@ app.post('/api/channels/:id/messages', auth, async (req, res) => {
     args: [id, req.params.id, req.user.id, req.user.name, req.user.email, 'message', message.trim(), now],
   })
   res.json({ id, created_at: now })
+})
+
+// /admin command — joined members call for admin help; handled directly in the Channels page's Admin Section
+app.post('/api/channels/:id/call-admin', auth, async (req, res) => {
+  const { message } = req.body
+  const membership = await getMembership(req.params.id, req.user.id)
+  if (!membership || membership.status !== 'joined') return res.status(403).json({ error: 'Not a member of this channel' })
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  const text = message?.trim() ? `${req.user.name} called admin: ${message.trim()}` : `${req.user.name} called admin for help.`
+  await db.execute({
+    sql: 'INSERT INTO channel_messages (id, channel_id, sender_id, sender_name, sender_email, type, message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    args: [id, req.params.id, req.user.id, req.user.name, req.user.email, 'admin_call', text, now],
+  })
+  res.json({ id, created_at: now })
+})
+
+// Admin Section — all unresolved admin calls across every channel, for the superadmin's Channels page
+app.get('/api/admin/channel-calls', auth, requireAdmin, async (req, res) => {
+  const calls = (await db.execute({
+    sql: `SELECT cm.id, cm.channel_id, c.name as channel_name, cm.sender_name, cm.message, cm.created_at
+          FROM channel_messages cm JOIN channels c ON c.id = cm.channel_id
+          WHERE cm.type = 'admin_call' AND cm.resolved = 0 ORDER BY cm.created_at DESC`,
+    args: [],
+  })).rows
+  res.json({ calls })
+})
+
+// Resolve an admin call from within the channel
+app.post('/api/channels/:id/messages/:messageId/resolve', auth, requireAdmin, async (req, res) => {
+  const msg = (await db.execute({ sql: 'SELECT * FROM channel_messages WHERE id = ? AND channel_id = ?', args: [req.params.messageId, req.params.id] })).rows[0]
+  if (!msg || msg.type !== 'admin_call') return res.status(404).json({ error: 'Admin call not found' })
+  const now = new Date().toISOString()
+  await db.execute({ sql: 'UPDATE channel_messages SET resolved = 1, resolved_by = ?, resolved_at = ? WHERE id = ?', args: [req.user.name, now, req.params.messageId] })
+  await postSystemMessage(req.params.id, `Admin call resolved by ${req.user.name}.`)
+  res.json({ ok: true })
 })
 
 // Look up a channel member by name/email query (used by admin moderation commands)

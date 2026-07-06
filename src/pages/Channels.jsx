@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { MessageSquare, Plus, X, Loader2, ShieldCheck, Send, Users, Check, Info, AtSign,
-         CheckCircle, XCircle, Crown, Hash } from 'lucide-react'
+         CheckCircle, XCircle, Crown, Hash, Siren, BellRing } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import toast from 'react-hot-toast'
 
@@ -63,6 +63,7 @@ export default function Channels() {
   const [form, setForm] = useState({ name: '', rules: DEFAULT_RULES, head_doctor_id: '' })
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [adminCalls, setAdminCalls] = useState([])
   const scrollRef = useRef(null)
 
   const loadChannels = useCallback(async () => {
@@ -114,6 +115,30 @@ export default function Channels() {
     }
   }, [showCreate, isSuperAdmin, api])
 
+  const loadAdminCalls = useCallback(async () => {
+    if (!isSuperAdmin) return
+    try {
+      const data = await api('/api/admin/channel-calls')
+      setAdminCalls(data.calls || [])
+    } catch {}
+  }, [api, isSuperAdmin])
+
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    loadAdminCalls()
+    const t = setInterval(loadAdminCalls, 5000)
+    return () => clearInterval(t)
+  }, [isSuperAdmin, loadAdminCalls])
+
+  async function resolveCall(channelId, messageId) {
+    try {
+      await api(`/api/channels/${channelId}/messages/${messageId}/resolve`, { method: 'POST' })
+      await loadAdminCalls()
+      if (channelId === selectedId) await loadMessages()
+      toast.success('Admin call resolved')
+    } catch (err) { toast.error(err.message) }
+  }
+
   async function handleCreate(e) {
     e.preventDefault()
     if (!form.name.trim() || !form.head_doctor_id) { setCreateError('Channel name and Head Doctor are required'); return }
@@ -157,9 +182,11 @@ export default function Channels() {
         toast.success(`Invite sent to ${query}`)
       } else if (text === '/info') {
         setShowRules(true)
-      } else if (text === '/admin') {
-        await api('/api/chat/sessions', { method: 'POST', body: JSON.stringify({ subject: `Admin help requested from #${selected?.name}` }) })
-        toast.success('Admin has been notified — check the support chat bubble.')
+      } else if (text === '/admin' || text.startsWith('/admin ')) {
+        const msg = text === '/admin' ? '' : text.slice(7).trim()
+        await api(`/api/channels/${selectedId}/call-admin`, { method: 'POST', body: JSON.stringify({ message: msg }) })
+        toast.success('Admin has been called — visible in this channel and the Admin Section.')
+        await loadAdminCalls()
       } else if (text.startsWith('/kick ')) {
         if (await requireSuperAdmin()) {
           const query = text.slice(6).trim()
@@ -231,6 +258,27 @@ export default function Channels() {
       <div style={{ display: 'flex', height: 'calc(100vh - 56px)' }}>
         {/* Sidebar */}
         <div style={{ width: 280, borderRight: '1px solid var(--border)', background: '#fff', overflowY: 'auto', flexShrink: 0 }}>
+          {isSuperAdmin && adminCalls.length > 0 && (
+            <div style={{ borderBottom: '1px solid var(--border)' }}>
+              <div style={{ padding: '14px 16px 6px', fontSize: 11, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '.05em', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Siren size={12} /> Admin Section ({adminCalls.length})
+              </div>
+              {adminCalls.map(c => (
+                <div key={c.id} onClick={() => setSelectedId(c.channel_id)} className="followup-row"
+                  style={{ padding: '8px 16px 10px', cursor: 'pointer' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>#{c.channel_name}</div>
+                  <div style={{ fontSize: 12, color: '#374151', margin: '2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.message}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{timeAgo(c.created_at)}</span>
+                    <button onClick={e => { e.stopPropagation(); resolveCall(c.channel_id, c.id) }}
+                      style={{ padding: '3px 10px', border: 'none', borderRadius: 6, background: '#fee2e2', color: '#dc2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                      Resolve
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {loadingList ? (
             <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af' }}>
               <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
@@ -327,6 +375,27 @@ export default function Channels() {
                 ) : messages.map(m => {
                   if (m.type === 'system') {
                     return <div key={m.id} style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>{m.message}</div>
+                  }
+                  if (m.type === 'admin_call') {
+                    return (
+                      <div key={m.id} style={{ alignSelf: 'center', maxWidth: 420, width: '100%' }}>
+                        <div className="card" style={{ padding: '14px 18px', textAlign: 'center', border: `1.5px solid ${m.resolved ? '#e5e7eb' : '#fecaca'}`, background: m.resolved ? '#f9fafb' : '#fef2f2' }}>
+                          {m.resolved ? <BellRing size={16} color="#9ca3af" style={{ marginBottom: 6 }} /> : <Siren size={16} color="#dc2626" style={{ marginBottom: 6 }} />}
+                          <div style={{ fontSize: 13, fontWeight: 600, color: m.resolved ? '#6b7280' : '#991b1b' }}>{m.message}</div>
+                          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>{timeAgo(m.created_at)}</div>
+                          {isSuperAdmin && (
+                            m.resolved ? (
+                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>Resolved by {m.resolved_by}</div>
+                            ) : (
+                              <button onClick={() => resolveCall(selectedId, m.id)}
+                                style={{ marginTop: 8, padding: '5px 14px', border: 'none', borderRadius: 7, background: '#dc2626', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                                Resolve
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )
                   }
                   if (m.type === 'invite') {
                     let meta = {}
