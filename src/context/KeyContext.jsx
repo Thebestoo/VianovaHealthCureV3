@@ -1,13 +1,14 @@
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import toast from 'react-hot-toast'
 
 const KeyContext = createContext(null)
 
-const LS_KEY    = 'vnh_api_key'
-const LS_ROLE   = 'vnh_api_role'
-const LS_LABEL  = 'vnh_api_label'
-const LS_EMAIL  = 'vnh_user_email'
-const LS_AVATAR = 'vnh_user_avatar'
+const LS_KEY      = 'vnh_api_key'
+const LS_ROLE     = 'vnh_api_role'
+const LS_LABEL    = 'vnh_api_label'
+const LS_EMAIL    = 'vnh_user_email'
+const LS_AVATAR   = 'vnh_user_avatar'
+const LS_AVATAR_SYNCED = 'vnh_user_avatar_synced'
 
 export function KeyProvider({ children }) {
   const [key,    setKeyState]    = useState(() => localStorage.getItem(LS_KEY)    || '')
@@ -17,9 +18,23 @@ export function KeyProvider({ children }) {
   const [avatar, setAvatarState] = useState(() => localStorage.getItem(LS_AVATAR) || '')
   const [stats,  setStats]       = useState(null)
 
+  // Backfill: an avatar picked before server-side persistence existed is only in
+  // localStorage — push it up once so it shows in messages sent from other views.
+  useEffect(() => {
+    if (key && avatar && !localStorage.getItem(LS_AVATAR_SYNCED)) {
+      localStorage.setItem(LS_AVATAR_SYNCED, '1')
+      fetch('/api/account/avatar', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({ avatar }),
+      }).catch(() => {})
+    }
+  }, [key, avatar])
+
   const setAvatar = useCallback((dataUrl, apiKey) => {
     if (dataUrl) localStorage.setItem(LS_AVATAR, dataUrl)
     else localStorage.removeItem(LS_AVATAR)
+    localStorage.setItem(LS_AVATAR_SYNCED, '1')
     setAvatarState(dataUrl || '')
     const k = apiKey || localStorage.getItem(LS_KEY)
     if (k) {
