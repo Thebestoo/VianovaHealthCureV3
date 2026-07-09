@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { MessageSquare, Plus, X, Loader2, ShieldCheck, Send, Users, Check, Info, AtSign,
-         CheckCircle, XCircle, Crown, Hash, Siren, BellRing, Search } from 'lucide-react'
+         CheckCircle, XCircle, Crown, Hash, Siren, BellRing, Search, Bell, BellOff } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import toast from 'react-hot-toast'
 
@@ -52,6 +52,14 @@ function readLastReadMap() {
   try { return JSON.parse(localStorage.getItem(LS_LAST_READ) || '{}') } catch { return {} }
 }
 
+const LS_MUTED = 'vnh_channel_muted'
+function readMutedSet() {
+  try { return new Set(JSON.parse(localStorage.getItem(LS_MUTED) || '[]')) } catch { return new Set() }
+}
+function writeMutedSet(set) {
+  localStorage.setItem(LS_MUTED, JSON.stringify([...set]))
+}
+
 export default function Channels() {
   const { key, role, label, email } = useKey()
   const isSuperAdmin = role === 'superadmin'
@@ -83,15 +91,45 @@ export default function Channels() {
   const [adminCalls, setAdminCalls] = useState([])
   const [search, setSearch] = useState('')
   const [lastReadMap, setLastReadMap] = useState(readLastReadMap)
+  const [mutedSet, setMutedSet] = useState(readMutedSet)
   const scrollRef = useRef(null)
+  const seenLastMsgRef = useRef({})
+  const selectedIdRef = useRef(null)
+  useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
+
+  function toggleMute(channelId) {
+    setMutedSet(prev => {
+      const next = new Set(prev)
+      if (next.has(channelId)) { next.delete(channelId); toast('Notifications unmuted') }
+      else { next.add(channelId); toast('Notifications muted') }
+      writeMutedSet(next)
+      return next
+    })
+  }
 
   const loadChannels = useCallback(async () => {
     try {
       const data = await api('/api/channels')
-      setChannels(data.channels || [])
+      const fetched = data.channels || []
+      const seen = seenLastMsgRef.current
+      const isFirstLoad = Object.keys(seen).length === 0
+      for (const c of fetched) {
+        if (!c.last_message_at) continue
+        const prev = seen[c.id]
+        seen[c.id] = c.last_message_at
+        if (isFirstLoad) continue
+        if (prev === c.last_message_at) continue
+        if (c.last_message_sender_email === email) continue
+        if (mutedSet.has(c.id)) continue
+        if (c.id === selectedIdRef.current) continue
+        const snippet = c.last_message_type === 'admin_call' ? c.last_message
+          : `${c.last_message_sender || 'Someone'}: ${c.last_message}`
+        toast(`#${c.name}\n${snippet}`, { icon: '💬', duration: 5000, style: { whiteSpace: 'pre-line' } })
+      }
+      setChannels(fetched)
     } catch {}
     setLoadingList(false)
-  }, [api])
+  }, [api, email, mutedSet])
 
   useEffect(() => { loadChannels() }, [loadChannels])
   useEffect(() => {
@@ -347,7 +385,8 @@ export default function Channels() {
                 Channels ({joinedChannels.length})
               </div>
               {joinedChannels.map(c => (
-                <ChannelRow key={c.id} c={c} active={c.id === selectedId} unread={isUnread(c)} onClick={() => setSelectedId(c.id)} />
+                <ChannelRow key={c.id} c={c} active={c.id === selectedId} unread={isUnread(c)} muted={mutedSet.has(c.id)}
+                  onClick={() => setSelectedId(c.id)} onToggleMute={() => toggleMute(c.id)} />
               ))}
             </>
           )}
@@ -410,6 +449,10 @@ export default function Channels() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => toggleMute(selectedId)} title={mutedSet.has(selectedId) ? 'Unmute notifications' : 'Mute notifications'}
+                    style={{ background: mutedSet.has(selectedId) ? '#fef2f2' : '#f3f4f6', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: mutedSet.has(selectedId) ? '#dc2626' : '#374151' }}>
+                    {mutedSet.has(selectedId) ? <BellOff size={13} /> : <Bell size={13} />}
+                  </button>
                   <button onClick={() => setShowMembers(true)} title="Channel members"
                     style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}>
                     <Users size={13} /> Members
@@ -627,7 +670,7 @@ export default function Channels() {
   )
 }
 
-function ChannelRow({ c, active, pending, unread, onClick }) {
+function ChannelRow({ c, active, pending, unread, muted, onClick, onToggleMute }) {
   return (
     <div onClick={onClick} className="followup-row" style={{
       padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
@@ -636,7 +679,10 @@ function ChannelRow({ c, active, pending, unread, onClick }) {
     }}>
       <Avatar name={c.name} size={32} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: unread ? 800 : 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+        <div style={{ fontSize: 13, fontWeight: unread ? 800 : 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
+          {c.name}
+          {muted && <BellOff size={11} color="#9ca3af" />}
+        </div>
         <div style={{ fontSize: 11, color: pending ? '#d97706' : '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {pending ? 'Pending invite' : previewText(c)}
         </div>
@@ -646,6 +692,12 @@ function ChannelRow({ c, active, pending, unread, onClick }) {
         {pending ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} /> :
           unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#0ea5e9' }} />}
       </div>
+      {!pending && onToggleMute && (
+        <button onClick={e => { e.stopPropagation(); onToggleMute() }} title={muted ? 'Unmute' : 'Mute'}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 2, flexShrink: 0 }}>
+          {muted ? <BellOff size={13} /> : <Bell size={13} />}
+        </button>
+      )}
     </div>
   )
 }

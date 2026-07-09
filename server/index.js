@@ -1228,6 +1228,8 @@ async function getMembership(channelId, userId) {
 const LAST_MSG_COLS = `
   (SELECT message FROM channel_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
   (SELECT type FROM channel_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_type,
+  (SELECT sender_name FROM channel_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_sender,
+  (SELECT sender_email FROM channel_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_sender_email,
   (SELECT created_at FROM channel_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_at`
 
 app.get('/api/channels', auth, async (req, res) => {
