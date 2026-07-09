@@ -1225,15 +1225,23 @@ async function getMembership(channelId, userId) {
 }
 
 // List channels visible to the current user: superadmin sees all, doctors see channels they're invited to or joined
+const LAST_MSG_COLS = `
+  (SELECT message FROM channel_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+  (SELECT type FROM channel_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_type,
+  (SELECT created_at FROM channel_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_at`
+
 app.get('/api/channels', auth, async (req, res) => {
   let channels
   if (req.user.role === 'superadmin') {
-    channels = (await db.execute({ sql: 'SELECT * FROM channels ORDER BY created_at DESC', args: [] })).rows
+    channels = (await db.execute({
+      sql: `SELECT c.*, ${LAST_MSG_COLS} FROM channels c ORDER BY last_message_at DESC, c.created_at DESC`,
+      args: [],
+    })).rows
   } else {
     channels = (await db.execute({
-      sql: `SELECT c.*, cm.status as my_status, cm.member_role as my_role FROM channels c
+      sql: `SELECT c.*, cm.status as my_status, cm.member_role as my_role, ${LAST_MSG_COLS} FROM channels c
             INNER JOIN channel_members cm ON cm.channel_id = c.id
-            WHERE cm.user_id = ? AND cm.status NOT IN ('kicked', 'banned') ORDER BY c.created_at DESC`,
+            WHERE cm.user_id = ? AND cm.status NOT IN ('kicked', 'banned') ORDER BY last_message_at DESC, c.created_at DESC`,
       args: [req.user.id],
     })).rows
   }

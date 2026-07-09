@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { MessageSquare, Plus, X, Loader2, ShieldCheck, Send, Users, Check, Info, AtSign,
-         CheckCircle, XCircle, Crown, Hash, Siren, BellRing } from 'lucide-react'
+         CheckCircle, XCircle, Crown, Hash, Siren, BellRing, Search } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import toast from 'react-hot-toast'
 
@@ -39,6 +39,19 @@ function timeAgo(iso) {
   return d.toLocaleDateString()
 }
 
+function previewText(c) {
+  if (!c.last_message) return 'No messages yet'
+  if (c.last_message_type === 'system') return c.last_message
+  if (c.last_message_type === 'admin_call') return '🚨 Admin called'
+  if (c.last_message_type === 'invite') return c.last_message
+  return c.last_message
+}
+
+const LS_LAST_READ = 'vnh_channel_last_read'
+function readLastReadMap() {
+  try { return JSON.parse(localStorage.getItem(LS_LAST_READ) || '{}') } catch { return {} }
+}
+
 export default function Channels() {
   const { key, role, label, email } = useKey()
   const isSuperAdmin = role === 'superadmin'
@@ -61,12 +74,15 @@ export default function Channels() {
   const [sending, setSending]           = useState(false)
   const [responding, setResponding]     = useState(false)
   const [showRules, setShowRules]       = useState(false)
+  const [showMembers, setShowMembers]   = useState(false)
   const [showCreate, setShowCreate]     = useState(false)
   const [doctors, setDoctors]           = useState([])
   const [form, setForm] = useState({ name: '', rules: DEFAULT_RULES, head_doctor_id: '' })
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   const [adminCalls, setAdminCalls] = useState([])
+  const [search, setSearch] = useState('')
+  const [lastReadMap, setLastReadMap] = useState(readLastReadMap)
   const scrollRef = useRef(null)
 
   const loadChannels = useCallback(async () => {
@@ -111,6 +127,16 @@ export default function Channels() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    if (!selectedId || !selected?.last_message_at) return
+    setLastReadMap(prev => {
+      if (prev[selectedId] === selected.last_message_at) return prev
+      const next = { ...prev, [selectedId]: selected.last_message_at }
+      localStorage.setItem(LS_LAST_READ, JSON.stringify(next))
+      return next
+    })
+  }, [selectedId, selected?.last_message_at])
 
   useEffect(() => {
     if (showCreate && isSuperAdmin) {
@@ -240,8 +266,11 @@ export default function Channels() {
     setSending(false)
   }
 
-  const joinedChannels   = channels.filter(c => isSuperAdmin || c.my_status === 'joined')
-  const invitedChannels  = channels.filter(c => !isSuperAdmin && c.my_status === 'invited')
+  const q = search.trim().toLowerCase()
+  const matchesSearch = c => !q || c.name.toLowerCase().includes(q) || c.head_doctor_name.toLowerCase().includes(q)
+  const joinedChannels   = channels.filter(c => (isSuperAdmin || c.my_status === 'joined') && matchesSearch(c))
+  const invitedChannels  = channels.filter(c => !isSuperAdmin && c.my_status === 'invited' && matchesSearch(c))
+  const isUnread = c => c.id !== selectedId && c.last_message_at && c.last_message_at > (lastReadMap[c.id] || '')
 
   return (
     <div>
@@ -280,6 +309,20 @@ export default function Channels() {
               ))}
             </div>
           )}
+          {channels.length > 0 && (
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={13} color="#9ca3af" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search channels…"
+                  style={{ width: '100%', padding: '7px 10px 7px 30px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 12.5, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+          )}
           {loadingList ? (
             <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af' }}>
               <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
@@ -288,6 +331,8 @@ export default function Channels() {
             <div style={{ padding: '30px 20px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
               {isSuperAdmin ? 'No channels yet. Create one to get started.' : 'No channels yet. Ask a Head Doctor to invite you.'}
             </div>
+          ) : invitedChannels.length === 0 && joinedChannels.length === 0 ? (
+            <div style={{ padding: '30px 20px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No channels match "{search}"</div>
           ) : (
             <>
               {invitedChannels.length > 0 && (
@@ -302,7 +347,7 @@ export default function Channels() {
                 Channels ({joinedChannels.length})
               </div>
               {joinedChannels.map(c => (
-                <ChannelRow key={c.id} c={c} active={c.id === selectedId} onClick={() => setSelectedId(c.id)} />
+                <ChannelRow key={c.id} c={c} active={c.id === selectedId} unread={isUnread(c)} onClick={() => setSelectedId(c.id)} />
               ))}
             </>
           )}
@@ -358,13 +403,22 @@ export default function Channels() {
                   </div>
                   <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
                     <Crown size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 3, color: '#d97706' }} />
-                    {selected.head_doctor_name} · {members.length || '…'} member{members.length === 1 ? '' : 's'}
+                    {selected.head_doctor_name} ·{' '}
+                    <span onClick={() => setShowMembers(true)} style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}>
+                      {members.length || '…'} member{members.length === 1 ? '' : 's'}
+                    </span>
                   </div>
                 </div>
-                <button onClick={() => setShowRules(true)} title="Channel rules"
-                  style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}>
-                  <Info size={13} /> Rules
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setShowMembers(true)} title="Channel members"
+                    style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                    <Users size={13} /> Members
+                  </button>
+                  <button onClick={() => setShowRules(true)} title="Channel rules"
+                    style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                    <Info size={13} /> Rules
+                  </button>
+                </div>
               </div>
 
               {/* Messages */}
@@ -488,6 +542,37 @@ export default function Channels() {
         </div>
       )}
 
+      {/* Members modal */}
+      {showMembers && selected && (
+        <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
+          onClick={e => e.target === e.currentTarget && setShowMembers(false)}>
+          <div className="animate-fade-up" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 380, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 15, color: '#111827' }}>
+                <Users size={17} color="#0ea5e9" /> #{selected.name} Members ({members.length})
+              </div>
+              <button onClick={() => setShowMembers(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
+            </div>
+            <div style={{ padding: '10px 14px', overflowY: 'auto' }}>
+              {members.map(m => (
+                <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px' }}>
+                  <Avatar name={m.user_name} size={32} src={m.avatar} />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user_name}</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af' }}>{m.user_email}</div>
+                  </div>
+                  {m.member_role === 'head' && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 700, color: '#d97706', background: '#fffbeb', padding: '3px 8px', borderRadius: 99, flexShrink: 0 }}>
+                      <Crown size={10} /> Head
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Create channel modal */}
       {showCreate && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
@@ -542,7 +627,7 @@ export default function Channels() {
   )
 }
 
-function ChannelRow({ c, active, pending, onClick }) {
+function ChannelRow({ c, active, pending, unread, onClick }) {
   return (
     <div onClick={onClick} className="followup-row" style={{
       padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
@@ -551,10 +636,16 @@ function ChannelRow({ c, active, pending, onClick }) {
     }}>
       <Avatar name={c.name} size={32} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
-        <div style={{ fontSize: 11, color: pending ? '#d97706' : '#9ca3af' }}>{pending ? 'Pending invite' : c.head_doctor_name}</div>
+        <div style={{ fontSize: 13, fontWeight: unread ? 800 : 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+        <div style={{ fontSize: 11, color: pending ? '#d97706' : '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {pending ? 'Pending invite' : previewText(c)}
+        </div>
       </div>
-      {pending && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
+        {c.last_message_at && !pending && <span style={{ fontSize: 10, color: '#9ca3af' }}>{timeAgo(c.last_message_at)}</span>}
+        {pending ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} /> :
+          unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#0ea5e9' }} />}
+      </div>
     </div>
   )
 }
