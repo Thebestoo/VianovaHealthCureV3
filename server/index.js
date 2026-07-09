@@ -1243,7 +1243,7 @@ app.get('/api/channels', auth, async (req, res) => {
     channels = (await db.execute({
       sql: `SELECT c.*, cm.status as my_status, cm.member_role as my_role, ${LAST_MSG_COLS} FROM channels c
             INNER JOIN channel_members cm ON cm.channel_id = c.id
-            WHERE cm.user_id = ? AND cm.status NOT IN ('kicked', 'banned') ORDER BY last_message_at DESC, c.created_at DESC`,
+            WHERE cm.user_id = ? AND cm.status NOT IN ('kicked', 'banned', 'left') ORDER BY last_message_at DESC, c.created_at DESC`,
       args: [req.user.id],
     })).rows
   }
@@ -1468,12 +1468,16 @@ app.post('/api/channels/:id/invite', auth, async (req, res) => {
   if (!candidate) return res.status(404).json({ error: `No doctor found matching "${query}"` })
   const existing = await getMembership(req.params.id, candidate.id)
   if (existing?.status === 'banned') return res.status(403).json({ error: `${candidate.name} is banned from this channel` })
-  if (existing) return res.status(400).json({ error: `${candidate.name} is already invited or a member` })
+  if (existing && !['declined', 'left'].includes(existing.status)) return res.status(400).json({ error: `${candidate.name} is already invited or a member` })
   const now = new Date().toISOString()
-  await db.execute({
-    sql: 'INSERT INTO channel_members (id, channel_id, user_id, user_name, user_email, member_role, status, invited_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    args: [randomUUID(), req.params.id, candidate.id, candidate.name, candidate.email, 'member', 'invited', req.user.name, now],
-  })
+  if (existing) {
+    await db.execute({ sql: "UPDATE channel_members SET status = 'invited', invited_by_name = ?, responded_at = NULL WHERE id = ?", args: [req.user.name, existing.id] })
+  } else {
+    await db.execute({
+      sql: 'INSERT INTO channel_members (id, channel_id, user_id, user_name, user_email, member_role, status, invited_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [randomUUID(), req.params.id, candidate.id, candidate.name, candidate.email, 'member', 'invited', req.user.name, now],
+    })
+  }
   await db.execute({
     sql: 'INSERT INTO channel_messages (id, channel_id, sender_id, sender_name, sender_email, type, message, meta, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     args: [randomUUID(), req.params.id, req.user.id, req.user.name, req.user.email, 'invite', `${req.user.name} invited ${candidate.name} to join the channel.`, JSON.stringify({ invited_user_id: candidate.id, invited_user_name: candidate.name, rules: channel.rules }), now],
@@ -1494,6 +1498,27 @@ app.post('/api/channels/:id/respond', auth, async (req, res) => {
     args: [randomUUID(), req.params.id, 'System', 'system', accept ? `${req.user.name} joined the channel.` : `${req.user.name} declined the invite.`, now],
   })
   res.json({ ok: true, status: newStatus })
+})
+
+// Leave a channel — any joined member except the head doctor (who must be reassigned by an admin)
+app.post('/api/channels/:id/leave', auth, async (req, res) => {
+  const membership = await getMembership(req.params.id, req.user.id)
+  if (!membership || membership.status !== 'joined') return res.status(400).json({ error: 'Not a member of this channel' })
+  if (membership.member_role === 'head') return res.status(400).json({ error: 'The Head Doctor cannot leave — ask an admin to reassign the channel' })
+  const now = new Date().toISOString()
+  await db.execute({ sql: "UPDATE channel_members SET status = 'left', responded_at = ? WHERE id = ?", args: [now, membership.id] })
+  await postSystemMessage(req.params.id, `${req.user.name} left the channel.`)
+  res.json({ ok: true })
+})
+
+// Delete a message — the sender, or a superadmin, can remove it
+app.delete('/api/channels/:id/messages/:messageId', auth, async (req, res) => {
+  const msg = (await db.execute({ sql: 'SELECT * FROM channel_messages WHERE id = ? AND channel_id = ?', args: [req.params.messageId, req.params.id] })).rows[0]
+  if (!msg) return res.status(404).json({ error: 'Message not found' })
+  if (msg.type !== 'message') return res.status(400).json({ error: 'Only regular messages can be deleted' })
+  if (msg.sender_id !== req.user.id && req.user.role !== 'superadmin') return res.status(403).json({ error: 'Not your message' })
+  await db.execute({ sql: 'DELETE FROM channel_messages WHERE id = ?', args: [req.params.messageId] })
+  res.json({ ok: true })
 })
 
 // ── Health / ping ──────────────────────────────────────────────────────────────

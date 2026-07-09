@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { MessageSquare, Plus, X, Loader2, ShieldCheck, Send, Users, Check, Info, AtSign,
-         CheckCircle, XCircle, Crown, Hash, Siren, BellRing, Search, Bell, BellOff } from 'lucide-react'
+         CheckCircle, XCircle, Crown, Hash, Siren, BellRing, Search, Bell, BellOff, Trash2, LogOut } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import toast from 'react-hot-toast'
 
@@ -229,6 +229,23 @@ export default function Channels() {
       else toast('Invite declined')
     } catch (err) { toast.error(err.message) }
     setResponding(false)
+  }
+
+  async function leaveChannel() {
+    if (!window.confirm(`Leave #${selected.name}? You'll need a new invite to rejoin.`)) return
+    try {
+      await api(`/api/channels/${selectedId}/leave`, { method: 'POST' })
+      setSelectedId(null)
+      await loadChannels()
+      toast('You left the channel')
+    } catch (err) { toast.error(err.message) }
+  }
+
+  async function deleteMessage(messageId) {
+    try {
+      await api(`/api/channels/${selectedId}/messages/${messageId}`, { method: 'DELETE' })
+      await loadMessages()
+    } catch (err) { toast.error(err.message) }
   }
 
   async function requireSuperAdmin() {
@@ -461,6 +478,12 @@ export default function Channels() {
                     style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}>
                     <Info size={13} /> Rules
                   </button>
+                  {!isSuperAdmin && !isHead && (
+                    <button onClick={leaveChannel} title="Leave channel"
+                      style={{ background: '#fef2f2', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#dc2626' }}>
+                      <LogOut size={13} /> Leave
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -509,12 +532,17 @@ export default function Channels() {
                     )
                   }
                   const mine = m.sender_email === email
+                  const canDelete = mine || isSuperAdmin
                   return (
                     <div key={m.id} style={{ display: 'flex', gap: 10, flexDirection: mine ? 'row-reverse' : 'row' }}>
                       <Avatar name={m.sender_name} size={30} src={m.sender_avatar} />
                       <div style={{ maxWidth: '65%' }}>
-                        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 3, textAlign: mine ? 'right' : 'left' }}>
+                        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
                           {m.sender_name} · {timeAgo(m.created_at)}
+                          {canDelete && (
+                            <Trash2 size={11} onClick={() => window.confirm('Delete this message?') && deleteMessage(m.id)}
+                              style={{ cursor: 'pointer', opacity: 0.5 }} />
+                          )}
                         </div>
                         <div style={{
                           padding: '9px 14px', borderRadius: 12, fontSize: 13.5, lineHeight: 1.4, whiteSpace: 'pre-wrap',
