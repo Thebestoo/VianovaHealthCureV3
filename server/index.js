@@ -354,6 +354,36 @@ async function notifyAll(tpl, { skipEmail } = {}) {
   await Promise.allSettled(sends)
 }
 
+// Deliver a notification only to a specific set of user emails (e.g. a case's
+// owner + assignee), instead of broadcasting to every active user like notifyAll.
+// Delivers to notify_email if set, otherwise falls back to login email.
+async function notifyUsers(emails, tpl, { skipEmail } = {}) {
+  const uniqueEmails = [...new Set(emails.filter(Boolean).map(e => e.toLowerCase().trim()))]
+    .filter(e => e !== skipEmail?.toLowerCase().trim())
+  if (!uniqueEmails.length) return
+  const placeholders = uniqueEmails.map(() => '?').join(',')
+  const users = (await db.execute({
+    sql: `SELECT email, notify_email FROM users WHERE active = 1 AND lower(email) IN (${placeholders})`,
+    args: uniqueEmails,
+  })).rows
+  const sends = users.map(u => {
+    const dest = u.notify_email?.trim() || u.email?.trim()
+    if (!dest) return Promise.resolve()
+    return sendEmail({ to: dest, ...tpl }).then(r => {
+      if (!r.ok) logError('email_failed', r.error, 'notifyUsers()', null, { to: dest, subject: tpl.subject })
+      else logUpdate('email_sent', `Email sent to ${dest}: ${tpl.subject}`, { to: dest, subject: tpl.subject })
+    }).catch(e => logError('email_failed', e.message, 'notifyUsers()', null, { to: dest }))
+  })
+  await Promise.allSettled(sends)
+}
+
+// Notify only superadmins — used for events that need admin review/awareness
+// rather than a broadcast to every doctor (e.g. a newly submitted case).
+async function notifySuperadmins(tpl, { skipEmail } = {}) {
+  const admins = (await db.execute({ sql: "SELECT email FROM users WHERE role = 'superadmin' AND active = 1", args: [] })).rows
+  await notifyUsers(admins.map(a => a.email), tpl, { skipEmail })
+}
+
 // Send a system-error alert to all superadmins + the given doctor email
 async function notifySystemError(errorMsg, route, submitterEmail) {
   const tpl = tplSystemError({ errorMsg, route, triggeredBy: submitterEmail })
@@ -573,14 +603,14 @@ app.post('/api/analyze', auth, aiLimiter, async (req, res) => {
       confidence: (analysis.confidence?.level ?? analysis.confidence_level),
       emergency: isEmergency,
     }
-    // Notify ALL users about the new case
+    // Notify superadmins only — they're the ones reviewing new cases, not every doctor
     if (isEmergency) {
-      notifyAll(tplEmergencyAlert({
+      notifySuperadmins(tplEmergencyAlert({
         ...emailCtx,
         redFlags: analysis.red_flags?.indicators || [],
-      }))
+      }), { skipEmail: req.apiKey })
     } else {
-      notifyAll(tplNewCase(emailCtx))
+      notifySuperadmins(tplNewCase(emailCtx), { skipEmail: req.apiKey })
     }
 
     res.json({ case_id: caseId, analysis })
@@ -702,7 +732,7 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
       age: patient.age, sex: patient.sex,
       treatment: final_approved_cure,
     })
-    notifyAll(tplCaseApproved({
+    notifyUsers([row.owner_key, row.assigned_to], tplCaseApproved({
       caseId: req.params.id,
       label: req.keyLabel,
       age: patient.age, sex: patient.sex,
@@ -710,20 +740,20 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
       approvedBy: reviewed_by || req.keyLabel,
       treatment: final_approved_cure,
       avatarUrl: req.user?.avatar || '',
-    }))
+    }), { skipEmail: req.apiKey })
   } else if (treatmentChanged) {
     await logUpdate('treatment_edited', `Treatment plan edited for case ${req.params.id.slice(0,8)} by ${req.keyLabel}`, {
       case_id: req.params.id, label: req.keyLabel,
       old_treatment: oldTreatment, new_treatment: final_approved_cure,
     })
-    notifyAll(tplTreatmentEdited({
+    notifyUsers([row.owner_key, row.assigned_to], tplTreatmentEdited({
       caseId: req.params.id,
       label: req.keyLabel,
       age: patient.age, sex: patient.sex,
       oldTreatment, newTreatment: final_approved_cure,
       notes: doctor_notes,
       avatarUrl: req.user?.avatar || '',
-    }))
+    }), { skipEmail: req.apiKey })
   } else if (doctor_notes) {
     await logUpdate('notes_updated', `Doctor notes updated for case ${req.params.id.slice(0,8)} by ${req.keyLabel}`, {
       case_id: req.params.id, label: req.keyLabel,
