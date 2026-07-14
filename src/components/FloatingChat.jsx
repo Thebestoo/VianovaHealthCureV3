@@ -802,11 +802,16 @@ export default function FloatingChat() {
         @keyframes fc-pulse   { 0%{transform:scale(1);opacity:1} 100%{transform:scale(1.8);opacity:0} }
         @keyframes fc-spin    { to{transform:rotate(360deg)} }
         @keyframes fc-slidein { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-        .fc-win { animation: fc-slidein .2s ease both; }
+        .fc-win { animation: fc-slidein .2s ease both; position: fixed; bottom: 96px; right: 28px; z-index: 9998; width: 370px; height: 540px; border-radius: 20px; background: #fff; box-shadow: 0 20px 60px rgba(0,0,0,.18); display: flex; flex-direction: column; overflow: hidden; isolation: isolate; }
+        .fc-launcher { position: fixed; bottom: 28px; right: 28px; z-index: 9999; width: 60px; height: 60px; }
+        @media (max-width: 480px) {
+          .fc-win { bottom: 0; right: 0; left: 0; top: 0; width: 100%; height: 100%; border-radius: 0; }
+          .fc-launcher { bottom: 18px; right: 18px; }
+        }
       `}</style>
 
       {/* launcher button */}
-      <button onClick={() => setOpen(o => !o)} style={{ position: 'fixed', bottom: 28, right: 28, zIndex: 9999, width: 60, height: 60, borderRadius: '50%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', border: 'none', cursor: 'pointer', boxShadow: '0 6px 24px rgba(26,101,232,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .15s' }}
+      <button className="fc-launcher" onClick={() => setOpen(o => !o)} style={{ borderRadius: '50%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', border: 'none', cursor: 'pointer', boxShadow: '0 6px 24px rgba(26,101,232,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .15s' }}
         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
       >
@@ -817,7 +822,7 @@ export default function FloatingChat() {
 
       {/* chat window */}
       {open && (
-        <div className="fc-win" style={{ position: 'fixed', bottom: 96, right: 28, zIndex: 9998, width: 370, height: 540, borderRadius: 20, background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', overflow: 'hidden', isolation: 'isolate' }}>
+        <div className="fc-win">
 
           {(inUserChat || inAdminChat)
             ? <ChatHeader

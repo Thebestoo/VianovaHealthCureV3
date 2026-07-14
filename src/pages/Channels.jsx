@@ -340,9 +340,9 @@ export default function Channels() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', height: 'calc(100vh - 56px)' }}>
+      <div className={`ch-layout${selected ? ' ch-has-selected' : ''}`} style={{ display: 'flex', height: 'calc(100vh - 56px)' }}>
         {/* Sidebar */}
-        <div style={{ width: 280, borderRight: '1px solid var(--border)', background: '#fff', overflowY: 'auto', flexShrink: 0 }}>
+        <div className="ch-sidebar" style={{ width: 280, borderRight: '1px solid var(--border)', background: '#fff', overflowY: 'auto', flexShrink: 0 }}>
           {isSuperAdmin && adminCalls.length > 0 && (
             <div style={{ borderBottom: '1px solid var(--border)' }}>
               <div style={{ padding: '14px 16px 6px', fontSize: 11, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '.05em', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -410,7 +410,7 @@ export default function Channels() {
         </div>
 
         {/* Main panel */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#f8fafc' }}>
+        <div className="ch-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#f8fafc' }}>
           {!selected ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', gap: 10 }}>
               <MessageSquare size={40} strokeWidth={1.2} />
@@ -453,7 +453,12 @@ export default function Channels() {
             <>
               {/* Channel header */}
               <div style={{ padding: '14px 22px', background: '#fff', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <button className="ch-back" onClick={() => setSelectedId(null)} title="Back to channels"
+                    style={{ display: 'none', background: '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#374151' }}>
+                    ‹
+                  </button>
+                  <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Hash size={15} color="#9ca3af" /> {selected.name}
                   </div>
@@ -463,6 +468,7 @@ export default function Channels() {
                     <span onClick={() => setShowMembers(true)} style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}>
                       {members.length || '…'} member{members.length === 1 ? '' : 's'}
                     </span>
+                  </div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -693,7 +699,16 @@ export default function Channels() {
         </div>
       )}
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @media (max-width: 640px) {
+          .ch-sidebar { width: 100% !important; }
+          .ch-main { display: none !important; }
+          .ch-has-selected .ch-sidebar { display: none !important; }
+          .ch-has-selected .ch-main { display: flex !important; }
+          .ch-back { display: flex !important; }
+        }
+      `}</style>
     </div>
   )
 }
@@ -722,7 +737,7 @@ function ChannelRow({ c, active, pending, unread, muted, onClick, onToggleMute }
       </div>
       {!pending && onToggleMute && (
         <button onClick={e => { e.stopPropagation(); onToggleMute() }} title={muted ? 'Unmute' : 'Mute'}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 2, flexShrink: 0 }}>
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 9, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {muted ? <BellOff size={13} /> : <Bell size={13} />}
         </button>
       )}

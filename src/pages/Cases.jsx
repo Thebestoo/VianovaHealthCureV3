@@ -117,37 +117,37 @@ export default function Cases() {
                 </button>
               )}
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-              <div style={{ position: 'relative' }}>
+            <div className="cases-filter-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+              <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 160 }}>
                 <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
                 <input
                   className="form-input"
-                  style={{ paddingLeft: 32, width: 220 }}
+                  style={{ paddingLeft: 32, width: '100%' }}
                   placeholder="Search cases…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                 />
               </div>
-              <select className="form-input" style={{ width: 150 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+              <select className="form-input" style={{ flex: '1 1 140px', minWidth: 130 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
                 <option value="all">All statuses</option>
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
                 <option value="emergency">Emergency</option>
                 <option value="urgent">Urgent</option>
               </select>
-              <select className="form-input" style={{ width: 160 }} value={confFilter} onChange={e => setConfFilter(e.target.value)}>
+              <select className="form-input" style={{ flex: '1 1 140px', minWidth: 130 }} value={confFilter} onChange={e => setConfFilter(e.target.value)}>
                 <option value="all">All confidence</option>
                 <option value="high">High</option>
                 <option value="moderate">Moderate</option>
                 <option value="low">Low</option>
               </select>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 160px', minWidth: 150 }}>
                 <label style={{ fontSize: 12, color: 'var(--text3)' }}>From</label>
-                <input type="date" className="form-input" style={{ width: 145 }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                <input type="date" className="form-input" style={{ width: '100%' }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 160px', minWidth: 150 }}>
                 <label style={{ fontSize: 12, color: 'var(--text3)' }}>To</label>
-                <input type="date" className="form-input" style={{ width: 145 }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+                <input type="date" className="form-input" style={{ width: '100%' }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
               </div>
             </div>
           </div>
