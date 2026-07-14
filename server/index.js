@@ -663,6 +663,7 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
       complaint: analysis.presenting_complaint,
       approvedBy: reviewed_by || req.keyLabel,
       treatment: final_approved_cure,
+      avatarUrl: req.user?.avatar || '',
     }))
   } else if (treatmentChanged) {
     await logUpdate('treatment_edited', `Treatment plan edited for case ${req.params.id.slice(0,8)} by ${req.keyLabel}`, {
@@ -675,6 +676,7 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
       age: patient.age, sex: patient.sex,
       oldTreatment, newTreatment: final_approved_cure,
       notes: doctor_notes,
+      avatarUrl: req.user?.avatar || '',
     }))
   } else if (doctor_notes) {
     await logUpdate('notes_updated', `Doctor notes updated for case ${req.params.id.slice(0,8)} by ${req.keyLabel}`, {
@@ -725,7 +727,6 @@ app.post('/api/auth/login', async (req, res) => {
   ;(async () => {
     try {
       const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim() || null
-      const loginTime = new Date().toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })
       let geo = null
       if (ip && !ip.startsWith('127.') && !ip.startsWith('::1') && !ip.startsWith('10.') && !ip.startsWith('192.168.')) {
         try {
@@ -734,6 +735,11 @@ app.post('/api/auth/login', async (req, res) => {
           if (geoData.status === 'success') geo = geoData
         } catch { /* geo lookup failed — send email without it */ }
       }
+      // Render the sign-in timestamp in the visitor's own timezone (from IP geolocation)
+      // rather than the server's timezone, so "Date & Time" reflects where they actually are.
+      const timeFmtOpts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' }
+      if (geo?.timezone) timeFmtOpts.timeZone = geo.timezone
+      const loginTime = new Date().toLocaleString('en-US', timeFmtOpts)
       const result = await sendEmail({ to: dest, ...tplLoginWelcome({ displayName, email: user.email, role: user.role, loginTime, ip, geo, avatar: user.avatar || '' }) })
       if (!result.ok) logError('email_failed', result.error, 'POST /api/auth/login', null, { to: dest })
     } catch (e) { logError('email_failed', e.message, 'POST /api/auth/login', null, { to: dest }) }
@@ -1127,6 +1133,7 @@ app.post('/api/admin/users', auth, requireAdmin, async (req, res) => {
           password,
           role,
           addedBy: adminUser?.name || 'a super admin',
+          addedByAvatarUrl: adminUser?.avatar || '',
         }),
       }).catch(() => {})
     }
@@ -1176,7 +1183,7 @@ app.patch('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
       const csvString = csvRows.join('\n')
       const csvBase64 = Buffer.from(csvString).toString('base64')
 
-      const deactivationTpl = tplUserDeactivated({ userName: user.name, userEmail: user.email, deactivatedBy: req.apiKey })
+      const deactivationTpl = tplUserDeactivated({ userName: user.name, userEmail: user.email, deactivatedBy: req.apiKey, avatarUrl: user.avatar || '' })
       const attachments = [{ name: `${user.email}-history.csv`, content: csvBase64 }]
 
       // Notify all active users (superadmins + doctors)
@@ -3934,7 +3941,7 @@ app.post('/api/consent/break-glass', auth, async (req, res) => {
       sql: `INSERT INTO consent_audit_events (id, patient_id, owner_email, event_type, actor, resource_accessed, consent_id, violation, severity, detail, fhir_audit_event, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       args: [auditId, patient_id, req.apiKey, 'break_glass', actor || req.apiKey, 'PatientRecord', null, 0, 'high', reason, fhirAudit, now]
     })
-    notifyAll(tplAuditEvent({ eventType: 'break_glass', actor: actor || req.apiKey, resourceType: 'Patient', patientId: patient_id, detail: reason, severity: 'high' })).catch(() => {})
+    notifyAll(tplAuditEvent({ eventType: 'break_glass', actor: actor || req.apiKey, resourceType: 'Patient', patientId: patient_id, detail: reason, severity: 'high', avatarUrl: req.user?.avatar || '' })).catch(() => {})
     res.json({ allowed: true, audit_id: auditId })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

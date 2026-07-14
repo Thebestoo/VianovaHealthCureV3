@@ -302,7 +302,7 @@ export function tplEmergencyAlert({ caseId, label, age, sex, complaint, redFlags
   }
 }
 
-export function tplCaseApproved({ caseId, label, age, sex, complaint, approvedBy, treatment }) {
+export function tplCaseApproved({ caseId, label, age, sex, complaint, approvedBy, treatment, avatarUrl }) {
   const treatmentPanel = treatment ? alertPanel({
     borderColor: '#bbf7d0',
     bgColor: '#f0fdf4',
@@ -318,6 +318,7 @@ export function tplCaseApproved({ caseId, label, age, sex, complaint, approvedBy
       title: 'Case Approved',
       subtitle: `Reviewed by ${approvedBy || label || '—'}`,
       accentColor: '#059669',
+      avatarUrl,
       rows: [
         { label: 'Case ID', value: `<span style="font-family:monospace;">${caseId}</span>` },
         { label: 'Patient', value: `${age ? age + 'y' : '—'} ${sex || ''}`.trim() || '—' },
@@ -332,7 +333,7 @@ export function tplCaseApproved({ caseId, label, age, sex, complaint, approvedBy
   }
 }
 
-export function tplTreatmentEdited({ caseId, label, age, sex, oldTreatment, newTreatment, notes }) {
+export function tplTreatmentEdited({ caseId, label, age, sex, oldTreatment, newTreatment, notes, avatarUrl }) {
   const panels = [
     oldTreatment && alertPanel({ borderColor: '#cbd5e1', bgColor: '#f1f5f9', textColor: '#475569', title: 'Previous Plan', content: oldTreatment }),
     newTreatment && alertPanel({ borderColor: '#c4b5fd', bgColor: '#f5f3ff', textColor: '#5b21b6', title: 'Updated Plan', content: newTreatment }),
@@ -346,6 +347,7 @@ export function tplTreatmentEdited({ caseId, label, age, sex, oldTreatment, newT
       title: 'Treatment Plan Updated',
       subtitle: `Updated by ${label || '—'}`,
       accentColor: '#7c3aed',
+      avatarUrl,
       rows: [
         { label: 'Case ID', value: `<span style="font-family:monospace;">${caseId}</span>` },
         { label: 'Patient', value: `${age ? age + 'y' : '—'} ${sex || ''}`.trim() || '—' },
@@ -395,7 +397,7 @@ export function tplAppointmentReminder({ patientName, appointmentType, appointme
   }
 }
 
-export function tplUserDeactivated({ userName, userEmail, deactivatedBy }) {
+export function tplUserDeactivated({ userName, userEmail, deactivatedBy, avatarUrl }) {
   return {
     subject: `User Account Deactivated — ${userName || userEmail}`,
     html: buildEmail({
@@ -403,6 +405,7 @@ export function tplUserDeactivated({ userName, userEmail, deactivatedBy }) {
       title: 'User Account Deactivated',
       subtitle: `Account access has been revoked`,
       accentColor: '#78716c',
+      avatarUrl,
       rows: [
         { label: 'User Name', value: userName || '—' },
         { label: 'Email', value: userEmail || '—' },
@@ -946,7 +949,7 @@ export function tplClinicalDecisionRun({ patientName, news2Score, news2Label, ri
   }
 }
 
-export function tplAuditEvent({ eventType, actor, resourceType, patientId, detail, severity }) {
+export function tplAuditEvent({ eventType, actor, resourceType, patientId, detail, severity, avatarUrl }) {
   const isHigh = severity === 'high'
   return {
     subject: `Audit Event: ${eventType}${isHigh ? ' [HIGH SEVERITY]' : ''}`,
@@ -954,6 +957,7 @@ export function tplAuditEvent({ eventType, actor, resourceType, patientId, detai
       headerGradient: isHigh ? 'linear-gradient(135deg,#7f1d1d,#dc2626)' : 'linear-gradient(135deg,#1c1917,#44403c)',
       title: 'Audit Event Recorded',
       accentColor: isHigh ? '#dc2626' : '#44403c',
+      avatarUrl,
       rows: [
         { label: 'Event Type', value: eventType || '—' },
         { label: 'Actor', value: actor || '—' },
@@ -970,38 +974,34 @@ export function tplAuditEvent({ eventType, actor, resourceType, patientId, detai
   }
 }
 
-export function tplNewUserWelcome({ name, email, password, role, addedBy }) {
+export function tplNewUserWelcome({ name, email, password, role, addedBy, avatarUrl, addedByAvatarUrl }) {
   const roleLabel = role === 'superadmin' ? 'Super Admin' : 'Doctor'
-  const subject = 'Welcome to Vianova Health — Your account is ready'
-  const html = `
-<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f8fafc;font-family:'Helvetica Neue',Arial,sans-serif;">
-<div style="max-width:560px;margin:40px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">
-  <div style="background:linear-gradient(135deg,#0e7490,#0369a1);padding:32px 36px;">
-    <div style="background:rgba(255,255,255,.94);border-radius:8px;padding:6px 10px;display:inline-block;line-height:0;margin-bottom:20px;">${VIANOVA_LOGO_SVG}</div>
-    <h1 style="color:#fff;font-size:26px;font-weight:800;margin:0 0 8px;letter-spacing:-.02em;">Welcome, ${name}!</h1>
-    <p style="color:rgba(255,255,255,.7);font-size:14px;margin:0;">Your account has been created by ${addedBy}</p>
-  </div>
-  <div style="padding:32px 36px;">
-    <p style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 24px;">You've been added to the <strong>Vianova Health Cure Analyzer System</strong> as a <strong style="color:#0e7490;">${roleLabel}</strong>. Use the credentials below to sign in.</p>
-    <div style="background:#f1f5f9;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-      <div style="margin-bottom:14px;">
-        <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Login Email</div>
-        <div style="font-size:15px;font-weight:600;color:#0f172a;">${email}</div>
-      </div>
-      <div>
-        <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Temporary Password</div>
-        <div style="font-size:15px;font-weight:600;color:#0f172a;font-family:monospace;background:#e2e8f0;padding:6px 12px;border-radius:8px;display:inline-block;">${password}</div>
-      </div>
-    </div>
-    <a href="https://vianova-health.onrender.com/login" style="display:block;text-align:center;background:linear-gradient(135deg,#0e7490,#0369a1);color:#fff;font-weight:700;font-size:14px;padding:14px 24px;border-radius:12px;text-decoration:none;margin-bottom:24px;">Sign In to Vianova Health</a>
-    <p style="color:#94a3b8;font-size:12px;line-height:1.6;margin:0;">Please change your password after your first login. If you have any issues, contact your system administrator.</p>
-  </div>
-  <div style="background:#f8fafc;padding:16px 36px;text-align:center;border-top:1px solid #e2e8f0;">
-    <p style="color:#cbd5e1;font-size:11px;margin:0;">Vianova Health · Cure Analyzer System v2.0</p>
-  </div>
-</div>
-</body></html>`
-  return { subject, html, text: `Welcome ${name}! Your Vianova Health account is ready. Email: ${email} | Password: ${password} | Sign in at https://vianova-health.onrender.com/login` }
+  return {
+    subject: 'Welcome to Vianova Health — Your account is ready',
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#0e7490,#0369a1)',
+      title: `Welcome, ${name}!`,
+      subtitle: `Your account was created by ${addedBy}`,
+      accentColor: '#0369a1',
+      avatarUrl: avatarUrl || addedByAvatarUrl,
+      emoji: '🎉',
+      rows: [
+        { label: 'Login Email', value: email },
+        { label: 'Role', value: roleLabel, chip: true },
+        { label: 'Temporary Password', value: `<span style="font-family:monospace;background:#e2e8f0;padding:3px 10px;border-radius:6px;">${password}</span>` },
+      ],
+      alertPanels: [{
+        borderColor: '#fbbf24',
+        bgColor: '#fffbeb',
+        textColor: '#92400e',
+        title: null,
+        content: 'Please change your password after your first login.',
+      }],
+      actionUrl: 'https://vianova-health.onrender.com/login',
+      actionLabel: 'Sign In to Vianova Health',
+    }),
+    text: `Welcome ${name}! Your Vianova Health account is ready. Email: ${email} | Password: ${password} | Sign in at https://vianova-health.onrender.com/login`,
+  }
 }
 
 export function tplPopulationHealthReport({ cohortName, memberCount, highRiskCount, programType, criteria }) {
