@@ -276,6 +276,28 @@ export function tplNewCase({ caseId, label, age, sex, complaint, confidence, eme
   }
 }
 
+export function tplCaseAssigned({ caseId, assignedByName, avatarUrl, age, sex, complaint }) {
+  return {
+    subject: `New Case Assigned to You — ${caseId.slice(0, 8)}`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#1e3a5f,#0284c7)',
+      title: 'New Case Assigned to You',
+      subtitle: `Assigned by ${assignedByName || '—'}`,
+      accentColor: '#0284c7',
+      avatarUrl,
+      emoji: '📋',
+      rows: [
+        { label: 'Case ID', value: `<span style="font-family:monospace;">${caseId}</span>` },
+        { label: 'Patient Profile', value: `${age ? age + 'y' : '—'} ${sex || ''}`.trim() || '—' },
+        { label: 'Chief Complaint', value: complaint || '—' },
+        { label: 'Assigned By', value: assignedByName || '—' },
+      ],
+      actionUrl: `https://vianova-health.onrender.com/cases/${caseId}`,
+      actionLabel: 'View Case',
+    }),
+  }
+}
+
 export function tplEmergencyAlert({ caseId, label, age, sex, complaint, redFlags = [] }) {
   const flags = Array.isArray(redFlags) ? redFlags : []
   const flagsHtml = flags.length

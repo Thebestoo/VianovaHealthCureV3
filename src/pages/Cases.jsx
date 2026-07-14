@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { PlusCircle, Search, ShieldAlert, AlertTriangle, CheckCircle, Clock, KeyRound, X } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 export default function Cases() {
   const navigate = useNavigate()
-  const { key } = useKey()
+  const { key, role } = useKey()
+  const isSuperAdmin = role === 'superadmin'
   const [cases, setCases] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -13,14 +15,46 @@ export default function Cases() {
   const [confFilter, setConfFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [doctors, setDoctors] = useState([])
+  const [assigningId, setAssigningId] = useState(null)
 
-  useEffect(() => {
+  function loadCases() {
     if (!key) { setLoading(false); return }
     fetch('/api/cases', { headers: { 'x-api-key': key } })
       .then(r => r.json())
       .then(data => { setCases(Array.isArray(data) ? data : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [key])
+  }
+
+  useEffect(() => { loadCases() }, [key])
+
+  useEffect(() => {
+    if (!key || !isSuperAdmin) return
+    fetch('/api/admin/users', { headers: { 'x-api-key': key } })
+      .then(r => r.json())
+      .then(data => setDoctors((data.users || []).filter(u => u.active)))
+      .catch(() => {})
+  }, [key, isSuperAdmin])
+
+  async function assignCase(caseId, userId) {
+    if (!userId) return
+    setAssigningId(caseId)
+    try {
+      const res = await fetch(`/api/cases/${caseId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({ userId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to assign case')
+      toast.success(`Case assigned to ${data.assigned_to_name}`)
+      loadCases()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setAssigningId(null)
+    }
+  }
 
   function getStatus(c) {
     if (c.emergency_detected) return 'emergency'
@@ -142,6 +176,7 @@ export default function Cases() {
                     <th>Confidence</th>
                     <th>Status</th>
                     <th>Date</th>
+                    {isSuperAdmin && <th>Assigned To</th>}
                     <th></th>
                   </tr>
                 </thead>
@@ -161,6 +196,22 @@ export default function Cases() {
                       <td><ConfBadge val={c.confidence_level} /></td>
                       <td><StatusBadge c={c} /></td>
                       <td style={{ color: 'var(--text2)' }}>{new Date(c.created_at).toLocaleDateString()}</td>
+                      {isSuperAdmin && (
+                        <td>
+                          <select
+                            className="form-input"
+                            style={{ fontSize: 12, padding: '4px 8px', width: 150 }}
+                            value={c.assigned_to || ''}
+                            disabled={assigningId === c.case_id}
+                            onChange={e => assignCase(c.case_id, e.target.value)}
+                          >
+                            <option value="">{c.assigned_to_name ? c.assigned_to_name : 'Unassigned'}</option>
+                            {doctors.filter(d => d.email !== c.assigned_to).map(d => (
+                              <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
                       <td>
                         <button className="table-action" onClick={() => navigate(`/cases/${c.case_id}`)}>
                           Open →

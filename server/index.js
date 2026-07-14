@@ -13,7 +13,7 @@ import { dirname, join } from 'path'
 import { existsSync } from 'fs'
 import Groq from 'groq-sdk'
 import bcrypt from 'bcryptjs'
-import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatmentEdited,
+import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatmentEdited, tplCaseAssigned,
          tplAppointmentReminder, tplUserDeactivated, tplAdverseEventDetected,
          tplConsentExpiring, tplSystemError, tplLoginWelcome,
          tplBillingClaimSubmitted, tplAppointmentScheduled, tplLabResultAdded,
@@ -122,6 +122,10 @@ async function initDB() {
     `ALTER TABLE keys ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE cases ADD COLUMN follow_up_date TEXT`,
     `ALTER TABLE cases ADD COLUMN share_token TEXT`,
+    `ALTER TABLE cases ADD COLUMN assigned_to TEXT`,
+    `ALTER TABLE cases ADD COLUMN assigned_to_name TEXT`,
+    `ALTER TABLE cases ADD COLUMN assigned_by_name TEXT`,
+    `ALTER TABLE cases ADD COLUMN assigned_at TEXT`,
     `ALTER TABLE users ADD COLUMN notify_email TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
@@ -286,11 +290,11 @@ async function getCaseForKey(caseId, reqKey, reqRole) {
   if (reqRole === 'superadmin') {
     return (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ?', args: [caseId] })).rows[0] ?? null
   }
-  return (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ? AND owner_key = ?', args: [caseId, reqKey] })).rows[0] ?? null
+  return (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ? AND (owner_key = ? OR assigned_to = ?)', args: [caseId, reqKey, reqKey] })).rows[0] ?? null
 }
 async function listCasesForKey(reqKey, reqRole) {
   if (reqRole === 'superadmin') return (await db.execute({ sql: 'SELECT * FROM cases ORDER BY created_at DESC', args: [] })).rows
-  return (await db.execute({ sql: 'SELECT * FROM cases WHERE owner_key = ? ORDER BY created_at DESC', args: [reqKey] })).rows
+  return (await db.execute({ sql: 'SELECT * FROM cases WHERE owner_key = ? OR assigned_to = ? ORDER BY created_at DESC', args: [reqKey, reqKey] })).rows
 }
 async function keyStats(apiKey, role) {
   const rows = role === 'superadmin'
@@ -607,6 +611,10 @@ app.get('/api/cases', auth, async (req, res) => {
       approved:             analysis?.doctor_review?.approved,
       follow_up_date:       row.follow_up_date || null,
       vitals:               patient?.vitals || [],
+      owner_key:            row.owner_key,
+      assigned_to:          row.assigned_to || null,
+      assigned_to_name:     row.assigned_to_name || null,
+      assigned_at:          row.assigned_at || null,
     }
   })
   res.json(list)
@@ -622,7 +630,45 @@ app.get('/api/cases/:id', auth, async (req, res) => {
     patient_input:  JSON.parse(row.patient_input),
     analysis:       JSON.parse(row.analysis),
     follow_up_date: row.follow_up_date || null,
+    owner_key:        row.owner_key,
+    assigned_to:      row.assigned_to || null,
+    assigned_to_name: row.assigned_to_name || null,
+    assigned_by_name: row.assigned_by_name || null,
+    assigned_at:      row.assigned_at || null,
   })
+})
+
+// ── POST /api/cases/:id/assign — superadmin assigns a case to a doctor ─────────
+app.post('/api/cases/:id/assign', auth, requireAdmin, async (req, res) => {
+  const { userId } = req.body
+  if (!userId) return res.status(400).json({ error: 'userId required' })
+  const row = (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ?', args: [req.params.id] })).rows[0]
+  if (!row) return res.status(404).json({ error: 'Case not found' })
+  const target = (await db.execute({ sql: 'SELECT * FROM users WHERE id = ? AND active = 1', args: [userId] })).rows[0]
+  if (!target) return res.status(404).json({ error: 'User not found or inactive' })
+
+  const now = new Date().toISOString()
+  await db.execute({
+    sql: 'UPDATE cases SET assigned_to = ?, assigned_to_name = ?, assigned_by_name = ?, assigned_at = ? WHERE case_id = ?',
+    args: [target.email, target.name, req.user.name, now, req.params.id],
+  })
+
+  const patient  = JSON.parse(row.patient_input)
+  const analysis = JSON.parse(row.analysis)
+  const dest = target.notify_email?.trim() || target.email
+  notify(dest, tplCaseAssigned({
+    caseId: req.params.id,
+    assignedByName: req.user.name,
+    avatarUrl: req.user.avatar || '',
+    age: patient?.age, sex: patient?.sex,
+    complaint: analysis?.presenting_complaint,
+  })).catch(() => {})
+
+  await logUpdate('case_assigned', `Case ${req.params.id.slice(0, 8)} assigned to ${target.name} by ${req.user.name}`, {
+    case_id: req.params.id, assigned_to: target.email, assigned_by: req.user.name,
+  })
+
+  res.json({ ok: true, assigned_to: target.email, assigned_to_name: target.name, assigned_at: now })
 })
 
 // ── PATCH /api/cases/:id/review ────────────────────────────────────────────────

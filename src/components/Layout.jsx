@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import {
   LayoutDashboard, FolderOpen, PlusCircle, BarChart2,
   HeartPulse, ShieldCheck, Stethoscope, LogOut, Wifi, WifiOff,
@@ -10,6 +11,16 @@ import {
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import FloatingChat from './FloatingChat.jsx'
+
+// Cases newly assigned to the signed-in doctor are toasted once, then remembered
+// here so a page refresh or repeat poll doesn't re-notify for the same assignment.
+const LS_SEEN_ASSIGNED = 'vnh_seen_assigned_cases'
+function readSeenAssigned() {
+  try { return new Set(JSON.parse(localStorage.getItem(LS_SEEN_ASSIGNED) || '[]')) } catch { return new Set() }
+}
+function writeSeenAssigned(set) {
+  localStorage.setItem(LS_SEEN_ASSIGNED, JSON.stringify([...set]))
+}
 
 const NAV_GROUPS = [
   {
@@ -77,10 +88,45 @@ const BOTTOM_NAV = [
 export default function Layout({ children }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const { key, role, label, avatar, stats, disconnect, setAvatar } = useKey()
+  const { key, role, label, email, avatar, stats, disconnect, setAvatar } = useKey()
   const [menuOpen,     setMenuOpen]     = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const fileRef = useRef(null)
+  const seenAssignedRef = useRef(null)
+
+  // Poll for cases newly assigned to this doctor and toast a link to open them.
+  useEffect(() => {
+    if (!key || role === 'superadmin') return
+    if (!seenAssignedRef.current) seenAssignedRef.current = readSeenAssigned()
+
+    async function checkAssignedCases() {
+      try {
+        const res = await fetch('/api/cases', { headers: { 'x-api-key': key } })
+        const cases = await res.json()
+        if (!Array.isArray(cases)) return
+        const seen = seenAssignedRef.current
+        for (const c of cases) {
+          if (!c.assigned_to || c.assigned_to !== email) continue
+          const seenKey = `${c.case_id}:${c.assigned_at}`
+          if (seen.has(seenKey)) continue
+          seen.add(seenKey)
+          toast(t => (
+            <span
+              style={{ cursor: 'pointer' }}
+              onClick={() => { toast.dismiss(t.id); navigate(`/cases/${c.case_id}`) }}
+            >
+              New Case Assigned to you →
+            </span>
+          ), { icon: '📋', duration: 6000 })
+        }
+        writeSeenAssigned(seen)
+      } catch { /* silent — non-critical background poll */ }
+    }
+
+    checkAssignedCases()
+    const interval = setInterval(checkAssignedCases, 8000)
+    return () => clearInterval(interval)
+  }, [key, role, email, navigate])
 
   function handleAvatarUpload(e) {
     const file = e.target.files?.[0]
