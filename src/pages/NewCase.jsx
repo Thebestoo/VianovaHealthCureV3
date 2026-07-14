@@ -322,7 +322,7 @@ export default function NewCase() {
 
       <div style={{ padding: '28px 32px', maxWidth: 820 }}>
         {/* step indicator */}
-        <div className="step-indicator" style={{ marginBottom: 28 }}>
+        <div className="step-indicator" style={{ marginBottom: 12 }}>
           {STEPS.map((label, i) => (
             <React.Fragment key={i}>
               <div className="step-outer">
@@ -338,6 +338,11 @@ export default function NewCase() {
               )}
             </React.Fragment>
           ))}
+        </div>
+        {/* mobile-only current-step caption — replaces the per-circle text labels, which are too
+            cramped to read on narrow screens with 5 steps */}
+        <div className="step-caption-mobile" style={{ marginBottom: 28 }}>
+          Step {step + 1} of {STEPS.length}: <strong>{STEPS[step]}</strong>
         </div>
 
         <div className="card">

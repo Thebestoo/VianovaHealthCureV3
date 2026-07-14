@@ -94,6 +94,17 @@ export default function Layout({ children }) {
   const fileRef = useRef(null)
   const seenAssignedRef = useRef(null)
 
+  // Let ESC close whichever overlay is open (profile modal, mobile drawer) —
+  // mobile users especially have no click-outside affordance while scrolled.
+  useEffect(() => {
+    if (!settingsOpen && !menuOpen) return
+    function onKeyDown(e) {
+      if (e.key === 'Escape') { setSettingsOpen(false); setMenuOpen(false) }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [settingsOpen, menuOpen])
+
   // Poll for cases newly assigned to this doctor and toast a link to open them.
   useEffect(() => {
     if (!key || role === 'superadmin') return

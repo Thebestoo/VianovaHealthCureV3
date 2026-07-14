@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vianova Health — Product Overview</title>
+<style>
+  :root{
+    --bg:#0a4a61; --bg-dark:#083d52; --bg-deep:#062f3f;
+    --primary:#0e7490; --primary-dark:#0c5f78; --accent:#0284c7;
+    --text:#0f172a; --text2:#475569; --text3:#94a3b8;
+    --success:#059669; --warning:#d97706; --danger:#dc2626;
+    --border:#e2e8f0; --surface:#ffffff; --surface2:#f8fafc;
+    --radius:16px;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:'Segoe UI',system-ui,-apple-system,'Inter',sans-serif;
+    background:linear-gradient(135deg,#eef4f8 0%,#dfeaf2 100%);
+    color:var(--text);
+    overflow:hidden;
+  }
+  /* ---------- deck shell ---------- */
+  #deck{
+    position:relative; width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .slide{
+    position:absolute; inset:0;
+    display:none;
+    flex-direction:column;
+    padding:70px 90px 60px;
+    opacity:0;
+    transition:opacity .45s ease;
+  }
+  .slide.active{ display:flex; opacity:1; }
+  .slide-inner{ max-width:1180px; margin:0 auto; width:100%; height:100%; display:flex; flex-direction:column; }
+
+  /* progress + chrome */
+  #chrome-top{
+    position:fixed; top:0; left:0; right:0; height:5px; z-index:50;
+    background:rgba(14,116,144,.08);
+  }
+  #chrome-top-bar{
+    height:100%; width:0%;
+    background:linear-gradient(90deg,var(--accent),var(--primary));
+    transition:width .35s ease;
+  }
+  #brandmark{
+    position:fixed; top:22px; left:90px; z-index:40;
+    font-weight:800; letter-spacing:-.02em; font-size:14px; color:var(--primary-dark);
+    display:flex; align-items:center; gap:8px;
+  }
+  #brandmark .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);}
+  #pager{
+    position:fixed; top:22px; right:90px; z-index:40;
+    font-size:12.5px; font-weight:700; color:var(--text3); letter-spacing:.04em;
+    font-variant-numeric:tabular-nums;
+  }
+  #navbtns{
+    position:fixed; bottom:26px; left:0; right:0; z-index:40;
+    display:flex; align-items:center; justify-content:center; gap:14px;
+  }
+  .navbtn{
+    width:42px; height:42px; border-radius:50%; border:1.5px solid var(--border);
+    background:#fff; color:var(--primary-dark); font-size:17px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 10px rgba(15,23,42,.08); transition:all .15s;
+  }
+  .navbtn:hover{ background:var(--primary); color:#fff; transform:translateY(-2px); box-shadow:0 6px 18px rgba(14,116,144,.3);}
+  .navbtn:disabled{ opacity:.3; cursor:default; transform:none; box-shadow:none; }
+  #dots{ display:flex; gap:6px; align-items:center; margin:0 10px; }
+  .dot-ind{ width:6px; height:6px; border-radius:50%; background:var(--border); cursor:pointer; transition:all .2s; }
+  .dot-ind.active{ width:20px; border-radius:4px; background:var(--primary); }
+
+  /* ---------- typography helpers ---------- */
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--accent); margin-bottom:14px;
+  }
+  .eyebrow::before{ content:''; width:22px; height:2px; background:var(--accent); display:inline-block; }
+  h1.slide-title{ font-size:44px; font-weight:800; letter-spacing:-.02em; color:var(--text); line-height:1.08; }
+  h2.slide-title{ font-size:34px; font-weight:800; letter-spacing:-.02em; color:var(--text); line-height:1.12; }
+  .slide-sub{ font-size:16.5px; color:var(--text2); margin-top:14px; max-width:760px; line-height:1.6; }
+  .content{ margin-top:36px; flex:1; overflow:auto; }
+
+  /* ---------- cover ---------- */
+  #slide-0{
+    background:radial-gradient(circle at 15% 20%, #0c5f78 0%, var(--bg-dark) 55%, var(--bg-deep) 100%);
+    color:#fff; justify-content:center; align-items:flex-start; padding:0 100px;
+  }
+  #slide-0 .cover-badge{
+    display:inline-flex; align-items:center; gap:8px; padding:7px 16px; border-radius:99px;
+    background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18);
+    font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#bae6fd; margin-bottom:26px;
+  }
+  #slide-0 .cover-badge .pulse{ width:7px; height:7px; border-radius:50%; background:#4ade80; box-shadow:0 0 0 0 rgba(74,222,128,.6); animation:pulse 1.8s infinite; }
+  @keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(74,222,128,.55);} 70%{box-shadow:0 0 0 9px rgba(74,222,128,0);} 100%{box-shadow:0 0 0 0 rgba(74,222,128,0);} }
+  #slide-0 h1{ font-size:64px; font-weight:800; letter-spacing:-.03em; line-height:1.04; max-width:820px; }
+  #slide-0 h1 span{ color:#7dd3fc; }
+  #slide-0 p.tagline{ font-size:19px; color:rgba(255,255,255,.72); margin-top:22px; max-width:640px; line-height:1.6; font-weight:400; }
+  #slide-0 .cover-meta{ margin-top:48px; display:flex; gap:46px; }
+  #slide-0 .cover-meta .m-val{ font-size:26px; font-weight:800; color:#fff; }
+  #slide-0 .cover-meta .m-label{ font-size:11.5px; color:rgba(255,255,255,.55); text-transform:uppercase; letter-spacing:.08em; margin-top:4px; }
+
+  /* ---------- grids / cards ---------- */
+  .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  .grid-3{ display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+  .grid-4{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px; }
+
+  .card{
+    background:#fff; border:1px solid var(--border); border-radius:var(--radius);
+    padding:24px 26px; box-shadow:0 1px 3px rgba(0,0,0,.05);
+  }
+  .card h3{ font-size:16px; font-weight:750; color:var(--text); display:flex; align-items:center; gap:10px; }
+  .card p{ font-size:13.5px; color:var(--text2); margin-top:9px; line-height:1.55; }
+  .icon-badge{
+    width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center;
+    font-size:18px; flex-shrink:0;
+  }
+
+  .feature-row{ display:flex; gap:16px; align-items:flex-start; padding:16px 0; border-bottom:1px solid var(--border); }
+  .feature-row:last-child{ border-bottom:none; }
+  .feature-row .num{ font-size:13px; font-weight:800; color:var(--accent); width:30px; flex-shrink:0; padding-top:2px; }
+  .feature-row .ftitle{ font-size:15.5px; font-weight:700; color:var(--text); }
+  .feature-row .fdesc{ font-size:13.5px; color:var(--text2); margin-top:4px; line-height:1.55; }
+
+  .pill{
+    display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:99px;
+    font-size:12.5px; font-weight:700; background:var(--surface2); color:var(--primary-dark); border:1px solid var(--border);
+  }
+  .pill-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+
+  .step-track{ display:flex; flex-direction:column; gap:0; margin-top:8px; }
+  .step{ display:flex; gap:20px; position:relative; padding-bottom:30px; }
+  .step:last-child{ padding-bottom:0; }
+  .step .step-line{
+    position:absolute; left:19px; top:40px; bottom:0; width:2px; background:var(--border);
+  }
+  .step:last-child .step-line{ display:none; }
+  .step .step-num{
+    width:40px; height:40px; border-radius:50%; background:var(--primary); color:#fff; font-weight:800; font-size:15px;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; z-index:1;
+    box-shadow:0 4px 12px rgba(14,116,144,.3);
+  }
+  .step .step-body{ padding-top:6px; }
+  .step .step-title{ font-size:16.5px; font-weight:750; color:var(--text); }
+  .step .step-desc{ font-size:13.5px; color:var(--text2); margin-top:5px; line-height:1.6; max-width:680px; }
+
+  .stat-block{ text-align:center; padding:22px 12px; border-radius:14px; background:var(--surface2); border:1px solid var(--border); }
+  .stat-block .sval{ font-size:32px; font-weight:800; color:var(--primary-dark); letter-spacing:-.02em; }
+  .stat-block .slabel{ font-size:11.5px; color:var(--text2); text-transform:uppercase; letter-spacing:.05em; margin-top:6px; font-weight:600; }
+
+  table.deck-table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  table.deck-table th{ text-align:left; padding:10px 14px; background:var(--surface2); color:var(--text2); font-weight:700; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid var(--border); }
+  table.deck-table td{ padding:12px 14px; border-bottom:1px solid var(--border); color:var(--text); }
+  table.deck-table tr:last-child td{ border-bottom:none; }
+
+  .badge-tag{ display:inline-flex; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:700; }
+  .b-success{ background:#d1fae5; color:#065f46; }
+  .b-info{ background:#e0f2fe; color:#0c4a6e; }
+  .b-warn{ background:#fef3c7; color:#92400e; }
+  .b-danger{ background:#fee2e2; color:#991b1b; }
+  .b-neutral{ background:#f1f5f9; color:#475569; }
+
+  .closing{
+    background:radial-gradient(circle at 85% 80%, #0c5f78 0%, var(--bg-dark) 55%, var(--bg-deep) 100%);
+    color:#fff; align-items:center; text-align:center; justify-content:center;
+  }
+  .closing h1{ font-size:48px; font-weight:800; letter-spacing:-.02em; }
+  .closing p{ font-size:17px; color:rgba(255,255,255,.7); margin-top:18px; max-width:600px; margin-left:auto; margin-right:auto; line-height:1.6;}
+
+  .two-col-list{ display:grid; grid-template-columns:1fr 1fr; gap:8px 40px; margin-top:6px; }
+  .two-col-list li{ list-style:none; font-size:13.5px; color:var(--text2); padding:8px 0; display:flex; gap:10px; align-items:flex-start; border-bottom:1px dashed var(--border); }
+  .two-col-list li::before{ content:'✓'; color:var(--success); font-weight:800; flex-shrink:0; }
+
+  ::-webkit-scrollbar{width:5px;} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px;}
+
+  @media print{
+    .slide{ position:relative; display:flex !important; opacity:1 !important; page-break-after:always; height:100vh; }
+    #navbtns, #chrome-top, #brandmark, #pager{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="chrome-top"><div id="chrome-top-bar"></div></div>
+<div id="brandmark"><span class="dot"></span> VIANOVA HEALTH</div>
+<div id="pager"><span id="pager-cur">01</span> / <span id="pager-total">14</span></div>
+
+<div id="deck">
+
+  <!-- 0. COVER -->
+  <section class="slide active" id="slide-0">
+    <div class="cover-badge"><span class="pulse"></span> PRODUCT OVERVIEW — 2026</div>
+    <h1>Vianova Health<br><span>AI-Assisted Clinical Decision Platform</span></h1>
+    <p class="tagline">An end-to-end clinical workflow system that helps doctors submit cases, receive AI-assisted diagnostic guidance, collaborate as a team, and keep every action fully auditable — from first symptom to final approved treatment.</p>
+    <div class="cover-meta">
+      <div><div class="m-val">25+</div><div class="m-label">Clinical Modules</div></div>
+      <div><div class="m-val">2</div><div class="m-label">User Roles</div></div>
+      <div><div class="m-val">100%</div><div class="m-label">Audit Logged</div></div>
+      <div><div class="m-val">24/7</div><div class="m-label">Real-Time Ops</div></div>
+    </div>
+  </section>
+
+  <!-- 1. AGENDA -->
+  <section class="slide" id="slide-1">
+    <div class="slide-inner">
+      <span class="eyebrow">Agenda</span>
+      <h2 class="slide-title">What we'll walk through</h2>
+      <p class="slide-sub">A complete tour of the platform — what it does, how a case moves through the system, who uses it, and how safety and compliance are enforced at every step.</p>
+      <div class="content">
+        <div class="grid-2">
+          <div class="card"><h3>01 · The Problem</h3><p>Why clinical case review needed a better workflow.</p></div>
+          <div class="card"><h3>02 · The Solution</h3><p>What Vianova Health is, in one sentence.</p></div>
+          <div class="card"><h3>03 · Core Workflow</h3><p>Step-by-step: from new case to approved treatment.</p></div>
+          <div class="card"><h3>04 · AI Clinical Engine</h3><p>How the diagnostic assistant reasons about a case.</p></div>
+          <div class="card"><h3>05 · Roles & Access</h3><p>Superadmin and Doctor — the only two roles in the app.</p></div>
+          <div class="card"><h3>06 · Case Assignment</h3><p>How work gets routed to the right clinician.</p></div>
+          <div class="card"><h3>07 · Notifications</h3><p>Email + in-app alerts, scoped to the right people.</p></div>
+          <div class="card"><h3>08 · Team Channels</h3><p>Built-in secure messaging between doctors.</p></div>
+          <div class="card"><h3>09 · Clinical Modules</h3><p>The full suite — Labs, RPM, SDOH, Discharge, and more.</p></div>
+          <div class="card"><h3>10 · Safety & Emergency</h3><p>How red flags and urgent cases are escalated.</p></div>
+          <div class="card"><h3>11 · Compliance & Audit</h3><p>Every action logged, every consent tracked.</p></div>
+          <div class="card"><h3>12 · Design & Accessibility</h3><p>A responsive, mobile-ready interface.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. THE PROBLEM -->
+  <section class="slide" id="slide-2">
+    <div class="slide-inner">
+      <span class="eyebrow">01 · The Problem</span>
+      <h2 class="slide-title">Clinical case review is scattered and slow</h2>
+      <p class="slide-sub">Doctors juggle disconnected tools to document a case, get a second opinion, track outcomes, and stay compliant — with no single source of truth.</p>
+      <div class="content">
+        <div class="grid-3">
+          <div class="card">
+            <div class="icon-badge" style="background:#fee2e2;">🧩</div>
+            <h3 style="margin-top:14px;">Fragmented tools</h3>
+            <p>Notes, messaging, lab data, and approvals live in separate systems that don't talk to each other.</p>
+          </div>
+          <div class="card">
+            <div class="icon-badge" style="background:#fef3c7;">⏱️</div>
+            <h3 style="margin-top:14px;">Slow escalation</h3>
+            <p>Urgent or emergency presentations can get buried in a queue instead of reaching the right person immediately.</p>
+          </div>
+          <div class="card">
+            <div class="icon-badge" style="background:#e0f2fe;">📋</div>
+            <h3 style="margin-top:14px;">Weak accountability</h3>
+            <p>Without a full audit trail, it's hard to prove who reviewed what, when, and why a treatment was approved.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. THE SOLUTION -->
+  <section class="slide" id="slide-3">
+    <div class="slide-inner">
+      <span class="eyebrow">02 · The Solution</span>
+      <h2 class="slide-title">One platform, from symptom to signed-off treatment</h2>
+      <p class="slide-sub">Vianova Health unifies case intake, AI-assisted clinical reasoning, doctor review, team collaboration, and full audit logging into a single, role-aware application.</p>
+      <div class="content">
+        <div class="grid-2">
+          <div class="card">
+            <h3>🩺 &nbsp;For Doctors</h3>
+            <p>Submit a new case in minutes, get an AI-generated confidence-scored assessment, review or edit the recommended treatment, and message colleagues directly — all from one dashboard.</p>
+          </div>
+          <div class="card">
+            <h3>🛡️ &nbsp;For Superadmins</h3>
+            <p>Oversee every case across the organization, assign cases to specific doctors, manage user accounts, and review a complete, tamper-evident activity log.</p>
+          </div>
+          <div class="card">
+            <h3>🔒 &nbsp;Closed Clinical System</h3>
+            <p>Access is restricted to Superadmins and Doctors only — no patient-facing login. Every screen, action, and data point stays inside a controlled clinical environment.</p>
+          </div>
+          <div class="card">
+            <h3>🔔 &nbsp;For Everyone</h3>
+            <p>Targeted email and in-app notifications keep the right people informed the moment something needs their attention — nothing more, nothing less.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. CORE WORKFLOW -->
+  <section class="slide" id="slide-4">
+    <div class="slide-inner">
+      <span class="eyebrow">03 · Core Workflow</span>
+      <h2 class="slide-title">How a case moves through the system</h2>
+      <p class="slide-sub">A single, linear path — designed so nothing falls through the cracks.</p>
+      <div class="content">
+        <div class="step-track">
+          <div class="step">
+            <div class="step-line"></div>
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <div class="step-title">New Case is submitted</div>
+              <div class="step-desc">A doctor enters patient details, presenting complaint, and clinical history through a guided intake form.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-line"></div>
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <div class="step-title">AI analysis runs automatically</div>
+              <div class="step-desc">The clinical engine evaluates the case, assigns a confidence level, flags red flags or emergencies, and drafts a suggested treatment path.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-line"></div>
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <div class="step-title">Case is routed to the right doctor</div>
+              <div class="step-desc">A superadmin can assign the case to a specific clinician — who is notified immediately by email and in-app toast.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-line"></div>
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <div class="step-title">Doctor reviews and decides</div>
+              <div class="step-desc">The assigned or owning doctor reviews the AI recommendation, edits the treatment if needed, and approves or denies the case.</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-body">
+              <div class="step-title">Everything is logged and notified</div>
+              <div class="step-desc">The outcome is recorded in the audit trail, and only the relevant participants — the case owner and assignee — receive the update.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. AI CLINICAL ENGINE -->
+  <section class="slide" id="slide-5">
+    <div class="slide-inner">
+      <span class="eyebrow">04 · AI Clinical Engine</span>
+      <h2 class="slide-title">Structured, confidence-scored clinical reasoning</h2>
+      <p class="slide-sub">Every submitted case is run through an AI-assisted analysis that produces a consistent, structured output — never a free-form guess.</p>
+      <div class="content">
+        <div class="grid-2">
+          <div class="card">
+            <h3>📊 Confidence Levels</h3>
+            <p>Each case is scored <span class="badge-tag b-success">High</span> <span class="badge-tag b-warn">Moderate</span> <span class="badge-tag b-danger">Low</span> confidence — giving the reviewing doctor an immediate sense of how much scrutiny it needs.</p>
+          </div>
+          <div class="card">
+            <h3>🚨 Red-Flag Detection</h3>
+            <p>The engine actively screens for emergency indicators and marks a case as <em>emergency</em> or <em>requires urgent review</em> so it can never be missed in a routine queue.</p>
+          </div>
+          <div class="card">
+            <h3>💊 Suggested Treatment</h3>
+            <p>A draft treatment plan is generated for the reviewing doctor to accept, edit, or override — the AI assists, the clinician always decides.</p>
+          </div>
+          <div class="card">
+            <h3>📝 Full Traceability</h3>
+            <p>Original patient input, AI output, and any doctor edits are all preserved together on the case record — nothing is silently overwritten.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. ROLES -->
+  <section class="slide" id="slide-6">
+    <div class="slide-inner">
+      <span class="eyebrow">05 · Roles &amp; Access</span>
+      <h2 class="slide-title">Two tailored experiences, one system</h2>
+      <p class="slide-sub">Access is limited to clinical staff — every screen and permission adapts to who is signed in. There is no patient-facing login.</p>
+      <div class="content">
+        <table class="deck-table">
+          <thead><tr><th>Role</th><th>Can view</th><th>Can do</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Superadmin</strong></td>
+              <td>All cases across the organization, all users, full audit &amp; compliance logs</td>
+              <td>Assign cases, manage user accounts, review analytics, resolve escalations</td>
+            </tr>
+            <tr>
+              <td><strong>Doctor</strong></td>
+              <td>Cases they own or are assigned to, team channels, their own analytics</td>
+              <td>Submit new cases, approve/deny treatment, message colleagues, edit case notes</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. CASE ASSIGNMENT -->
+  <section class="slide" id="slide-7">
+    <div class="slide-inner">
+      <span class="eyebrow">06 · Case Assignment</span>
+      <h2 class="slide-title">Getting the right case to the right doctor</h2>
+      <p class="slide-sub">Superadmins can hand a case directly to a named clinician, with instant, dual-channel notification.</p>
+      <div class="content">
+        <div class="feature-row">
+          <div class="num">01</div>
+          <div><div class="ftitle">One-click assignment</div><div class="fdesc">From the Cases list, a superadmin picks any active doctor from a dropdown to take ownership of a case.</div></div>
+        </div>
+        <div class="feature-row">
+          <div class="num">02</div>
+          <div><div class="ftitle">Instant email notification</div><div class="fdesc">The assigned doctor receives a branded email — "New Case Assigned to You" — with the patient profile and a direct link to open the case.</div></div>
+        </div>
+        <div class="feature-row">
+          <div class="num">03</div>
+          <div><div class="ftitle">In-app toast notification</div><div class="fdesc">The moment the doctor is next in the app, a clickable toast appears — "New Case Assigned to you →" — taking them straight to the case.</div></div>
+        </div>
+        <div class="feature-row">
+          <div class="num">04</div>
+          <div><div class="ftitle">Full assignment history</div><div class="fdesc">Every case retains who assigned it, to whom, and when — visible in both the case record and the audit log.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. NOTIFICATIONS -->
+  <section class="slide" id="slide-8">
+    <div class="slide-inner">
+      <span class="eyebrow">07 · Notifications</span>
+      <h2 class="slide-title">Targeted, not noisy</h2>
+      <p class="slide-sub">Notifications are scoped precisely to the people who need to act — never a blanket broadcast to the entire organization.</p>
+      <div class="content">
+        <div class="grid-2">
+          <div class="card">
+            <h3>New case submitted</h3>
+            <p>Only the one superadmin who manages that doctor's account is notified — not every administrator in the system.</p>
+          </div>
+          <div class="card">
+            <h3>Case approved or denied</h3>
+            <p>The case owner and the assigned doctor are notified — the people directly involved in that patient's care.</p>
+          </div>
+          <div class="card">
+            <h3>Case assigned to you</h3>
+            <p>The newly assigned doctor is notified by both email and an in-app toast — the reviewing superadmin is not re-notified.</p>
+          </div>
+          <div class="card">
+            <h3>Personalized, localized emails</h3>
+            <p>Every email uses the recipient's real profile photo and shows timestamps in <em>their</em> timezone, not the server's.</p>
+          </div>
+        </div>
+        <div class="pill-row">
+          <span class="pill">✉️ Branded HTML emails</span>
+          <span class="pill">🔔 Real-time in-app toasts</span>
+          <span class="pill">🎯 Recipient-scoped delivery</span>
+          <span class="pill">🌍 Timezone-aware timestamps</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. TEAM CHANNELS -->
+  <section class="slide" id="slide-9">
+    <div class="slide-inner">
+      <span class="eyebrow">08 · Team Channels</span>
+      <h2 class="slide-title">Secure messaging built for clinical teams</h2>
+      <p class="slide-sub">A dedicated communication layer so care teams never have to leave the platform to coordinate.</p>
+      <div class="content">
+        <div class="grid-2">
+          <div class="card"><h3>👑 Head-Doctor-led channels</h3><p>Superadmins create a channel and assign a Head Doctor, who can invite other clinicians to join.</p></div>
+          <div class="card"><h3>📜 Channel rules</h3><p>Each channel carries its own code of conduct, visible to every member at any time.</p></div>
+          <div class="card"><h3>🚨 Admin call escalation</h3><p>Any doctor can summon a superadmin directly into a channel for urgent situations — tracked in a dedicated Admin Section.</p></div>
+          <div class="card"><h3>🛠️ Moderation tools</h3><p>Superadmins can warn, timeout, kick, or ban members, and manage rules — all via simple in-chat commands.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. CLINICAL MODULES -->
+  <section class="slide" id="slide-10">
+    <div class="slide-inner">
+      <span class="eyebrow">09 · Clinical Modules</span>
+      <h2 class="slide-title">A full clinical operations suite</h2>
+      <p class="slide-sub">Beyond case review, Vianova Health includes purpose-built modules covering the rest of the care lifecycle.</p>
+      <div class="content">
+        <div class="grid-4">
+          <div class="card"><h3 style="font-size:14px;">🧪 Labs</h3><p>Lab result tracking &amp; review.</p></div>
+          <div class="card"><h3 style="font-size:14px;">📅 Appointments</h3><p>Scheduling &amp; visit management.</p></div>
+          <div class="card"><h3 style="font-size:14px;">🏥 Discharge</h3><p>Discharge planning &amp; instructions.</p></div>
+          <div class="card"><h3 style="font-size:14px;">📈 Population Health</h3><p>Cohort-level trends &amp; insights.</p></div>
+          <div class="card"><h3 style="font-size:14px;">🩹 Care Gaps</h3><p>Missed-care identification.</p></div>
+          <div class="card"><h3 style="font-size:14px;">⚠️ Adverse Events</h3><p>Safety incident tracking.</p></div>
+          <div class="card"><h3 style="font-size:14px;">🧬 Chronic Disease</h3><p>Long-term condition management.</p></div>
+          <div class="card"><h3 style="font-size:14px;">🏠 SDOH</h3><p>Social determinants of health.</p></div>
+          <div class="card"><h3 style="font-size:14px;">📡 RPM</h3><p>Remote patient monitoring.</p></div>
+          <div class="card"><h3 style="font-size:14px;">🗒️ NLP Notes</h3><p>AI-assisted clinical note parsing.</p></div>
+          <div class="card"><h3 style="font-size:14px;">🔗 Interoperability</h3><p>FHIR-based data exchange preview.</p></div>
+          <div class="card"><h3 style="font-size:14px;">💳 Billing</h3><p>Billing &amp; claims overview.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. SAFETY -->
+  <section class="slide" id="slide-11">
+    <div class="slide-inner">
+      <span class="eyebrow">10 · Safety &amp; Emergency Handling</span>
+      <h2 class="slide-title">Nothing urgent gets lost in a queue</h2>
+      <p class="slide-sub">The platform is designed so that critical cases are visually and operationally impossible to miss.</p>
+      <div class="content">
+        <div class="grid-3">
+          <div class="card">
+            <div class="icon-badge" style="background:#fee2e2;">🆘</div>
+            <h3 style="margin-top:14px;">Emergency detection</h3>
+            <p>Cases flagged as an emergency are surfaced with a distinct badge and route straight to the responsible superadmin.</p>
+          </div>
+          <div class="card">
+            <div class="icon-badge" style="background:#fef3c7;">⚠️</div>
+            <h3 style="margin-top:14px;">Urgent review flag</h3>
+            <p>Borderline cases that need faster attention are marked "requires urgent review" rather than sitting in the standard queue.</p>
+          </div>
+          <div class="card">
+            <div class="icon-badge" style="background:#fee2e2;">📣</div>
+            <h3 style="margin-top:14px;">Adverse event alerts</h3>
+            <p>Any detected adverse event triggers an immediate, dedicated notification — separate from routine case updates.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12. COMPLIANCE -->
+  <section class="slide" id="slide-12">
+    <div class="slide-inner">
+      <span class="eyebrow">11 · Compliance &amp; Audit</span>
+      <h2 class="slide-title">Every action, permanently accountable</h2>
+      <p class="slide-sub">Vianova Health is built around the assumption that any clinical or administrative action may need to be reviewed later.</p>
+      <div class="content">
+        <ul class="two-col-list">
+          <li>Full audit log of every case action — created, assigned, reviewed, approved, denied</li>
+          <li>Consent tracking with expiry alerts before access lapses</li>
+          <li>User deactivation events broadcast for organizational awareness</li>
+          <li>Break-glass access events specifically logged and surfaced</li>
+          <li>Ownership model — every case always has a clear responsible party</li>
+          <li>Immutable timestamps for every recorded event</li>
+          <li>Role-based access control enforced on every API endpoint</li>
+          <li>Dedicated Audit &amp; Compliance dashboard for organization-wide review</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13. DESIGN -->
+  <section class="slide" id="slide-13">
+    <div class="slide-inner">
+      <span class="eyebrow">12 · Design &amp; Accessibility</span>
+      <h2 class="slide-title">A clean, responsive experience everywhere</h2>
+      <p class="slide-sub">The interface is designed to feel equally at home on a clinic desktop or a doctor's phone between patients.</p>
+      <div class="content">
+        <div class="grid-4">
+          <div class="stat-block"><div class="sval">📱</div><div class="slabel">Mobile-first nav</div></div>
+          <div class="stat-block"><div class="sval">💬</div><div class="slabel">Built-in live chat</div></div>
+          <div class="stat-block"><div class="sval">🎨</div><div class="slabel">Consistent visual system</div></div>
+          <div class="stat-block"><div class="sval">⚡</div><div class="slabel">Fast, single-page app</div></div>
+        </div>
+        <div class="grid-2" style="margin-top:20px;">
+          <div class="card"><h3>Adaptive layouts</h3><p>Tables, filter bars, and dashboards reflow gracefully from desktop down to small phone screens.</p></div>
+          <div class="card"><h3>In-app support chat</h3><p>A floating assistant is available on every screen, with admin escalation built in for anything the assistant can't resolve.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14. CLOSING -->
+  <section class="slide closing" id="slide-14">
+    <div class="slide-inner" style="align-items:center;">
+      <span class="eyebrow" style="color:#7dd3fc;">Thank you</span>
+      <h1>Vianova Health</h1>
+      <p>One platform for clinical intake, AI-assisted review, secure collaboration, and complete accountability — built so doctors can focus on patients, not paperwork.</p>
+    </div>
+  </section>
+
+</div>
+
+<div id="navbtns">
+  <button class="navbtn" id="btn-prev" aria-label="Previous slide">‹</button>
+  <div id="dots"></div>
+  <button class="navbtn" id="btn-next" aria-label="Next slide">›</button>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total = slides.length;
+  let idx = 0;
+
+  const dotsWrap = document.getElementById('dots');
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot-ind' + (i === 0 ? ' active' : '');
+    d.addEventListener('click', () => goTo(i));
+    dotsWrap.appendChild(d);
+  });
+  const dotEls = Array.from(dotsWrap.children);
+
+  const barEl = document.getElementById('chrome-top-bar');
+  const curEl = document.getElementById('pager-cur');
+  const totalEl = document.getElementById('pager-total');
+  const prevBtn = document.getElementById('btn-prev');
+  const nextBtn = document.getElementById('btn-next');
+  totalEl.textContent = String(total).padStart(2, '0');
+
+  function render() {
+    slides.forEach((s, i) => s.classList.toggle('active', i === idx));
+    dotEls.forEach((d, i) => d.classList.toggle('active', i === idx));
+    barEl.style.width = ((idx + 1) / total * 100) + '%';
+    curEl.textContent = String(idx + 1).padStart(2, '0');
+    prevBtn.disabled = idx === 0;
+    nextBtn.disabled = idx === total - 1;
+  }
+
+  function goTo(i) { idx = Math.max(0, Math.min(total - 1, i)); render(); }
+  function next() { goTo(idx + 1); }
+  function prev() { goTo(idx - 1); }
+
+  prevBtn.addEventListener('click', prev);
+  nextBtn.addEventListener('click', next);
+
+  document.addEventListener('keydown', e => {
+    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); next(); }
+    if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); prev(); }
+    if (e.key === 'Home') goTo(0);
+    if (e.key === 'End') goTo(total - 1);
+  });
+
+  let touchStartX = null;
+  document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    if (touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (dx > 60) prev();
+    if (dx < -60) next();
+    touchStartX = null;
+  });
+
+  render();
+</script>
+</body>
+</html>
