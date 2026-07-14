@@ -734,7 +734,7 @@ app.post('/api/auth/login', async (req, res) => {
           if (geoData.status === 'success') geo = geoData
         } catch { /* geo lookup failed — send email without it */ }
       }
-      const result = await sendEmail({ to: dest, ...tplLoginWelcome({ displayName, email: user.email, role: user.role, loginTime, ip, geo }) })
+      const result = await sendEmail({ to: dest, ...tplLoginWelcome({ displayName, email: user.email, role: user.role, loginTime, ip, geo, avatar: user.avatar || '' }) })
       if (!result.ok) logError('email_failed', result.error, 'POST /api/auth/login', null, { to: dest })
     } catch (e) { logError('email_failed', e.message, 'POST /api/auth/login', null, { to: dest }) }
   })()

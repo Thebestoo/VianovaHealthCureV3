@@ -122,10 +122,6 @@ export async function sendEmail({ to, subject, html, text, attachments }) {
    SHARED HTML BUILDER
    ───────────────────────────────────────────────────────────────────────────── */
 
-const HEARTBEAT_SVG = `<svg width="16" height="12" viewBox="0 0 32 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin:0 6px">
-  <polyline points="0,12 6,12 9,4 13,20 17,8 20,16 24,12 32,12" stroke="rgba(255,255,255,0.7)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>`
-
 // Full Vianova Health wordmark logo — embedded inline so it renders in every email client without
 // depending on external image loading. Kept exactly as exported, only sized via width/height on the root <svg>.
 const VIANOVA_LOGO_SVG = `<svg width="170" height="27" display="block" role="presentation" viewBox="0 0 227 36" xmlns="http://www.w3.org/2000/svg" style="display:block;vertical-align:middle;"><defs ><linearGradient id="gFkTKSthQ-539504230-linear-gradient" x1="0" x2="1" y1="0.4975124378109453" y2="0.5024875621890547"><stop offset="0" stop-color="rgb(0, 167, 235)"/><stop offset="1" stop-color="rgb(43, 202, 166)"/></linearGradient></defs><g d="M 23.565 0.58 C 25.413 0.58 26.757 2.344 26.349 4.081 L 20.035 30.061 C 19.267 33.2 16.433 35.423 13.218 35.423 C 10.002 35.423 7.168 33.202 6.401 30.061 L 0.087 4.129 C -0.369 2.317 1.023 0.628 2.873 0.628 C 4.217 0.628 5.345 1.57 5.657 2.849 L 11.778 29.288 C 11.922 30.013 12.594 30.52 13.314 30.52 C 14.034 30.52 14.706 30.013 14.85 29.288 L 20.971 2.849 C 21.091 1.496 22.267 0.58 23.563 0.58 Z M 37.269 32.646 L 37.269 3.407 C 37.269 1.86 38.493 0.558 40.101 0.558 C 41.709 0.558 42.932 1.79 42.932 3.407 L 42.932 32.646 C 42.932 34.193 41.709 35.495 40.101 35.495 C 38.493 35.423 37.269 34.19 37.269 32.646 Z M 91.28 32.646 L 91.28 6.354 C 91.28 3.143 93.848 0.561 97.042 0.561 C 99.465 0.561 101.675 2.107 102.491 4.424 L 111.684 30.453 L 112.452 30.453 L 112.452 3.407 C 112.452 1.86 113.676 0.558 115.283 0.558 C 116.891 0.558 118.115 1.79 118.115 3.407 L 118.115 29.75 C 118.115 32.888 115.595 35.425 112.474 35.425 C 110.122 35.425 107.96 33.927 107.192 31.658 L 97.639 5.533 L 96.919 5.533 L 96.919 32.646 C 96.919 34.193 95.695 35.495 94.088 35.495 C 92.552 35.423 91.28 34.19 91.28 32.646 Z M 154.58 31.702 C 152.516 34.55 148.89 36 143.633 36 C 138.375 36 134.752 34.55 132.638 31.702 C 130.526 28.853 129.518 24.313 129.518 18.181 C 129.518 12.049 130.598 7.485 132.71 4.492 C 134.821 1.498 138.471 0 143.657 0 C 148.842 0 152.49 1.498 154.604 4.443 C 156.715 7.388 157.723 11.977 157.723 18.181 C 157.723 24.386 156.691 28.877 154.58 31.702 Z M 137.082 28.056 C 138.209 30.059 140.419 31.049 143.659 31.049 C 146.898 31.049 149.109 30.059 150.236 28.104 C 151.364 26.147 151.94 22.839 151.94 18.181 C 151.94 13.523 151.364 10.165 150.188 8.065 C 149.013 5.941 146.853 4.926 143.659 4.926 C 140.465 4.926 138.329 5.965 137.13 8.065 C 135.954 10.189 135.378 13.545 135.378 18.133 C 135.33 22.769 135.906 26.077 137.082 28.056 Z M 190.178 0.58 C 192.026 0.58 193.37 2.344 192.962 4.081 L 186.624 30.013 C 185.856 33.151 183.022 35.372 179.807 35.372 C 176.591 35.372 173.757 33.151 172.99 30.013 L 166.676 4.081 C 166.22 2.271 167.612 0.58 169.46 0.58 C 170.804 0.58 171.931 1.522 172.243 2.8 L 178.245 29.24 C 178.389 29.965 179.061 30.472 179.781 30.472 C 180.5 30.472 181.172 29.965 181.316 29.24 L 187.438 2.8 C 187.702 1.496 188.829 0.58 190.173 0.58 Z M 226.928 32.016 L 220.567 6.301 C 219.847 3.356 217.495 1.037 214.517 0.628 C 210.868 0.169 207.532 2.534 206.668 6.06 L 200.355 31.871 C 199.947 33.466 200.931 35.13 202.563 35.372 C 204.002 35.589 205.274 34.695 205.634 33.296 L 206.45 29.989 L 208.082 22.914 L 208.49 21.271 L 212.091 6.494 C 212.235 5.77 212.907 5.262 213.627 5.262 C 214.347 5.262 215.019 5.77 215.163 6.494 L 219.125 22.912 L 213.315 22.912 C 212.187 22.912 211.204 23.685 210.892 24.77 C 210.484 26.365 211.659 27.86 213.315 27.86 L 220.205 27.86 L 221.548 33.294 C 221.86 34.526 222.94 35.369 224.212 35.369 L 224.26 35.369 C 226.06 35.418 227.331 33.775 226.923 32.013 Z M 80.383 32.016 L 74.022 6.301 C 73.302 3.356 70.95 1.037 67.973 0.628 C 64.325 0.169 60.987 2.534 60.123 6.06 L 53.81 31.871 C 53.402 33.466 54.386 35.13 56.018 35.372 C 57.457 35.589 58.729 34.695 59.089 33.296 L 59.905 29.989 L 61.537 22.914 L 61.945 21.271 L 65.544 6.494 C 65.688 5.77 66.36 5.262 67.08 5.262 C 67.8 5.262 68.472 5.77 68.616 6.494 L 72.577 22.912 L 66.768 22.912 C 65.64 22.912 64.656 23.685 64.344 24.77 C 63.936 26.365 65.112 27.86 66.768 27.86 L 73.657 27.86 L 75.001 33.294 C 75.313 34.526 76.393 35.369 77.665 35.369 L 77.713 35.369 C 79.512 35.418 80.858 33.775 80.376 32.013 Z" fill="transparent" height="36px" id="NXnZnEtCi" width="227.00000172234047px"><path d="M 23.565 0.58 C 25.413 0.58 26.757 2.344 26.349 4.081 L 20.035 30.061 C 19.267 33.2 16.433 35.423 13.218 35.423 C 10.002 35.423 7.168 33.202 6.401 30.061 L 0.087 4.129 C -0.369 2.317 1.023 0.628 2.873 0.628 C 4.217 0.628 5.345 1.57 5.657 2.849 L 11.778 29.288 C 11.922 30.013 12.594 30.52 13.314 30.52 C 14.034 30.52 14.706 30.013 14.85 29.288 L 20.971 2.849 C 21.091 1.496 22.267 0.58 23.563 0.58 Z M 37.269 32.646 L 37.269 3.407 C 37.269 1.86 38.493 0.558 40.101 0.558 C 41.709 0.558 42.932 1.79 42.932 3.407 L 42.932 32.646 C 42.932 34.193 41.709 35.495 40.101 35.495 C 38.493 35.423 37.269 34.19 37.269 32.646 Z M 91.28 32.646 L 91.28 6.354 C 91.28 3.143 93.848 0.561 97.042 0.561 C 99.465 0.561 101.675 2.107 102.491 4.424 L 111.684 30.453 L 112.452 30.453 L 112.452 3.407 C 112.452 1.86 113.676 0.558 115.283 0.558 C 116.891 0.558 118.115 1.79 118.115 3.407 L 118.115 29.75 C 118.115 32.888 115.595 35.425 112.474 35.425 C 110.122 35.425 107.96 33.927 107.192 31.658 L 97.639 5.533 L 96.919 5.533 L 96.919 32.646 C 96.919 34.193 95.695 35.495 94.088 35.495 C 92.552 35.423 91.28 34.19 91.28 32.646 Z M 154.58 31.702 C 152.516 34.55 148.89 36 143.633 36 C 138.375 36 134.752 34.55 132.638 31.702 C 130.526 28.853 129.518 24.313 129.518 18.181 C 129.518 12.049 130.598 7.485 132.71 4.492 C 134.821 1.498 138.471 0 143.657 0 C 148.842 0 152.49 1.498 154.604 4.443 C 156.715 7.388 157.723 11.977 157.723 18.181 C 157.723 24.386 156.691 28.877 154.58 31.702 Z M 137.082 28.056 C 138.209 30.059 140.419 31.049 143.659 31.049 C 146.898 31.049 149.109 30.059 150.236 28.104 C 151.364 26.147 151.94 22.839 151.94 18.181 C 151.94 13.523 151.364 10.165 150.188 8.065 C 149.013 5.941 146.853 4.926 143.659 4.926 C 140.465 4.926 138.329 5.965 137.13 8.065 C 135.954 10.189 135.378 13.545 135.378 18.133 C 135.33 22.769 135.906 26.077 137.082 28.056 Z M 190.178 0.58 C 192.026 0.58 193.37 2.344 192.962 4.081 L 186.624 30.013 C 185.856 33.151 183.022 35.372 179.807 35.372 C 176.591 35.372 173.757 33.151 172.99 30.013 L 166.676 4.081 C 166.22 2.271 167.612 0.58 169.46 0.58 C 170.804 0.58 171.931 1.522 172.243 2.8 L 178.245 29.24 C 178.389 29.965 179.061 30.472 179.781 30.472 C 180.5 30.472 181.172 29.965 181.316 29.24 L 187.438 2.8 C 187.702 1.496 188.829 0.58 190.173 0.58 Z M 226.928 32.016 L 220.567 6.301 C 219.847 3.356 217.495 1.037 214.517 0.628 C 210.868 0.169 207.532 2.534 206.668 6.06 L 200.355 31.871 C 199.947 33.466 200.931 35.13 202.563 35.372 C 204.002 35.589 205.274 34.695 205.634 33.296 L 206.45 29.989 L 208.082 22.914 L 208.49 21.271 L 212.091 6.494 C 212.235 5.77 212.907 5.262 213.627 5.262 C 214.347 5.262 215.019 5.77 215.163 6.494 L 219.125 22.912 L 213.315 22.912 C 212.187 22.912 211.204 23.685 210.892 24.77 C 210.484 26.365 211.659 27.86 213.315 27.86 L 220.205 27.86 L 221.548 33.294 C 221.86 34.526 222.94 35.369 224.212 35.369 L 224.26 35.369 C 226.06 35.418 227.331 33.775 226.923 32.013 Z M 80.383 32.016 L 74.022 6.301 C 73.302 3.356 70.95 1.037 67.973 0.628 C 64.325 0.169 60.987 2.534 60.123 6.06 L 53.81 31.871 C 53.402 33.466 54.386 35.13 56.018 35.372 C 57.457 35.589 58.729 34.695 59.089 33.296 L 59.905 29.989 L 61.537 22.914 L 61.945 21.271 L 65.544 6.494 C 65.688 5.77 66.36 5.262 67.08 5.262 C 67.8 5.262 68.472 5.77 68.616 6.494 L 72.577 22.912 L 66.768 22.912 C 65.64 22.912 64.656 23.685 64.344 24.77 C 63.936 26.365 65.112 27.86 66.768 27.86 L 73.657 27.86 L 75.001 33.294 C 75.313 34.526 76.393 35.369 77.665 35.369 L 77.713 35.369 C 79.512 35.418 80.858 33.775 80.376 32.013 Z" fill="url(#gFkTKSthQ-539504230-linear-gradient)" height="36px" id="gFkTKSthQ" transform="translate(0 0)" width="227.00000172234047px"/></g></svg>`
@@ -142,32 +138,51 @@ function alertPanel({ borderColor, bgColor, textColor, title, content }) {
 </div>`
 }
 
+// Fallback badge shown under the logo when no real photo is available for the
+// notification (e.g. a case alert rather than a specific person signing in).
+function emojiBadge(emoji, accentColor) {
+  return `
+<div style="width:72px;height:72px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+  font-size:32px;line-height:1;background:${accentColor}14;border:4px solid ${accentColor}22;box-shadow:0 4px 14px ${accentColor}33;">
+  ${emoji}
+</div>`
+}
+
 /**
- * Build a full HTML email.
+ * Build a full HTML email — clean white card, thin brand top bar, centered
+ * avatar/emoji badge, chip-style info rows, black pill CTA. (Design 2)
  *
  * @param {object} opts
- * @param {string}   opts.headerGradient   - CSS gradient string for header
- * @param {string}   opts.title            - Main heading in header
+ * @param {string}   opts.headerGradient   - CSS gradient for the thin top bar
+ * @param {string}   opts.title            - Main heading, shown centered under the badge
  * @param {string}   [opts.subtitle]       - Subtitle under heading
- * @param {string}   [opts.accentColor]    - Accent for button / highlights (#hex)
- * @param {Array}    [opts.rows]           - Array of { label, value, valueColor? }
+ * @param {string}   [opts.accentColor]    - Accent for badge ring / chips / button (#hex)
+ * @param {string}   [opts.avatarUrl]      - Real profile photo to show as the badge, if available
+ * @param {string}   [opts.emoji]          - Emoji fallback badge when there's no avatar (default ⚡)
+ * @param {Array}    [opts.rows]           - Array of { label, value, valueColor?, chip? }
  * @param {Array}    [opts.alertPanels]    - Array of { borderColor, bgColor, textColor, title?, content }
  * @param {string}   [opts.actionUrl]      - CTA button URL
  * @param {string}   [opts.actionLabel]    - CTA button text
  * @param {string[]} [opts.extraSections]  - Raw HTML strings inserted after rows
  */
-function buildEmail({ headerGradient, title, subtitle, accentColor = '#0284c7', rows = [], alertPanels = [], actionUrl, actionLabel, extraSections = [] }) {
-  const tableRows = rows.map((r, i) => `
-    <tr style="${i % 2 === 1 ? 'background:#f8fafc;' : ''}">
-      <td style="padding:9px 10px;color:#64748b;width:130px;font-size:13px;vertical-align:top;">${r.label}</td>
-      <td style="padding:9px 10px;color:${r.valueColor || '#0f172a'};font-weight:600;font-size:13px;">${r.value}</td>
-    </tr>`).join('')
+function buildEmail({ headerGradient, title, subtitle, accentColor = '#0284c7', avatarUrl, emoji = '⚡', rows = [], alertPanels = [], actionUrl, actionLabel, extraSections = [] }) {
+  const rowsHtml = rows.map((r, i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;${i < rows.length - 1 ? 'border-bottom:1px solid #e2e8f0;' : ''}">
+      <span style="font-size:12.5px;color:#94a3b8;font-weight:600;letter-spacing:.03em;">${r.label.toUpperCase()}</span>
+      ${r.chip
+        ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:${r.valueColor || accentColor};background:${(r.valueColor || accentColor)}1a;padding:3px 10px;border-radius:99px;">${r.value}</span>`
+        : `<span style="font-size:13px;color:${r.valueColor || '#0f172a'};font-weight:700;text-align:right;">${r.value}</span>`}
+    </div>`).join('')
 
   const panelsHtml = alertPanels.map(p => alertPanel(p)).join('')
 
+  const badgeHtml = avatarUrl
+    ? `<img src="${avatarUrl}" width="72" height="72" style="border-radius:50%;object-fit:cover;display:inline-block;border:4px solid ${accentColor}22;box-shadow:0 4px 14px ${accentColor}33;" />`
+    : emojiBadge(emoji, accentColor)
+
   const btnHtml = actionUrl && actionLabel ? `
-<div style="text-align:center;margin:24px 0 8px;">
-  <a href="${actionUrl}" style="display:inline-block;background:${accentColor};color:#fff;text-decoration:none;padding:0 28px;height:44px;line-height:44px;border-radius:8px;font-weight:700;font-size:14px;">${actionLabel}</a>
+<div style="text-align:center;margin:26px 0 4px;">
+  <a href="${actionUrl}" style="display:inline-block;background:${accentColor};color:#fff;text-decoration:none;padding:0 30px;height:46px;line-height:46px;border-radius:99px;font-weight:700;font-size:14px;">${actionLabel} →</a>
 </div>` : ''
 
   const extraHtml = extraSections.join('')
@@ -175,33 +190,37 @@ function buildEmail({ headerGradient, title, subtitle, accentColor = '#0284c7', 
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f1f5f9;">
-<div style="max-width:600px;margin:24px auto;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+<body style="margin:0;padding:0;background:#f3f4f6;">
+<div style="max-width:600px;margin:32px auto;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;border-radius:20px;overflow:hidden;box-shadow:0 10px 40px rgba(15,23,42,.10);border:1px solid #eef2f7;">
 
-  <!-- HEADER -->
-  <div style="background:${headerGradient};padding:28px 28px 22px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div style="background:rgba(255,255,255,.94);border-radius:8px;padding:6px 10px;display:inline-block;line-height:0;">${VIANOVA_LOGO_SVG}</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.65);white-space:nowrap;">${fmtNow()}</div>
-    </div>
-    <div style="font-size:10px;color:rgba(255,255,255,.6);font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-top:10px;">${HEARTBEAT_SVG} Cure Analyzer System</div>
-    <div style="font-size:26px;font-weight:700;color:#ffffff;margin-top:12px;line-height:1.2;">${title}</div>
-    ${subtitle ? `<div style="font-size:14px;color:rgba(255,255,255,.85);margin-top:6px;">${subtitle}</div>` : ''}
+  <!-- TOP BAR -->
+  <div style="height:6px;background:${headerGradient};"></div>
+
+  <div style="padding:26px 30px 0;display:flex;align-items:center;justify-content:space-between;">
+    <div style="line-height:0;">${VIANOVA_LOGO_SVG}</div>
+    <span style="font-size:11px;color:#94a3b8;white-space:nowrap;">${fmtNow()}</span>
+  </div>
+
+  <!-- BADGE + TITLE -->
+  <div style="padding:22px 30px 0;text-align:center;">
+    ${badgeHtml}
+    <div style="font-size:22px;font-weight:800;color:#0f172a;margin-top:14px;line-height:1.25;">${title}</div>
+    ${subtitle ? `<div style="font-size:13.5px;color:#64748b;margin-top:4px;">${subtitle}</div>` : ''}
   </div>
 
   <!-- CONTENT -->
-  <div style="padding:28px;">
-    ${tableRows ? `<table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;">${tableRows}</table>` : ''}
+  <div style="padding:24px 30px 8px;">
+    ${rowsHtml ? `<div style="background:#f8fafc;border-radius:14px;padding:2px 4px;">${rowsHtml}</div>` : ''}
     ${panelsHtml}
     ${extraHtml}
     ${btnHtml}
   </div>
 
   <!-- FOOTER -->
-  <div style="border-top:1px solid #e2e8f0;padding:18px 28px;background:#f8fafc;">
-    <p style="margin:0 0 4px;font-size:12px;color:#64748b;text-align:center;font-weight:600;">Vianova Health — AI-Assisted Clinical Decision Support</p>
-    <p style="margin:0 0 4px;font-size:11px;color:#94a3b8;text-align:center;">This is an automated notification. AI drafts require physician review before any clinical action.</p>
-    <p style="margin:0;font-size:11px;color:#cbd5e1;text-align:center;">You are receiving this because you have an active account. &nbsp;|&nbsp; &copy; 2025 Vianova Health. HIPAA-compliant platform.</p>
+  <div style="padding:22px 30px;text-align:center;">
+    <p style="margin:0 0 4px;font-size:12px;color:#94a3b8;font-weight:700;">Vianova Health — AI-Assisted Clinical Decision Support</p>
+    <p style="margin:0 0 4px;font-size:11px;color:#cbd5e1;">This is an automated notification. AI drafts require physician review before any clinical action.</p>
+    <p style="margin:0;font-size:11px;color:#cbd5e1;">© 2026 Vianova Health · HIPAA-compliant platform</p>
   </div>
 
 </div>
@@ -487,7 +506,7 @@ export function tplSystemError({ errorMsg, route, triggeredBy }) {
   }
 }
 
-export function tplLoginWelcome({ displayName, email, role, loginTime, ip, geo }) {
+export function tplLoginWelcome({ displayName, email, role, loginTime, ip, geo, avatar }) {
   const roleLabel = role === 'superadmin' ? 'Super Administrator' : 'Doctor'
   const roleColor = role === 'superadmin' ? '#0369a1' : '#059669'
   const roleGrad  = role === 'superadmin'
@@ -553,7 +572,9 @@ export function tplLoginWelcome({ displayName, email, role, loginTime, ip, geo }
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <!-- Avatar -->
       <td style="width:56px;" valign="middle">
-        <div style="width:56px;height:56px;border-radius:50%;background:${roleGrad};text-align:center;line-height:56px;font-size:22px;font-weight:900;color:#fff;">${initial}</div>
+        ${avatar
+          ? `<img src="${avatar}" width="56" height="56" style="border-radius:50%;object-fit:cover;display:block;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.15);" />`
+          : `<div style="width:56px;height:56px;border-radius:50%;background:${roleGrad};text-align:center;line-height:56px;font-size:22px;font-weight:900;color:#fff;">${initial}</div>`}
       </td>
       <!-- Name / email -->
       <td style="padding-left:16px;" valign="middle">
@@ -647,7 +668,7 @@ export function tplLoginWelcome({ displayName, email, role, loginTime, ip, geo }
   <!-- ░░ CTA BUTTON ░░ -->
   <tr><td style="background:#ffffff;padding:0 32px 36px;text-align:center;">
     <a href="https://vianova-health.onrender.com/dashboard"
-       style="display:inline-block;background:${roleGrad};color:#ffffff;font-size:14px;font-weight:800;padding:0 40px;height:48px;line-height:48px;border-radius:10px;text-decoration:none;letter-spacing:.03em;box-shadow:0 4px 14px rgba(0,0,0,.15);">
+       style="display:inline-block;background:#0f172a;color:#ffffff;font-size:14px;font-weight:800;padding:0 40px;height:48px;line-height:48px;border-radius:99px;text-decoration:none;letter-spacing:.03em;box-shadow:0 4px 14px rgba(0,0,0,.15);">
       Open Dashboard &rarr;
     </a>
   </td></tr>
@@ -660,7 +681,7 @@ export function tplLoginWelcome({ displayName, email, role, loginTime, ip, geo }
           <strong style="color:#64748b;font-size:12px;">Vianova Health</strong> &mdash; AI-Assisted Clinical Decision Support<br>
           This is an automated security notification. Do not reply to this email.<br>
           AI-generated content requires physician review before any clinical action.<br>
-          <span style="color:#cbd5e1;">&copy; 2025 Vianova Health &bull; HIPAA-compliant platform</span>
+          <span style="color:#cbd5e1;">&copy; 2026 Vianova Health &bull; HIPAA-compliant platform</span>
         </div>
       </td>
     </tr></table>
