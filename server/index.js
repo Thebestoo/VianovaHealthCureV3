@@ -130,6 +130,7 @@ async function initDB() {
     `ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
     `ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE users ADD COLUMN added_by_email TEXT NOT NULL DEFAULT ''`,
     // rename owner_key → owner_email in patient tables if created with old schema
     `ALTER TABLE gen_patients RENAME COLUMN owner_key TO owner_email`,
     `ALTER TABLE rpm_patients RENAME COLUMN owner_key TO owner_email`,
@@ -384,6 +385,18 @@ async function notifySuperadmins(tpl, { skipEmail } = {}) {
   await notifyUsers(admins.map(a => a.email), tpl, { skipEmail })
 }
 
+// Notify only the specific superadmin who manages this doctor (i.e. who created
+// their account), instead of every superadmin. Falls back to all superadmins
+// for legacy accounts created before this relationship was tracked.
+async function notifyOwningAdmin(ownerEmail, tpl, { skipEmail } = {}) {
+  const owner = (await db.execute({ sql: 'SELECT added_by_email FROM users WHERE email = ?', args: [ownerEmail] })).rows[0]
+  if (owner?.added_by_email) {
+    await notifyUsers([owner.added_by_email], tpl, { skipEmail })
+  } else {
+    await notifySuperadmins(tpl, { skipEmail })
+  }
+}
+
 // Send a system-error alert to all superadmins + the given doctor email
 async function notifySystemError(errorMsg, route, submitterEmail) {
   const tpl = tplSystemError({ errorMsg, route, triggeredBy: submitterEmail })
@@ -603,14 +616,14 @@ app.post('/api/analyze', auth, aiLimiter, async (req, res) => {
       confidence: (analysis.confidence?.level ?? analysis.confidence_level),
       emergency: isEmergency,
     }
-    // Notify superadmins only — they're the ones reviewing new cases, not every doctor
+    // Notify only the superadmin who manages this doctor — not every superadmin
     if (isEmergency) {
-      notifySuperadmins(tplEmergencyAlert({
+      notifyOwningAdmin(req.apiKey, tplEmergencyAlert({
         ...emailCtx,
         redFlags: analysis.red_flags?.indicators || [],
       }), { skipEmail: req.apiKey })
     } else {
-      notifySuperadmins(tplNewCase(emailCtx), { skipEmail: req.apiKey })
+      notifyOwningAdmin(req.apiKey, tplNewCase(emailCtx), { skipEmail: req.apiKey })
     }
 
     res.json({ case_id: caseId, analysis })
@@ -1196,7 +1209,7 @@ app.post('/api/admin/users', auth, requireAdmin, async (req, res) => {
     res.json({ id: existing.id })
   } else {
     const id = randomUUID()
-    await db.execute({ sql: 'INSERT INTO users (id, email, name, role, active, status, password_hash, created_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)', args: [id, normalEmail, name, role, 'pending', passwordHash, new Date().toISOString()] })
+    await db.execute({ sql: 'INSERT INTO users (id, email, name, role, active, status, password_hash, added_by_email, created_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)', args: [id, normalEmail, name, role, 'pending', passwordHash, req.user?.email || '', new Date().toISOString()] })
     res.json({ id })
     // send welcome email (fire-and-forget, don't block response)
     if (password) {
