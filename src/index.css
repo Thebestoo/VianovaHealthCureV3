@@ -141,9 +141,13 @@ input, textarea, select { font-family: inherit; }
 }
 .card-header {
   padding: 18px 20px; border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.card-title {
+  font-size: 14px; font-weight: 600; color: var(--text);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.card-header > *:last-child { flex-shrink: 0; }
 .card-body { padding: 20px; }
 
 /* ── badges ── */
@@ -301,6 +305,7 @@ tr:hover td { background: #fafcff; }
 
 /* ── stats ── */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; padding: 24px 32px 0; }
+.dash-charts-grid { grid-template-columns: 1fr 1fr; }
 .stat-card { padding: 22px 24px; border-radius: 14px; cursor: default; }
 .stat-card .stat-val { font-size: 34px; font-weight: 800; letter-spacing: -.02em; color: var(--text); line-height: 1.1; }
 .stat-card .stat-label { font-size: 13px; font-weight: 600; color: var(--text2); margin-top: 5px; text-transform: uppercase; letter-spacing: .04em; }
@@ -447,11 +452,15 @@ tr:hover td { background: #fafcff; }
     gap: 10px;
   }
 
+  .dash-charts-grid { grid-template-columns: 1fr !important; }
+
   /* pages that hardcode repeat(N, 1fr) grids instead of .stats-grid — collapse to 1 column */
   [style*="repeat(3,"], [style*="repeat(3, "],
   [style*="repeat(4,"], [style*="repeat(4, "],
   [style*="repeat(5,"], [style*="repeat(5, "],
-  [style*="repeat(6,"], [style*="repeat(6, "] { grid-template-columns: 1fr !important; }
+  [style*="repeat(6,"], [style*="repeat(6, "],
+  [style*="grid-template-columns:1fr 1fr"],
+  [style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
 
   .review-layout { padding: 12px; gap: 12px; }
   .card-body { padding: 12px; }

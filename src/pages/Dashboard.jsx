@@ -161,7 +161,7 @@ export default function Dashboard() {
       </div>
 
       <div style={{ padding: '0 32px 24px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <div className="dash-charts-grid" style={{ display: 'grid', gap: 20 }}>
           <div className="card hoverable animate-fade-up" style={{ animationDelay: '.1s' }}>
             <div className="card-header">
               <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
