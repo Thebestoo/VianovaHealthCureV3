@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vianova Health — Product Introduction Script & Documentation</title>
+<style>
+  :root{
+    --bg:#0a4a61; --primary:#0e7490; --primary-dark:#0c5f78; --accent:#0284c7;
+    --text:#0f172a; --text2:#475569; --text3:#94a3b8;
+    --success:#059669; --warning:#d97706; --danger:#dc2626;
+    --border:#e2e8f0; --surface:#ffffff; --surface2:#f8fafc;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    color:var(--text); background:var(--surface2); line-height:1.6;
+  }
+  .wrap{ max-width:880px; margin:0 auto; padding:60px 28px 120px; }
+  header.cover{
+    background:linear-gradient(135deg,var(--bg) 0%,#062f3f 100%);
+    color:#fff; padding:64px 48px; border-radius:20px; margin-bottom:56px;
+  }
+  header.cover .eyebrow{
+    display:inline-block; font-size:12px; font-weight:700; letter-spacing:.08em;
+    text-transform:uppercase; color:#7dd3fc; background:rgba(125,211,252,.12);
+    padding:6px 14px; border-radius:99px; margin-bottom:18px;
+  }
+  header.cover h1{ font-size:38px; font-weight:800; letter-spacing:-.02em; line-height:1.15; }
+  header.cover p{ margin-top:14px; font-size:16.5px; color:rgba(255,255,255,.75); max-width:640px; }
+  section{ margin-bottom:52px; }
+  h2.section-title{
+    font-size:24px; font-weight:800; color:var(--text); letter-spacing:-.01em;
+    display:flex; align-items:center; gap:12px; margin-bottom:6px;
+  }
+  h2.section-title .num{
+    width:34px; height:34px; border-radius:10px; background:var(--primary); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;
+  }
+  .timing{ font-size:12.5px; color:var(--text3); font-weight:600; text-transform:uppercase; letter-spacing:.05em; margin-bottom:18px; margin-left:46px; }
+  .speech{
+    background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--primary);
+    border-radius:12px; padding:22px 26px; font-size:15.5px; color:var(--text); margin:16px 0 20px;
+  }
+  .speech p{ margin-bottom:12px; }
+  .speech p:last-child{ margin-bottom:0; }
+  .speech .quote-mark{ color:var(--accent); font-weight:800; }
+  .notes{
+    background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:14px 18px;
+    font-size:13.5px; color:#78350f; margin:14px 0;
+  }
+  .notes strong{ display:block; margin-bottom:4px; }
+  figure{ margin:20px 0; }
+  figure img{
+    width:100%; border-radius:12px; border:1px solid var(--border);
+    box-shadow:0 8px 24px rgba(15,23,42,.08); display:block;
+  }
+  figcaption{ font-size:13px; color:var(--text2); margin-top:8px; text-align:center; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  ul.bullets{ margin:12px 0 0 20px; }
+  ul.bullets li{ margin-bottom:6px; font-size:14.5px; color:var(--text2); }
+  .divider{ height:1px; background:var(--border); margin:52px 0; }
+  .toc{ background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:24px 28px; margin-bottom:56px; }
+  .toc h3{ font-size:14px; text-transform:uppercase; letter-spacing:.06em; color:var(--text3); margin-bottom:14px; }
+  .toc ol{ margin-left:20px; }
+  .toc li{ font-size:15px; padding:5px 0; color:var(--text); }
+  .toc li b{ color:var(--primary-dark); }
+  @media print{
+    body{ background:#fff; }
+    header.cover{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    section{ page-break-inside:avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="cover">
+    <div class="eyebrow">Speaker Script &amp; Product Documentation</div>
+    <h1>Introducing Vianova Health</h1>
+    <p>A word-for-word walkthrough script for presenting the platform live — paired with real screenshots of every screen, so you can talk through exactly what the audience is seeing at each step.</p>
+  </header>
+
+  <div class="toc">
+    <h3>What's in this document</h3>
+    <ol>
+      <li><b>Opening pitch</b> — the 30-second hook</li>
+      <li><b>The problem</b> — why this exists</li>
+      <li><b>The solution</b> — one-line positioning</li>
+      <li><b>Live walkthrough</b> — login → dashboard → new case wizard → case list → channels → admin → analytics</li>
+      <li><b>Roles &amp; access</b> — who uses it</li>
+      <li><b>Safety &amp; compliance</b> — how trust is built in</li>
+      <li><b>Closing &amp; call to action</b></li>
+    </ol>
+  </div>
+
+  <section>
+    <h2 class="section-title"><span class="num">1</span>Opening Pitch</h2>
+    <div class="timing">~30 seconds · say this first, before showing any screen</div>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Vianova Health is an AI-assisted clinical decision platform built for doctors — not patients. It takes a patient's presenting complaint and history, runs it through structured AI analysis, and gives the doctor a confidence-scored clinical read in seconds — while a superadmin layer keeps every case assigned, tracked, and auditable.</p>
+      <p>Everything you're about to see is the real, running product — not mockups.<span class="quote-mark">”</span></p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title"><span class="num">2</span>The Problem</h2>
+    <div class="timing">~20 seconds</div>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Today, clinical case review is scattered across disconnected tools — notes in one place, labs in another, a second opinion over the phone, and no single record of who decided what. That slows doctors down and makes compliance a nightmare.<span class="quote-mark">”</span></p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title"><span class="num">3</span>The Solution</h2>
+    <div class="timing">~20 seconds</div>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Vianova unifies case intake, AI-assisted reasoning, doctor review, team messaging, and full audit logging into one role-aware application — closed to only two roles: Superadmin and Doctor. There is no patient-facing login; this is a clinical tool, not a consumer app.<span class="quote-mark">”</span></p>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section>
+    <h2 class="section-title"><span class="num">4</span>Live Walkthrough</h2>
+    <div class="timing">~4–5 minutes · share your screen and follow this order</div>
+
+    <h3 style="font-size:17px; margin:22px 0 4px; color:var(--text);">4.1 — Sign in</h3>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Access starts here. There's no public sign-up — accounts are provisioned by a superadmin, and every login is tied to a real clinical identity.<span class="quote-mark">”</span></p>
+    </div>
+    <figure>
+      <img src="presentation-assets/01-login.jpg" alt="Vianova Health login screen">
+      <figcaption>The login screen — the only entry point into the platform. No patient accounts exist.</figcaption>
+    </figure>
+
+    <h3 style="font-size:17px; margin:22px 0 4px; color:var(--text);">4.2 — Dashboard</h3>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>This is home base. At a glance: total cases, anything flagged urgent or emergency, what's pending review, and what's already approved. Below that, trend charts — cases over time and a breakdown by condition — so a clinical lead can spot patterns, not just individual cases.<span class="quote-mark">”</span></p>
+    </div>
+    <figure>
+      <img src="presentation-assets/02-dashboard.jpg" alt="Vianova Health dashboard">
+      <figcaption>Dashboard — live case counts, urgency triage, and trend analytics in one view.</figcaption>
+    </figure>
+
+    <h3 style="font-size:17px; margin:22px 0 4px; color:var(--text);">4.3 — Creating a new case (5-step wizard)</h3>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>This is the core workflow. Instead of a blank text box, we walk the doctor through five focused steps so nothing gets missed.<span class="quote-mark">”</span></p>
+    </div>
+    <div class="notes"><strong>Presenter note</strong>Click through each step live if possible — it's more convincing than static images. Narrate each step as it appears.</div>
+
+    <div class="grid2">
+      <figure>
+        <img src="presentation-assets/03-new-case-step1.jpg" alt="Step 1 — Import FHIR">
+        <figcaption><b>Step 1 — Import FHIR.</b> Drop in a FHIR R4 bundle to auto-fill demographics, vitals, conditions and medications — or skip and enter manually.</figcaption>
+      </figure>
+      <figure>
+        <img src="presentation-assets/04-new-case-step2.jpg" alt="Step 2 — Patient Info">
+        <figcaption><b>Step 2 — Patient Info.</b> Age, biological sex, and free-text clinical context that's passed directly to the AI.</figcaption>
+      </figure>
+    </div>
+    <div class="grid2">
+      <figure>
+        <img src="presentation-assets/05-new-case-step3.jpg" alt="Step 3 — Medical History">
+        <figcaption><b>Step 3 — Medical History.</b> Existing conditions, medications, and allergies feed the AI's reasoning.</figcaption>
+      </figure>
+      <figure>
+        <img src="presentation-assets/06-new-case-step4.jpg" alt="Step 4 — Intake Questions">
+        <figcaption><b>Step 4 — Intake Questions.</b> Structured symptom questions, including a 1–10 severity slider used for triage.</figcaption>
+      </figure>
+    </div>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Step five is Review &amp; Submit — the doctor double-checks everything, then the AI engine takes over and returns a structured, confidence-scored clinical analysis: presenting complaint, likely conditions, and an emergency flag if warranted.<span class="quote-mark">”</span></p>
+    </div>
+
+    <h3 style="font-size:17px; margin:22px 0 4px; color:var(--text);">4.4 — All Cases</h3>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Every case created lives here, filterable by status, confidence, and date range — color-coded so emergencies and pending reviews jump out immediately.<span class="quote-mark">”</span></p>
+    </div>
+    <figure>
+      <img src="presentation-assets/07-cases-list.jpg" alt="All Cases list">
+      <figcaption>All Cases — filterable, color-coded by urgency and review status.</figcaption>
+    </figure>
+
+    <h3 style="font-size:17px; margin:22px 0 4px; color:var(--text);">4.5 — Patients</h3>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Cases roll up to patient records, so a doctor sees longitudinal history, not just a one-off encounter.<span class="quote-mark">”</span></p>
+    </div>
+    <figure>
+      <img src="presentation-assets/08-patients.jpg" alt="Patients list">
+      <figcaption>Patients — the longitudinal record behind every case.</figcaption>
+    </figure>
+
+    <h3 style="font-size:17px; margin:22px 0 4px; color:var(--text);">4.6 — Doctor Channels</h3>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Clinical decisions often need a second opinion. Channels give doctors a dedicated, in-app space to discuss a case with colleagues — no stepping outside the platform, no unsecured texting.<span class="quote-mark">”</span></p>
+    </div>
+    <figure>
+      <img src="presentation-assets/09-channels.jpg" alt="Doctor Channels">
+      <figcaption>Doctor Channels — secure, in-app team messaging tied to the clinical workflow.</figcaption>
+    </figure>
+
+    <h3 style="font-size:17px; margin:22px 0 4px; color:var(--text);">4.7 — Admin (Superadmin only)</h3>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>This panel only exists for superadmins. It's where cases get assigned to specific doctors, users are managed, and the whole system stays accountable — every assignment is logged with who, when, and by whom.<span class="quote-mark">”</span></p>
+    </div>
+    <figure>
+      <img src="presentation-assets/10-admin.jpg" alt="Admin panel">
+      <figcaption>Admin — case assignment and user management, restricted to Superadmin.</figcaption>
+    </figure>
+
+    <h3 style="font-size:17px; margin:22px 0 4px; color:var(--text);">4.8 — Population Health &amp; Adverse Events</h3>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Beyond individual cases, Vianova aggregates data across the whole patient population — spotting care gaps and surfacing adverse event / safety signals automatically, using statistical signal detection, not just manual reporting.<span class="quote-mark">”</span></p>
+    </div>
+    <div class="grid2">
+      <figure>
+        <img src="presentation-assets/11-population-health.jpg" alt="Population Health">
+        <figcaption>Population Health — aggregate trends across all patients.</figcaption>
+      </figure>
+      <figure>
+        <img src="presentation-assets/12-adverse-events.jpg" alt="Adverse Events">
+        <figcaption>Adverse Events — automated safety signal detection.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section>
+    <h2 class="section-title"><span class="num">5</span>Roles &amp; Access</h2>
+    <div class="timing">~15 seconds</div>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Only two roles exist: <b>Superadmin</b>, who manages users, assigns cases, and oversees the whole system; and <b>Doctor</b>, who creates and reviews cases. There is no patient login — this is a closed clinical system by design.<span class="quote-mark">”</span></p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title"><span class="num">6</span>Safety &amp; Compliance</h2>
+    <div class="timing">~20 seconds</div>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>Every action — case creation, assignment, approval — is written to an audit log. Emergency-flagged cases are surfaced immediately, not buried in a queue. And because access is role-gated at the API level, a doctor can never see another doctor's unassigned cases or admin controls.<span class="quote-mark">”</span></p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title"><span class="num">7</span>Closing &amp; Call to Action</h2>
+    <div class="timing">~15 seconds</div>
+    <div class="speech">
+      <p><span class="quote-mark">“</span>That's Vianova Health — one platform, from symptom to signed-off treatment, built for how clinical teams actually work. I'd love to get this in front of your team for a hands-on pilot.<span class="quote-mark">”</span></p>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
