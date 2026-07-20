@@ -10,7 +10,7 @@ const FEATURES = [
   { icon: ShieldCheck, title: 'HIPAA Compliant',       desc: 'All data encrypted at rest and in transit' },
   { icon: Zap,         title: 'AI-Powered Insights',   desc: 'Real-time diagnostics with llama-3.3-70b'  },
   { icon: TrendingUp,  title: 'Population Health',     desc: 'Track cohorts, gaps, and outcomes at scale' },
-  { icon: Users,       title: '12,400+ Patients',      desc: 'Trusted by clinical teams worldwide'        },
+  { icon: Users,       title: '1000+ Patients',      desc: 'Trusted by clinical teams worldwide'        },
 ]
 
 export default function Login() {
