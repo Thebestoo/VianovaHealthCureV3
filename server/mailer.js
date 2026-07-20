@@ -900,6 +900,31 @@ export function tplPatientOutreach({ patientName, message, gapType, priority }) 
   }
 }
 
+// Generic "here's a summary you exported from the app" email — used by the
+// SummaryActions toolbar across pages (audit findings, discharge summary,
+// billing scrub, clinical decision summary, lab summary, SDOH, etc). Kept
+// intentionally plain-text-first so it reads well even when the summary body
+// is long or table-like.
+export function tplSummaryEmail({ title, text, senderName }) {
+  const bodyHtml = String(text || '')
+    .split(/\n{2,}/)
+    .map(block => `<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#1e293b;white-space:pre-wrap;">${block}</p>`)
+    .join('')
+  return {
+    subject: title || 'Summary from Vianova Health',
+    text: `${title || 'Summary'}\n\n${text}\n\nSent from Vianova Health${senderName ? ` by ${senderName}` : ''}.`,
+    html: `
+      <div style="max-width:600px;margin:0 auto;font-family:'Segoe UI',system-ui,sans-serif;padding:32px 28px;background:#ffffff;">
+        <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#0e7490;margin-bottom:6px;">Vianova Health</div>
+        <h1 style="margin:0 0 18px;font-size:19px;font-weight:800;color:#0f172a;">${title || 'Summary'}</h1>
+        ${bodyHtml}
+        <div style="margin-top:26px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:11.5px;color:#94a3b8;">
+          Exported from Vianova Health${senderName ? ` by ${senderName}` : ''}.
+        </div>
+      </div>`,
+  }
+}
+
 export function tplNlpNoteProcessed({ patientName, noteType, acuityScore, phenotypeFlags, conditionsFound, medicationsFound, sentiment }) {
   const score = acuityScore ?? 0
   const acuityColor = score >= 7 ? '#dc2626' : score >= 4 ? '#d97706' : '#059669'

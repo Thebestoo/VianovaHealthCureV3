@@ -4,6 +4,7 @@ import {
   Loader2, Trash2, X, TrendingUp, Check, Activity
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import SummaryActions from '../components/SummaryActions.jsx'
 
 const TEST_SUGGESTIONS = [
   'Glucose', 'HbA1c', 'Creatinine', 'eGFR', 'Sodium', 'Potassium',
@@ -502,6 +503,9 @@ export default function Labs() {
                                 <Activity size={11} /> AI Summary
                               </div>
                               <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.65 }}>{result.ai_summary}</div>
+                              <div style={{ marginTop: 10 }}>
+                                <SummaryActions compact title="Lab AI Summary" filename="lab-summary.txt" text={result.ai_summary} />
+                              </div>
                             </div>
                           )}
                           {result.notes && (
@@ -712,6 +716,9 @@ export default function Labs() {
                       <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>AI Summary</div>
                         <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.6 }}>{saveResult.ai_summary}</div>
+                        <div style={{ marginTop: 10 }}>
+                          <SummaryActions compact title="Lab AI Summary" filename="lab-summary.txt" text={saveResult.ai_summary} />
+                        </div>
                       </div>
                     )}
                   </div>

@@ -3,6 +3,7 @@ import {
   Home, Plus, Loader2, X, ChevronDown, ChevronUp, Check
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import SummaryActions from '../components/SummaryActions.jsx'
 
 const DOMAIN_OPTIONS = {
   housing: [
@@ -341,6 +342,11 @@ export default function SDOH() {
                           >
                             {summaryOpen ? 'Show less' : 'Read more'}
                           </button>
+                        )}
+                        {summaryOpen && (
+                          <div style={{ marginTop: 8 }}>
+                            <SummaryActions compact title="SDOH AI Summary" filename="sdoh-summary.txt" text={a.ai_summary} />
+                          </div>
                         )}
                       </div>
                     )}

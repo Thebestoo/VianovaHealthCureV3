@@ -6,6 +6,7 @@ import {
   Lock, Unlock, FileText, Activity
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import SummaryActions from '../components/SummaryActions.jsx'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -268,6 +269,11 @@ function ConsentCard({ c, apiKey, onRefresh }) {
         <div style={{ marginTop: 12, padding: '12px 14px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: '#7c2d12', marginBottom: 8 }}>GDPR Deletion Report</div>
           {deleteReport.summary && <p style={{ fontSize: 12, color: '#374151', margin: '0 0 8px' }}>{deleteReport.summary}</p>}
+          {deleteReport.summary && (
+            <div style={{ marginBottom: 8 }}>
+              <SummaryActions compact title="GDPR Deletion Report" filename="gdpr-deletion-report.txt" text={deleteReport.summary} />
+            </div>
+          )}
           {deleteReport.can_delete?.length > 0 && <div style={{ fontSize: 12, marginBottom: 4 }}><strong style={{ color: '#065f46' }}>Can Delete:</strong> {deleteReport.can_delete.join(', ')}</div>}
           {deleteReport.must_retain?.length > 0 && <div style={{ fontSize: 12, marginBottom: 4 }}><strong style={{ color: '#991b1b' }}>Must Retain ({deleteReport.retention_period_years}yr):</strong> {deleteReport.must_retain.join(', ')}</div>}
           {deleteReport.redact_only?.length > 0 && <div style={{ fontSize: 12 }}><strong style={{ color: '#92400e' }}>Redact Only:</strong> {deleteReport.redact_only.join(', ')}</div>}

@@ -18,7 +18,7 @@ import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatment
          tplConsentExpiring, tplSystemError, tplLoginWelcome,
          tplBillingClaimSubmitted, tplAppointmentScheduled, tplLabResultAdded,
          tplDischargeGenerated, tplConsentSigned, tplConsentRevoked,
-         tplCareGapDetected, tplPatientOutreach, tplNlpNoteProcessed, tplSdohAssessmentCompleted,
+         tplCareGapDetected, tplPatientOutreach, tplSummaryEmail, tplNlpNoteProcessed, tplSdohAssessmentCompleted,
          tplChronicDiseaseUpdate, tplClinicalDecisionRun, tplAuditEvent,
          tplPopulationHealthReport, tplNewUserWelcome } from './mailer.js'
 
@@ -2179,6 +2179,24 @@ app.post('/api/care-gaps/:id/send', auth, async (req, res) => {
   const sentAt = new Date().toISOString()
   await db.execute({ sql: 'UPDATE care_gaps SET outreach_sent_at = ? WHERE id = ?', args: [sentAt, req.params.id] })
   res.json({ ok: true, channel, sentAt, delivered: channel === 'email' })
+})
+
+// ── Generic "email this summary" endpoint ───────────────────────────────────
+// Used by the SummaryActions toolbar on any page with an AI-generated or
+// computed summary block (audit findings, discharge summary, billing scrub
+// results, clinical decision summary, lab result summary, SDOH summary, etc).
+// Defaults to sending to the signed-in user (self); an explicit recipient
+// email may be supplied for handing a summary off to a colleague.
+app.post('/api/summary/email', auth, async (req, res) => {
+  const { title, text, recipientEmail } = req.body || {}
+  if (!text || !String(text).trim()) return res.status(400).json({ error: 'No summary text provided' })
+  const to = (recipientEmail && String(recipientEmail).trim()) || req.user.email
+  if (!to) return res.status(400).json({ error: 'No recipient email available' })
+
+  try {
+    await sendEmail({ to, ...tplSummaryEmail({ title: title || 'Summary', text, senderName: req.user.name }) })
+    res.json({ ok: true, sentTo: to, sentAt: new Date().toISOString() })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════

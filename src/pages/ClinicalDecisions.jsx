@@ -7,6 +7,7 @@ import {
   Eye, Clock, User
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import SummaryActions from '../components/SummaryActions.jsx'
 
 /* ── colour helpers ─────────────────────────────────────────────────────────── */
 const RISK_CFG = {
@@ -499,6 +500,15 @@ function PatientCDSTab({ patients, apiKey }) {
                     borderRadius: 99, background: 'rgba(255,255,255,.15)', color: 'rgba(255,255,255,.7)' }}>
                     Draft — not yet approved
                   </span>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <SummaryActions
+                    dark
+                    compact
+                    title="AI Reasoning for Doctor"
+                    filename="clinical-decision-summary.txt"
+                    text={result.doctor_summary}
+                  />
                 </div>
                 <div style={{ fontSize: 13.5, color: 'rgba(255,255,255,.85)', lineHeight: 1.8,
                   padding: '16px 18px', background: 'rgba(0,0,0,.2)',

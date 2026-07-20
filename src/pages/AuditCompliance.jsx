@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { ClipboardCheck, RefreshCw, AlertTriangle, CheckCircle, XCircle, Loader2, ShieldCheck, Eye, ChevronDown, ChevronUp } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import SummaryActions from '../components/SummaryActions.jsx'
 
 const ACTION_COLORS = {
   read: '#2563eb', write: '#059669', delete: '#dc2626',
@@ -187,6 +188,18 @@ export default function AuditCompliance() {
                 </button>
                 {showAiPanel && (
                   <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)' }}>
+                    <div style={{ marginBottom: 12 }}>
+                      <SummaryActions
+                        title={`Audit Analysis — ${aiAnalysis.event_count} events, ${aiAnalysis.period_days} days`}
+                        filename="audit-analysis.txt"
+                        text={[
+                          `Risk level: ${aiAnalysis.risk_level?.toUpperCase()}`,
+                          aiAnalysis.summary,
+                          aiAnalysis.anomalies?.length ? `\nAnomalies:\n${aiAnalysis.anomalies.map(a => `- ${a.type}: ${a.description}`).join('\n')}` : '',
+                          aiAnalysis.recommendations?.length ? `\nRecommendations:\n${aiAnalysis.recommendations.map(r => `- ${r}`).join('\n')}` : '',
+                        ].filter(Boolean).join('\n')}
+                      />
+                    </div>
                     <div style={{ fontSize: 13, color: '#374151', marginBottom: 12 }}>{aiAnalysis.summary}</div>
                     {aiAnalysis.anomalies?.length > 0 && (
                       <div style={{ marginBottom: 12 }}>

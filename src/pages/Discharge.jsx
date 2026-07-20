@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import toast from 'react-hot-toast'
+import SummaryActions from '../components/SummaryActions.jsx'
 
 /* ── tiny helpers ── */
 const fmtDate = str => {
@@ -155,6 +156,11 @@ function DischargeCard({ rec, apiKey, onRefresh }) {
             {/* Clinical Summary */}
             <Section icon={Activity} title="Clinical Summary">
               <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.7, margin: 0 }}>{rec.summary || 'No summary available.'}</p>
+              {rec.summary && (
+                <div style={{ marginTop: 10 }}>
+                  <SummaryActions compact title="Discharge Clinical Summary" filename="discharge-summary.txt" text={rec.summary} />
+                </div>
+              )}
             </Section>
 
             {/* Medications */}

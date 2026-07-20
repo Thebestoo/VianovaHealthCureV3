@@ -5,6 +5,7 @@ import {
   Shield, AlertOctagon, FileText, Activity, ClipboardCheck
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import SummaryActions from '../components/SummaryActions.jsx'
 
 const API = (path, opts = {}) => {
   const key = typeof opts.key !== 'undefined' ? opts.key : undefined
@@ -257,7 +258,19 @@ function CodingDetails({ claim, onScrub, onSubmit, onStatusUpdate, showActions =
       {/* Scrub results */}
       {scrub && (
         <section>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>Claim Scrub Results</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '.04em' }}>Claim Scrub Results</div>
+            <SummaryActions
+              compact
+              title={`Claim Scrub Results — ${scrub.scrub_passed ? 'Passed' : 'Issues Found'}`}
+              filename="claim-scrub-results.txt"
+              text={[
+                `${scrub.scrub_passed ? 'Scrub Passed' : 'Issues Found'} — Risk: ${scrub.risk_level?.toUpperCase()}`,
+                scrub.summary || '',
+                scrub.issues?.length ? `\nIssues:\n${scrub.issues.map(iss => `- ${iss.type?.replace(/_/g, ' ')} (${iss.severity}): ${iss.description}${iss.recommendation ? ` | Rec: ${iss.recommendation}` : ''}`).join('\n')}` : '',
+              ].filter(Boolean).join('\n')}
+            />
+          </div>
           <div style={{ background: scrub.scrub_passed ? '#f0fdf4' : '#fef2f2', border: `1px solid ${scrub.scrub_passed ? '#bbf7d0' : '#fecaca'}`, borderRadius: 8, padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               {scrub.scrub_passed ? <CheckCircle2 size={18} color="#16a34a" /> : <AlertOctagon size={18} color="#dc2626" />}

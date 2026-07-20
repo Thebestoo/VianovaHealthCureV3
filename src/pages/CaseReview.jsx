@@ -7,6 +7,7 @@ import {
   Printer, Share2, History, Copy, X
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import SummaryActions from '../components/SummaryActions.jsx'
 import { calcNEWS2, flagVitals } from '../utils/news2.js'
 import { suggestICD10 } from '../utils/icd10.js'
 
@@ -658,6 +659,16 @@ export default function CaseReview() {
               <span className="badge badge-warning" style={{ fontSize: 11 }}>Draft — not yet approved</span>
             </div>
             <div className="card-body">
+              {a?.patient_summary_draft?.text && (
+                <div style={{ marginBottom: 10 }}>
+                  <SummaryActions
+                    compact
+                    title="Patient Summary Draft"
+                    filename="patient-summary-draft.txt"
+                    text={a.patient_summary_draft.text}
+                  />
+                </div>
+              )}
               <p style={{ fontSize: 13.5, lineHeight: 1.8, color: 'var(--text)', background: 'var(--surface2)', padding: '14px 16px', borderRadius: 8 }}>
                 {a?.patient_summary_draft?.text || '—'}
               </p>
