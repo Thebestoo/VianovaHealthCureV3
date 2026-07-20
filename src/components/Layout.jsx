@@ -7,7 +7,7 @@ import {
   Users, LogIn, Menu, X, AlertCircle, FlaskConical, CalendarDays,
   ClipboardList, ShieldAlert, AlertOctagon, Users2, FileText,
   Lightbulb, Home, Activity, GitMerge, ClipboardCheck,
-  Receipt, Settings, MessageSquare
+  Receipt, Settings, MessageSquare, HeartHandshake, Radio
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import FloatingChat from './FloatingChat.jsx'
@@ -62,19 +62,19 @@ const NAV_GROUPS = [
       { label: 'Logs & Analytics',  icon: BarChart2,     path: '/logs'              },
     ],
   },
-]
-
-const NAV_ALL   = NAV_GROUPS
-const NAV_ADMIN = [
-  ...NAV_GROUPS.slice(0, -1),
   {
-    title: 'Operations',
+    title: 'Beta',
     items: [
-      ...NAV_GROUPS[3].items,
-      { label: 'Admin', icon: ShieldCheck, path: '/admin' },
+      { label: 'CCM Enrollment', icon: HeartHandshake, path: '/ccm' },
+      { label: 'RPM Enrollment', icon: Radio,           path: '/rpm' },
     ],
   },
 ]
+
+const NAV_ALL   = NAV_GROUPS
+const NAV_ADMIN = NAV_GROUPS.map(g =>
+  g.title === 'Operations' ? { ...g, items: [...g.items, { label: 'Admin', icon: ShieldCheck, path: '/admin' }] } : g
+)
 
 // Bottom tab bar shows only the most important 5 items on mobile
 const BOTTOM_NAV = [

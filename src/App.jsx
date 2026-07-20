@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { KeyProvider, useKey } from './context/KeyContext.jsx'
 import Layout from './components/Layout.jsx'
+import BetaGate from './components/BetaGate.jsx'
 
 // Eagerly load Login and SharedCase (no auth, instant nav)
 import Login from './pages/Login.jsx'
@@ -31,6 +32,8 @@ const Interoperability = lazy(() => import('./pages/Interoperability.jsx'))
 const AuditCompliance  = lazy(() => import('./pages/AuditCompliance.jsx'))
 const Billing          = lazy(() => import('./pages/Billing.jsx'))
 const Channels         = lazy(() => import('./pages/Channels.jsx'))
+const CCM              = lazy(() => import('./pages/CCM.jsx'))
+const RPM              = lazy(() => import('./pages/RPM.jsx'))
 
 function PageLoader() {
   return (
@@ -53,6 +56,17 @@ function ProtectedRoute({ children }) {
 
 function P({ component: C }) {
   return <ProtectedRoute><C /></ProtectedRoute>
+}
+
+// Beta-gated routes require both auth and the reviewer passcode (1906).
+function PBeta({ component: C, featureKey, title }) {
+  return (
+    <ProtectedRoute>
+      <BetaGate featureKey={featureKey} title={title}>
+        <C />
+      </BetaGate>
+    </ProtectedRoute>
+  )
 }
 
 function AppRoutes() {
@@ -87,6 +101,8 @@ function AppRoutes() {
               <Route path="/billing"          element={<P component={Billing} />} />
               <Route path="/admin"            element={<P component={Admin} />} />
               <Route path="/channels"         element={<P component={Channels} />} />
+              <Route path="/ccm"              element={<PBeta component={CCM} featureKey="ccm" title="Chronic Care Management (Beta)" />} />
+              <Route path="/rpm"              element={<PBeta component={RPM} featureKey="rpm" title="Remote Patient Monitoring (Beta)" />} />
             </Routes>
           </Suspense>
         </Layout>
