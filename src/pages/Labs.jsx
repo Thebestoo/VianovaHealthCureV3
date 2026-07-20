@@ -6,10 +6,25 @@ import {
 import { useKey } from '../context/KeyContext.jsx'
 import SummaryActions from '../components/SummaryActions.jsx'
 
-const TEST_SUGGESTIONS = [
-  'Glucose', 'HbA1c', 'Creatinine', 'eGFR', 'Sodium', 'Potassium',
-  'Hemoglobin', 'WBC', 'Platelets', 'TSH', 'LDL', 'HDL', 'Troponin'
-]
+// Typical adult reference ranges, keyed by test name — lets the form
+// auto-fill unit/reference range the moment a known test is picked instead
+// of making the clinician look them up and type them in every time.
+const TEST_REFERENCE = {
+  Glucose:     { unit: 'mg/dL',  low: 70,   high: 99 },
+  HbA1c:       { unit: '%',      low: 4,    high: 5.6 },
+  Creatinine:  { unit: 'mg/dL',  low: 0.6,  high: 1.3 },
+  eGFR:        { unit: 'mL/min/1.73m²', low: 90, high: 120 },
+  Sodium:      { unit: 'mmol/L', low: 135,  high: 145 },
+  Potassium:   { unit: 'mmol/L', low: 3.5,  high: 5.1 },
+  Hemoglobin:  { unit: 'g/dL',   low: 12,   high: 17.5 },
+  WBC:         { unit: 'K/uL',   low: 4.5,  high: 11 },
+  Platelets:   { unit: 'K/uL',   low: 150,  high: 450 },
+  TSH:         { unit: 'mIU/L',  low: 0.4,  high: 4.0 },
+  LDL:         { unit: 'mg/dL',  low: 0,    high: 99 },
+  HDL:         { unit: 'mg/dL',  low: 40,   high: 60 },
+  Troponin:    { unit: 'ng/mL',  low: 0,    high: 0.04 },
+}
+const TEST_SUGGESTIONS = Object.keys(TEST_REFERENCE)
 
 function interpBadge(interp) {
   if (!interp) return null
@@ -166,6 +181,23 @@ export default function Labs() {
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // Picking a known test auto-fills unit + reference range so the clinician
+  // only has to type the measured value.
+  function setTestName(name) {
+    const ref = TEST_REFERENCE[name]
+    setForm(f => ({
+      ...f,
+      test_name: name,
+      unit: ref ? ref.unit : f.unit,
+      reference_low: ref ? String(ref.low) : f.reference_low,
+      reference_high: ref ? String(ref.high) : f.reference_high,
+    }))
+  }
+
+  function freshForm() {
+    return { ...EMPTY_FORM, patient_id: patientFilter || '', result_date: new Date().toISOString().slice(0, 10) }
+  }
+
   useEffect(() => { if (key) { loadResults(); loadPatients() } }, [key])
 
   async function loadResults() {
@@ -251,7 +283,14 @@ export default function Labs() {
     setSaving(false)
   }
 
-  function openModal() { setForm(EMPTY_FORM); setSaveResult(null); setShowModal(true) }
+  function openModal() {
+    // Auto-fill from whatever patient context is already known (the active
+    // patient filter) so the clinician isn't forced to re-pick a patient
+    // they've already selected on this page.
+    setForm(freshForm())
+    setSaveResult(null)
+    setShowModal(true)
+  }
   function closeModal() { setShowModal(false); setSaveResult(null) }
 
   const displayed = results.filter(r => {
@@ -549,13 +588,14 @@ export default function Labs() {
             position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)',
             display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
             zIndex: 1000, padding: '32px 16px', overflowY: 'auto',
-            backdropFilter: 'blur(2px)'
+            backdropFilter: 'blur(2px)', animation: 'labModalFade .15s ease-out'
           }}
           onClick={e => e.target === e.currentTarget && closeModal()}
         >
           <div style={{
             background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 560,
-            boxShadow: '0 24px 64px rgba(0,0,0,.22)', marginBottom: 32
+            boxShadow: '0 24px 64px rgba(0,0,0,.22)', marginBottom: 32,
+            animation: 'labModalIn .18s cubic-bezier(.16,1,.3,1)'
           }}>
             {/* Modal header */}
             <div style={{
@@ -588,7 +628,7 @@ export default function Labs() {
                     <select
                       value={form.patient_id}
                       onChange={e => setField('patient_id', e.target.value)}
-                      style={inputStyle}
+                      className="lab-input" style={inputStyle}
                     >
                       <option value="">— Select patient —</option>
                       {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -601,10 +641,10 @@ export default function Labs() {
                     <input
                       type="text"
                       value={form.test_name}
-                      onChange={e => setField('test_name', e.target.value)}
+                      onChange={e => setTestName(e.target.value)}
                       placeholder="e.g. Glucose"
                       list="test-suggestions"
-                      style={inputStyle}
+                      className="lab-input" style={inputStyle}
                     />
                     <datalist id="test-suggestions">
                       {TEST_SUGGESTIONS.map(t => <option key={t} value={t} />)}
@@ -615,11 +655,11 @@ export default function Labs() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
                     <div>
                       <label style={labelStyle}>Value <span style={{ color: 'var(--danger)' }}>*</span></label>
-                      <input type="text" value={form.value} onChange={e => setField('value', e.target.value)} placeholder="e.g. 5.4" style={inputStyle} />
+                      <input type="text" value={form.value} onChange={e => setField('value', e.target.value)} placeholder="e.g. 5.4" className="lab-input" style={inputStyle} />
                     </div>
                     <div>
                       <label style={labelStyle}>Unit</label>
-                      <input type="text" value={form.unit} onChange={e => setField('unit', e.target.value)} placeholder="e.g. mmol/L" style={inputStyle} />
+                      <input type="text" value={form.unit} onChange={e => setField('unit', e.target.value)} placeholder="e.g. mmol/L" className="lab-input" style={inputStyle} />
                     </div>
                   </div>
 
@@ -627,18 +667,18 @@ export default function Labs() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
                     <div>
                       <label style={labelStyle}>Reference Low</label>
-                      <input type="text" value={form.reference_low} onChange={e => setField('reference_low', e.target.value)} placeholder="e.g. 3.9" style={inputStyle} />
+                      <input type="text" value={form.reference_low} onChange={e => setField('reference_low', e.target.value)} placeholder="e.g. 3.9" className="lab-input" style={inputStyle} />
                     </div>
                     <div>
                       <label style={labelStyle}>Reference High</label>
-                      <input type="text" value={form.reference_high} onChange={e => setField('reference_high', e.target.value)} placeholder="e.g. 7.1" style={inputStyle} />
+                      <input type="text" value={form.reference_high} onChange={e => setField('reference_high', e.target.value)} placeholder="e.g. 7.1" className="lab-input" style={inputStyle} />
                     </div>
                   </div>
 
                   {/* Date */}
                   <div style={{ marginBottom: 16 }}>
                     <label style={labelStyle}>Result Date</label>
-                    <input type="date" value={form.result_date} onChange={e => setField('result_date', e.target.value)} style={inputStyle} />
+                    <input type="date" value={form.result_date} onChange={e => setField('result_date', e.target.value)} className="lab-input" style={inputStyle} />
                   </div>
 
                   {/* Notes */}
@@ -649,7 +689,7 @@ export default function Labs() {
                       onChange={e => setField('notes', e.target.value)}
                       rows={3}
                       placeholder="Optional clinical notes…"
-                      style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }}
+                      className="lab-input" style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }}
                     />
                   </div>
 
@@ -724,7 +764,7 @@ export default function Labs() {
                   </div>
 
                   <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => { setForm(EMPTY_FORM); setSaveResult(null) }}>Add Another</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setForm(freshForm()); setSaveResult(null) }}>Add Another</button>
                     <button className="btn btn-primary btn-sm" onClick={closeModal}>Done</button>
                   </div>
                 </div>
@@ -734,7 +774,12 @@ export default function Labs() {
         </div>
       )}
 
-      <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+      <style>{`
+        @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+        @keyframes labModalFade{from{opacity:0}to{opacity:1}}
+        @keyframes labModalIn{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+        .lab-input:focus{border-color:var(--primary) !important;box-shadow:0 0 0 3px var(--primary-light)}
+      `}</style>
     </div>
   )
 }
