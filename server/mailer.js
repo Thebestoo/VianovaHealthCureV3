@@ -878,6 +878,28 @@ export function tplCareGapDetected({ patientName, gapType, priority, description
   }
 }
 
+// Patient-facing outreach message (care gaps, cohort programs, etc). Deliberately
+// plain — this reads like a message from a clinic, not an internal staff alert,
+// so it skips the dashboard-style rows/badges used elsewhere in this file.
+export function tplPatientOutreach({ patientName, message, gapType, priority }) {
+  const firstName = (patientName || '').split(' ')[0] || 'there'
+  const body = String(message || '').split('\n').filter(Boolean).map(p => `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#1e293b;">${p}</p>`).join('')
+  return {
+    subject: `A message from your care team${gapType ? ` — ${gapType}` : ''}`,
+    text: `Hi ${firstName},\n\n${message}\n\n— Vianova Care Team`,
+    html: `
+      <div style="max-width:560px;margin:0 auto;font-family:'Segoe UI',system-ui,sans-serif;padding:32px 28px;background:#ffffff;">
+        <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#0e7490;margin-bottom:18px;">Vianova Health</div>
+        <p style="margin:0 0 16px;font-size:15px;color:#1e293b;">Hi ${firstName},</p>
+        ${body}
+        <p style="margin:22px 0 0;font-size:14px;color:#475569;">— Your Vianova Care Team</p>
+        <div style="margin-top:28px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:11.5px;color:#94a3b8;">
+          This message was sent by your care provider through the Vianova Health platform${priority === 'high' ? ' regarding a time-sensitive care item' : ''}.
+        </div>
+      </div>`,
+  }
+}
+
 export function tplNlpNoteProcessed({ patientName, noteType, acuityScore, phenotypeFlags, conditionsFound, medicationsFound, sentiment }) {
   const score = acuityScore ?? 0
   const acuityColor = score >= 7 ? '#dc2626' : score >= 4 ? '#d97706' : '#059669'

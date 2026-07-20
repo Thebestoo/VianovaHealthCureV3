@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
   AlertTriangle, CheckCircle2, XCircle, ChevronDown, ChevronUp,
-  Loader2, MessageSquare, Copy, Check, Search, Zap, User
+  Loader2, MessageSquare, Mail, Smartphone, Copy, Check, Search, Zap, User, Send
 } from 'lucide-react'
+
+const CHANNELS = [
+  { id: 'sms',    label: 'Text',   icon: Smartphone },
+  { id: 'email',  label: 'Email',  icon: Mail },
+  { id: 'portal', label: 'Portal', icon: MessageSquare },
+]
 import { useKey } from '../context/KeyContext.jsx'
 
 const PRIORITY_STYLES = {
@@ -54,6 +60,10 @@ export default function CareGaps() {
   const [closingId, setClosingId] = useState(null)
   const [outreachLoading, setOutreachLoading] = useState({})
   const [outreachMessages, setOutreachMessages] = useState({})
+  const [outreachChannel, setOutreachChannel] = useState({})
+  const [outreachMeta, setOutreachMeta] = useState({})
+  const [sendLoading, setSendLoading] = useState({})
+  const [sentInfo, setSentInfo] = useState({})
   const [copiedId, setCopiedId] = useState(null)
 
   useEffect(() => { if (key) { loadGaps(); loadPatients() } }, [key])
@@ -118,17 +128,35 @@ export default function CareGaps() {
     } catch {}
   }
 
-  async function handleOutreach(id) {
+  async function handleOutreach(id, channel) {
+    const useChannel = channel || outreachChannel[id] || 'sms'
+    setOutreachChannel(prev => ({ ...prev, [id]: useChannel }))
     setOutreachLoading(prev => ({ ...prev, [id]: true }))
+    setSentInfo(prev => ({ ...prev, [id]: null }))
     try {
       const r = await fetch(`/api/care-gaps/${id}/outreach`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({ channel: useChannel })
+      })
+      const d = await r.json()
+      setOutreachMessages(prev => ({ ...prev, [id]: d.message }))
+      setOutreachMeta(prev => ({ ...prev, [id]: { canSendEmail: d.canSendEmail, patientPhone: d.patientPhone, patientEmail: d.patientEmail } }))
+    } catch {}
+    setOutreachLoading(prev => ({ ...prev, [id]: false }))
+  }
+
+  async function handleSend(id) {
+    setSendLoading(prev => ({ ...prev, [id]: true }))
+    try {
+      const r = await fetch(`/api/care-gaps/${id}/send`, {
         method: 'POST',
         headers: { 'x-api-key': key }
       })
       const d = await r.json()
-      setOutreachMessages(prev => ({ ...prev, [id]: d.message }))
+      if (r.ok) setSentInfo(prev => ({ ...prev, [id]: d }))
     } catch {}
-    setOutreachLoading(prev => ({ ...prev, [id]: false }))
+    setSendLoading(prev => ({ ...prev, [id]: false }))
   }
 
   function handleCopy(id, text) {
@@ -245,6 +273,10 @@ export default function CareGaps() {
               const isSuppressing = suppressingId === gap.id
               const outreachMsg = outreachMessages[gap.id]
               const outreachBusy = outreachLoading[gap.id]
+              const channel = outreachChannel[gap.id] || 'sms'
+              const meta = outreachMeta[gap.id] || {}
+              const sent = sentInfo[gap.id]
+              const sendBusy = sendLoading[gap.id]
 
               return (
                 <div key={gap.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,.03)' }}>
@@ -288,6 +320,22 @@ export default function CareGaps() {
                           >
                             <XCircle size={12} /> Suppress
                           </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid #e5e7eb', borderRadius: 8, padding: 2 }}>
+                            {CHANNELS.map(c => (
+                              <button
+                                key={c.id}
+                                title={`Draft as ${c.label}`}
+                                onClick={() => handleOutreach(gap.id, c.id)}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 4, padding: '5px 8px', borderRadius: 6, fontSize: 11.5,
+                                  border: 'none', cursor: 'pointer', fontWeight: channel === c.id ? 700 : 500,
+                                  background: channel === c.id ? '#e0f2fe' : 'transparent', color: channel === c.id ? '#0369a1' : '#6b7280'
+                                }}
+                              >
+                                <c.icon size={12} /> {c.label}
+                              </button>
+                            ))}
+                          </div>
                           <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => handleOutreach(gap.id)}
@@ -295,7 +343,7 @@ export default function CareGaps() {
                           >
                             {outreachBusy
                               ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
-                              : <><MessageSquare size={12} /> Generate Outreach</>}
+                              : <><MessageSquare size={12} /> {outreachMsg ? 'Regenerate' : 'Generate Outreach'}</>}
                           </button>
                         </div>
                       )}
@@ -315,24 +363,44 @@ export default function CareGaps() {
                       </div>
                     )}
 
-                    {/* Outreach message */}
+                    {/* Outreach message — rendered as a real message bubble for the chosen channel */}
                     {outreachMsg && (
-                      <div style={{ marginTop: 12, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>AI Outreach Message</span>
+                      <div style={{ marginTop: 12, background: '#0b141a', borderRadius: 12, padding: '14px 16px', maxWidth: 420 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                            {channel === 'email' ? <Mail size={12} /> : channel === 'portal' ? <MessageSquare size={12} /> : <Smartphone size={12} />}
+                            {channel === 'email' ? (meta.patientEmail || 'No email on file') : channel === 'portal' ? 'Patient Portal Message' : (meta.patientPhone || 'No phone on file')}
+                          </div>
                           <button
                             onClick={() => handleCopy(gap.id, outreachMsg)}
-                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, color: '#374151' }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', border: 'none', borderRadius: 6, background: 'rgba(255,255,255,.08)', cursor: 'pointer', fontSize: 11.5, color: '#d1d5db' }}
                           >
-                            {copiedId === gap.id ? <><Check size={12} color="#059669" /> Copied</> : <><Copy size={12} /> Copy</>}
+                            {copiedId === gap.id ? <><Check size={11} color="#4ade80" /> Copied</> : <><Copy size={11} /> Copy</>}
                           </button>
                         </div>
-                        <textarea
-                          readOnly
-                          value={outreachMsg}
-                          rows={4}
-                          style={{ width: '100%', fontSize: 13, color: '#374151', border: 'none', background: 'transparent', resize: 'vertical', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box' }}
-                        />
+                        <div style={{
+                          background: channel === 'sms' ? '#005c4b' : '#1f2937', color: '#e9edef', borderRadius: '14px 14px 4px 14px',
+                          padding: '10px 13px', fontSize: 13.5, lineHeight: 1.55, whiteSpace: 'pre-wrap'
+                        }}>
+                          {outreachMsg}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                          <span style={{ fontSize: 11, color: '#9ca3af' }}>
+                            {sent
+                              ? (sent.delivered ? `✓ Sent by email · ${new Date(sent.sentAt).toLocaleTimeString()}` : `✓ Marked as sent · ${new Date(sent.sentAt).toLocaleTimeString()}`)
+                              : (channel === 'email' && !meta.canSendEmail ? 'Add a patient email to send directly' : `${outreachMsg.length} characters`)}
+                          </span>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleSend(gap.id)}
+                            disabled={sendBusy || (channel === 'email' && !meta.canSendEmail)}
+                            style={{ opacity: (channel === 'email' && !meta.canSendEmail) ? .5 : 1 }}
+                          >
+                            {sendBusy
+                              ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                              : <><Send size={12} /> {channel === 'email' ? 'Send Email' : 'Mark as Sent'}</>}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>

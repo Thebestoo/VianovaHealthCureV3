@@ -18,7 +18,7 @@ import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatment
          tplConsentExpiring, tplSystemError, tplLoginWelcome,
          tplBillingClaimSubmitted, tplAppointmentScheduled, tplLabResultAdded,
          tplDischargeGenerated, tplConsentSigned, tplConsentRevoked,
-         tplCareGapDetected, tplNlpNoteProcessed, tplSdohAssessmentCompleted,
+         tplCareGapDetected, tplPatientOutreach, tplNlpNoteProcessed, tplSdohAssessmentCompleted,
          tplChronicDiseaseUpdate, tplClinicalDecisionRun, tplAuditEvent,
          tplPopulationHealthReport, tplNewUserWelcome } from './mailer.js'
 
@@ -141,6 +141,9 @@ async function initDB() {
     `ALTER TABLE gen_patients ADD COLUMN language TEXT`,
     `ALTER TABLE gen_patients ADD COLUMN import_source TEXT`,
     `ALTER TABLE gen_patients ADD COLUMN data_quality_score INTEGER`,
+    // care-gap outreach — channel-aware delivery tracking
+    `ALTER TABLE care_gaps ADD COLUMN outreach_channel TEXT`,
+    `ALTER TABLE care_gaps ADD COLUMN outreach_sent_at TEXT`,
     // feature 10 v2 — discharge summary new columns
     `ALTER TABLE discharge_summaries ADD COLUMN patient_instructions_lang TEXT`,
     `ALTER TABLE discharge_summaries ADD COLUMN medications_reconciliation TEXT`,
@@ -2079,15 +2082,35 @@ app.patch('/api/care-gaps/:id', auth, async (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/care-gaps/:id/outreach', auth, async (req, res) => {
-  const gap = (await db.execute({
-    sql: 'SELECT g.*, p.name as patient_name, p.language FROM care_gaps g JOIN gen_patients p ON g.patient_id = p.id WHERE g.id = ? AND g.owner_email = ?',
-    args: [req.params.id, req.apiKey]
-  })).rows[0]
-  if (!gap) return res.status(404).json({ error: 'Not found' })
+// channel-specific tone/length rules so the same care gap reads naturally whether
+// it lands as a text message, an email, or a portal notice
+const OUTREACH_CHANNEL_RULES = {
+  sms: {
+    label: 'SMS',
+    instructions: `- Hard limit: 320 characters total, no line breaks, no subject line
+- Sounds like a real text message from a clinic — short, plain, one clear ask
+- No formal greeting/sign-off ("Dear...", "Best regards") — texts don't use those
+- Sign off with just the practice name in under 6 words (e.g. "— Vianova Care Team")`,
+  },
+  email: {
+    label: 'Email',
+    instructions: `- 4–7 sentences, can include a brief greeting and sign-off
+- Slightly more formal than a text, still warm and non-alarming
+- End with a short sign-off from "The Vianova Care Team"
+- Do not include a subject line in the body — it is sent separately`,
+  },
+  portal: {
+    label: 'Patient Portal',
+    instructions: `- 3–6 sentences, written for a secure patient-portal message
+- Can reference "your care team" and invite the patient to reply in the portal
+- Neutral, informational tone — this will sit in the patient's message inbox`,
+  },
+}
 
+async function generateOutreachMessage(gap, channel) {
+  const rules = OUTREACH_CHANNEL_RULES[channel] || OUTREACH_CHANNEL_RULES.sms
   const lang = gap.language || 'English'
-  const prompt = `Write a concise, friendly patient outreach message for the following care gap.
+  const prompt = `Write a patient outreach message for the following care gap, formatted for delivery over ${rules.label}.
 
 Patient: ${gap.patient_name}
 Care gap: ${gap.description}
@@ -2095,25 +2118,67 @@ Priority: ${gap.priority}
 Language preference: ${lang}
 
 Requirements:
-- 3–5 sentences maximum
 - Empathetic, non-alarming tone
-- Include what action the patient should take
-- Suitable for SMS or portal message
-- If language is not English, write in that language
+- Clearly state what action the patient should take and why
+- If language is not English, write the entire message in that language
+${rules.instructions}
 
-Return only the message text, no subject line.`
+Return only the message text — no subject line, no explanation, no quotation marks around it.`
+
+  const chat = await client.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.5,
+    max_tokens: 260,
+  })
+  return chat.choices[0].message.content.trim().replace(/^"|"$/g, '')
+}
+
+app.post('/api/care-gaps/:id/outreach', auth, async (req, res) => {
+  const gap = (await db.execute({
+    sql: 'SELECT g.*, p.name as patient_name, p.language, p.phone, p.email as patient_email FROM care_gaps g JOIN gen_patients p ON g.patient_id = p.id WHERE g.id = ? AND g.owner_email = ?',
+    args: [req.params.id, req.apiKey]
+  })).rows[0]
+  if (!gap) return res.status(404).json({ error: 'Not found' })
+
+  const channel = ['sms', 'email', 'portal'].includes(req.body?.channel) ? req.body.channel : 'sms'
 
   try {
-    const chat = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.4,
-      max_tokens: 200,
+    const msg = await generateOutreachMessage(gap, channel)
+    await db.execute({
+      sql: 'UPDATE care_gaps SET outreach_message = ?, outreach_channel = ?, outreach_sent_at = NULL WHERE id = ?',
+      args: [msg, channel, req.params.id]
     })
-    const msg = chat.choices[0].message.content.trim()
-    await db.execute({ sql: 'UPDATE care_gaps SET outreach_message = ? WHERE id = ?', args: [msg, req.params.id] })
-    res.json({ message: msg })
+    res.json({
+      message: msg,
+      channel,
+      canSendEmail: channel === 'email' && !!gap.patient_email,
+      patientPhone: gap.phone || null,
+      patientEmail: gap.patient_email || null,
+    })
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Actually deliver the generated message. Email can be sent for real through the
+// existing mailer; SMS/portal have no gateway configured, so we log the send —
+// the doctor still copies it into their phone or the patient portal themselves.
+app.post('/api/care-gaps/:id/send', auth, async (req, res) => {
+  const gap = (await db.execute({
+    sql: 'SELECT g.*, p.name as patient_name, p.email as patient_email FROM care_gaps g JOIN gen_patients p ON g.patient_id = p.id WHERE g.id = ? AND g.owner_email = ?',
+    args: [req.params.id, req.apiKey]
+  })).rows[0]
+  if (!gap) return res.status(404).json({ error: 'Not found' })
+  if (!gap.outreach_message) return res.status(400).json({ error: 'Generate an outreach message first' })
+
+  const channel = gap.outreach_channel || 'sms'
+  if (channel === 'email') {
+    if (!gap.patient_email) return res.status(400).json({ error: 'This patient has no email on file' })
+    await sendEmail({ to: gap.patient_email, ...tplPatientOutreach({ patientName: gap.patient_name, message: gap.outreach_message, gapType: gap.gap_type, priority: gap.priority }) })
+  }
+
+  const sentAt = new Date().toISOString()
+  await db.execute({ sql: 'UPDATE care_gaps SET outreach_sent_at = ? WHERE id = ?', args: [sentAt, req.params.id] })
+  res.json({ ok: true, channel, sentAt, delivered: channel === 'email' })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
