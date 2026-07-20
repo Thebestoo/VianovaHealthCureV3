@@ -543,7 +543,7 @@ export default function Labs() {
                               </div>
                               <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.65 }}>{result.ai_summary}</div>
                               <div style={{ marginTop: 10 }}>
-                                <SummaryActions compact title="Lab AI Summary" filename="lab-summary.txt" text={result.ai_summary} />
+                                <SummaryActions compact title="Lab AI Summary" filename="lab-summary.txt" text={result.ai_summary} recipientEmail={result.patient_email} />
                               </div>
                             </div>
                           )}
@@ -757,7 +757,7 @@ export default function Labs() {
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>AI Summary</div>
                         <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.6 }}>{saveResult.ai_summary}</div>
                         <div style={{ marginTop: 10 }}>
-                          <SummaryActions compact title="Lab AI Summary" filename="lab-summary.txt" text={saveResult.ai_summary} />
+                          <SummaryActions compact title="Lab AI Summary" filename="lab-summary.txt" text={saveResult.ai_summary} recipientEmail={saveResult.patient_email} />
                         </div>
                       </div>
                     )}

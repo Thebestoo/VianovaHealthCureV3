@@ -2242,7 +2242,7 @@ function interpretLab(testName, value, refLow, refHigh, critLow, critHigh) {
 
 app.get('/api/labs', auth, async (req, res) => {
   const { patient_id } = req.query
-  let sql = 'SELECT l.*, p.name as patient_name FROM lab_results l JOIN gen_patients p ON l.patient_id = p.id WHERE l.owner_email = ?'
+  let sql = 'SELECT l.*, p.name as patient_name, p.email as patient_email FROM lab_results l JOIN gen_patients p ON l.patient_id = p.id WHERE l.owner_email = ?'
   const args = [req.apiKey]
   if (patient_id) { sql += ' AND l.patient_id = ?'; args.push(patient_id) }
   sql += ' ORDER BY l.result_date DESC, l.created_at DESC'
@@ -2312,7 +2312,7 @@ Conditions: ${patient.conditions || 'none'}`
   })
 
   notify(req.apiKey, tplLabResultAdded({ patientName: patient?.name, testName: test_name, value, unit, interpretation: interp, critical: !!critical, referenceRange: refLow != null && refHigh != null ? `${refLow}–${refHigh} ${unit||''}`.trim() : null })).catch(() => {})
-  res.json({ id, interpretation: interp, critical: !!critical, delta_flag: !!delta_flag, ai_summary })
+  res.json({ id, interpretation: interp, critical: !!critical, delta_flag: !!delta_flag, ai_summary, patient_name: patient.name, patient_email: patient.email || null })
 })
 
 app.delete('/api/labs/:id', auth, async (req, res) => {

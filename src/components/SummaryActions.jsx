@@ -7,7 +7,7 @@ import { useKey } from '../context/KeyContext.jsx'
 // decision summary, lab summary, SDOH summary, case summary, etc). Gives every
 // summary the same three ways out of the screen: copy, download as a file,
 // or email it — instead of each page reinventing (or skipping) this.
-export default function SummaryActions({ title, text, filename, compact = false, dark = false }) {
+export default function SummaryActions({ title, text, filename, compact = false, dark = false, recipientEmail }) {
   const { key } = useKey()
   const [copied, setCopied] = useState(false)
   const [sending, setSending] = useState(false)
@@ -38,12 +38,13 @@ export default function SummaryActions({ title, text, filename, compact = false,
 
   async function handleEmail() {
     if (disabled || sending) return
+    if (recipientEmail === null) { setError('Patient has no email on file'); return }
     setSending(true); setSent(null); setError(null)
     try {
       const r = await fetch('/api/summary/email', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify({ title, text: body })
+        body: JSON.stringify({ title, text: body, recipientEmail: recipientEmail || undefined })
       })
       const d = await r.json()
       if (r.ok) { setSent(d.sentTo) } else { setError(d.error || 'Failed to send') }
@@ -79,7 +80,7 @@ export default function SummaryActions({ title, text, filename, compact = false,
       <button
         onClick={handleEmail}
         disabled={disabled || sending}
-        title="Email this summary to yourself"
+        title={recipientEmail ? `Email this summary to ${recipientEmail}` : 'Email this summary to yourself'}
         style={{ display: 'flex', alignItems: 'center', gap: 5, padding: pad, borderRadius: 7, cursor: (disabled || sending) ? 'default' : 'pointer', fontSize: btnSize, opacity: disabled ? .5 : 1, ...btnBase, ...(sent ? { background: dark ? 'rgba(74,222,128,.15)' : '#f0fdf4', color: dark ? '#4ade80' : '#059669' } : {}) }}
       >
         {sending
