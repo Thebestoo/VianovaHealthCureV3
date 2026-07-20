@@ -59,10 +59,10 @@ function P({ component: C }) {
 }
 
 // Beta-gated routes require both auth and the reviewer passcode (1906).
-function PBeta({ component: C, featureKey, title }) {
+function PBeta({ component: C, featureKey, title, accent }) {
   return (
     <ProtectedRoute>
-      <BetaGate featureKey={featureKey} title={title}>
+      <BetaGate featureKey={featureKey} title={title} accent={accent}>
         <C />
       </BetaGate>
     </ProtectedRoute>
@@ -101,8 +101,8 @@ function AppRoutes() {
               <Route path="/billing"          element={<P component={Billing} />} />
               <Route path="/admin"            element={<P component={Admin} />} />
               <Route path="/channels"         element={<P component={Channels} />} />
-              <Route path="/ccm"              element={<PBeta component={CCM} featureKey="ccm" title="Chronic Care Management (Beta)" />} />
-              <Route path="/rpm"              element={<PBeta component={RPM} featureKey="rpm" title="Remote Patient Monitoring (Beta)" />} />
+              <Route path="/ccm"              element={<PBeta component={CCM} featureKey="ccm" title="Chronic Care Management" accent="#8b5cf6" />} />
+              <Route path="/rpm"              element={<PBeta component={RPM} featureKey="rpm" title="Remote Patient Monitoring" accent="#0ea5e9" />} />
             </Routes>
           </Suspense>
         </Layout>

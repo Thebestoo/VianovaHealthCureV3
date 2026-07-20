@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, Plus, TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react'
+import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, Plus, RefreshCw, Sparkles, Search } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
@@ -7,7 +7,7 @@ import {
 
 const VITALS_CONFIG = [
   { key: 'heart_rate',     label: 'Heart Rate',     unit: 'bpm',   icon: Heart,        normal: [60, 100],  critical: [40, 130], color: '#ef4444' },
-  { key: 'spo2',           label: 'SpO2',            unit: '%',     icon: Droplets,     normal: [95, 100],  critical: [90, 100], color: '#3b82f6' },
+  { key: 'spo2',           label: 'SpO2',            unit: '%',     icon: Droplets,     normal: [95, 100],  critical: [90, 100], color: '#0ea5e9' },
   { key: 'systolic_bp',   label: 'Systolic BP',     unit: 'mmHg',  icon: Activity,     normal: [90, 140],  critical: [70, 180], color: '#8b5cf6' },
   { key: 'diastolic_bp',  label: 'Diastolic BP',    unit: 'mmHg',  icon: Activity,     normal: [60, 90],   critical: [40, 120], color: '#7c3aed' },
   { key: 'temperature',   label: 'Temperature',     unit: '°C',    icon: Thermometer,  normal: [36.1, 37.5], critical: [35, 39], color: '#f97316' },
@@ -25,10 +25,16 @@ function statusFor(key, val) {
 
 const STATUS_COLORS = { normal: '#22c55e', warning: '#f59e0b', critical: '#ef4444' }
 const STATUS_BG     = { normal: '#f0fdf4', warning: '#fffbeb', critical: '#fef2f2' }
+const ACCENT = '#0ea5e9'
+
+function initials(name = '') {
+  return name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase()
+}
 
 export default function RPM() {
   const { key } = useKey()
   const [patients, setPatients] = useState([])
+  const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
   const [readings, setReadings] = useState([])
   const [form, setForm] = useState({ patient_id: '', heart_rate: '', spo2: '', systolic_bp: '', diastolic_bp: '', temperature: '', resp_rate: '', note: '' })
@@ -85,15 +91,6 @@ export default function RPM() {
     } catch {}
   }
 
-  // latest reading for each patient
-  const latestByPatient = {}
-  // build from readings only for selected; for list use separate
-  const allAlerts = []
-
-  patients.forEach(p => {
-    // we'll fetch lazily; show alert badge from stored data
-  })
-
   const chartData = readings.slice().reverse().slice(-20).map(r => ({
     time: new Date(r.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     hr:   r.heart_rate,
@@ -103,100 +100,156 @@ export default function RPM() {
   }))
 
   const latest = readings[0] || {}
+  const filteredPatients = patients.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()))
+  const criticalCount = readings.length && selected ? VITALS_CONFIG.filter(cfg => statusFor(cfg.key, latest[cfg.key]) === 'critical').length : 0
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: 0 }}>Remote Patient Monitoring</h1>
-          <p style={{ color: '#6b7280', margin: '4px 0 0', fontSize: 14 }}>Real-time vitals tracking & threshold alerts</p>
+    <div style={{ padding: '0 0 40px', maxWidth: 1280, margin: '0 auto' }}>
+      {/* Hero header */}
+      <div style={{
+        position: 'relative', overflow: 'hidden', borderRadius: 20, margin: '24px 24px 24px', padding: '30px 32px',
+        background: 'linear-gradient(135deg, #0369a1 0%, #0ea5e9 55%, #38bdf8 100%)',
+        boxShadow: '0 20px 50px -18px rgba(3,105,161,.5)',
+      }}>
+        <div style={{ position: 'absolute', top: -60, right: -40, width: 220, height: 220, borderRadius: '50%', background: 'rgba(255,255,255,.08)' }} />
+        <div style={{ position: 'absolute', bottom: -80, right: 120, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,.06)' }} />
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 18 }}>
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.18)', color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', padding: '5px 12px', borderRadius: 99, marginBottom: 12 }}>
+              <Sparkles size={12} /> Beta Module
+            </div>
+            <h1 style={{ fontSize: 27, fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-.02em' }}>Remote Patient Monitoring</h1>
+            <p style={{ color: 'rgba(255,255,255,.85)', margin: '6px 0 0', fontSize: 14 }}>Real-time vitals tracking & threshold alerts</p>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => { setShowAddPatient(true) }} style={{
+              display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,.16)', color: '#fff', border: '1px solid rgba(255,255,255,.35)',
+              borderRadius: 11, padding: '11px 18px', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', backdropFilter: 'blur(6px)',
+            }}>
+              <Plus size={16} /> Add Patient
+            </button>
+            <button onClick={() => { setAdding(true); setForm(f => ({ ...f, patient_id: selected?.id || '' })) }} style={{
+              display: 'flex', alignItems: 'center', gap: 7, background: '#fff', color: '#0369a1', border: 'none',
+              borderRadius: 11, padding: '11px 18px', fontWeight: 700, fontSize: 13.5, cursor: 'pointer',
+              boxShadow: '0 10px 24px -8px rgba(0,0,0,.35)', transition: 'transform .15s',
+            }}
+              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
+              <Activity size={16} /> Log Reading
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={() => { setShowAddPatient(true) }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-            <Plus size={15} /> Add Patient
-          </button>
-          <button onClick={() => { setAdding(true); setForm(f => ({ ...f, patient_id: selected?.id || '' })) }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-            <Activity size={15} /> Log Reading
-          </button>
+
+        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 26 }}>
+          {[
+            { label: 'Enrolled Patients', value: patients.length },
+            { label: 'Readings (selected)', value: readings.length },
+            { label: 'Critical Vitals Now', value: criticalCount },
+          ].map(s => (
+            <div key={s.label} style={{ background: 'rgba(255,255,255,.14)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 14, padding: '14px 16px', backdropFilter: 'blur(6px)' }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#fff' }}>{s.value}</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.8)', marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
         </div>
       </div>
 
       {!key && (
-        <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '16px 20px', color: '#92400e', marginBottom: 24 }}>
+        <div style={{ margin: '0 24px 24px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 14, padding: '16px 20px', color: '#92400e' }}>
           Connect with your doctor key (Logs page) to access RPM features.
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20, padding: '0 24px' }}>
         {/* Patient List */}
         <div>
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 16px', borderBottom: '1px solid #f3f4f6', fontWeight: 600, fontSize: 13, color: '#374151' }}>
-              Enrolled Patients ({patients.length})
-            </div>
-            {patients.length === 0 && (
-              <div style={{ padding: '24px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
-                No patients enrolled yet.<br />Click "Add Patient" to start.
+          <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e0f2fe', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.03)' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid #f3f4f6' }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: '#111827', marginBottom: 10 }}>
+                Enrolled Patients <span style={{ color: '#38bdf8' }}>({patients.length})</span>
               </div>
-            )}
-            {patients.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setSelected(p)}
-                style={{
-                  width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', borderBottom: '1px solid #f3f4f6',
-                  background: selected?.id === p.id ? '#eff6ff' : '#fff',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10
-                }}
-              >
-                <div style={{ width: 34, height: 34, borderRadius: 99, background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Heart size={15} color="#3b82f6" />
+              <div style={{ position: 'relative' }}>
+                <Search size={13} color="#a0aec0" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patients…"
+                  style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 10px 7px 28px', fontSize: 12.5, boxSizing: 'border-box', outline: 'none' }} />
+              </div>
+            </div>
+            <div style={{ maxHeight: 560, overflowY: 'auto' }}>
+              {filteredPatients.length === 0 && (
+                <div style={{ padding: '28px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+                  No patients found.<br />Click "Add Patient" to start.
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>{p.condition || 'No condition set'}</div>
-                </div>
-              </button>
-            ))}
+              )}
+              {filteredPatients.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setSelected(p)}
+                  style={{
+                    width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', borderBottom: '1px solid #f0f9ff',
+                    background: selected?.id === p.id ? 'linear-gradient(90deg, #eff6ff, #fff)' : '#fff',
+                    borderLeft: selected?.id === p.id ? '3px solid #0ea5e9' : '3px solid transparent',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'background .15s'
+                  }}
+                  onMouseEnter={e => { if (selected?.id !== p.id) e.currentTarget.style.background = '#fafafa' }}
+                  onMouseLeave={e => { if (selected?.id !== p.id) e.currentTarget.style.background = '#fff' }}
+                >
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontSize: 12, fontWeight: 700 }}>
+                    {initials(p.name)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>{p.condition || 'No condition set'}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Right panel */}
         <div>
           {!selected ? (
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '60px 32px', textAlign: 'center', color: '#9ca3af' }}>
-              <Activity size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: .4 }} />
-              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Select a patient</div>
-              <div style={{ fontSize: 13 }}>Choose a patient from the list to view their vitals and trends.</div>
+            <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e0f2fe', padding: '70px 32px', textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Activity size={28} color="#38bdf8" />
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6, color: '#374151' }}>Select a patient</div>
+              <div style={{ fontSize: 13.5 }}>Choose a patient from the list to view their vitals and trends.</div>
             </div>
           ) : (
             <>
               {/* Vitals cards */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: '#111827' }}>{selected.name}</div>
-                  <button onClick={() => loadReadings(selected.id)} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#6b7280' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 11, background: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 800 }}>
+                      {initials(selected.name)}
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: 17, color: '#111827' }}>{selected.name}</div>
+                  </div>
+                  <button onClick={() => loadReadings(selected.id)} style={{ background: '#fff', border: '1px solid #e0f2fe', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#0369a1', fontWeight: 600 }}>
                     <RefreshCw size={12} /> Refresh
                   </button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                   {VITALS_CONFIG.map(cfg => {
                     const val = latest[cfg.key]
                     const st  = statusFor(cfg.key, val)
                     const Icon = cfg.icon
                     return (
-                      <div key={cfg.key} style={{ background: STATUS_BG[st], border: `1px solid ${STATUS_COLORS[st]}33`, borderRadius: 14, padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                      <div key={cfg.key} style={{ background: STATUS_BG[st], border: `1px solid ${STATUS_COLORS[st]}33`, borderRadius: 16, padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', transition: 'transform .15s', cursor: 'default' }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
                           <Icon size={16} color={cfg.color} />
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>{cfg.label}</span>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>{cfg.label}</span>
                         </div>
-                        <div style={{ fontSize: 30, fontWeight: 800, color: STATUS_COLORS[st], lineHeight: 1.1 }}>
+                        <div style={{ fontSize: 32, fontWeight: 800, color: STATUS_COLORS[st], lineHeight: 1.1 }}>
                           {val ?? '—'}
                         </div>
                         <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>{cfg.unit} · normal {cfg.normal[0]}–{cfg.normal[1]}</div>
-                        {st === 'critical' && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#ef4444', fontWeight: 600 }}><AlertTriangle size={12} /> CRITICAL</div>}
-                        {st === 'warning'  && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#f59e0b', fontWeight: 600 }}><AlertTriangle size={12} /> Out of range</div>}
+                        {st === 'critical' && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#ef4444', fontWeight: 700 }}><AlertTriangle size={12} /> CRITICAL</div>}
+                        {st === 'warning'  && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#f59e0b', fontWeight: 700 }}><AlertTriangle size={12} /> Out of range</div>}
                       </div>
                     )
                   })}
@@ -205,60 +258,60 @@ export default function RPM() {
 
               {/* Trend chart */}
               {chartData.length > 1 && (
-                <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '20px 24px', marginBottom: 20 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: '#374151', marginBottom: 16 }}>Vital Trends (last 20 readings)</div>
-                  <ResponsiveContainer width="100%" height={200}>
+                <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e0f2fe', padding: '22px 26px', marginBottom: 20, boxShadow: '0 1px 3px rgba(0,0,0,.03)' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14.5, color: '#374151', marginBottom: 16 }}>Vital Trends (last 20 readings)</div>
+                  <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={chartData} margin={{ top: 4, right: 10, left: -10, bottom: 0 }}>
                       <defs>
                         <linearGradient id="hrGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
+                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.25} />
                           <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="spo2Grad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                          <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
                       <XAxis dataKey="time" tick={{ fontSize: 11 }} />
                       <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip contentStyle={{ fontSize: 12 }} />
+                      <Tooltip contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #e0f2fe' }} />
                       <ReferenceLine y={100} stroke="#ef4444" strokeDasharray="4 2" strokeWidth={1} />
                       <ReferenceLine y={60}  stroke="#ef4444" strokeDasharray="4 2" strokeWidth={1} />
-                      <Area type="monotone" dataKey="hr"   stroke="#ef4444" fill="url(#hrGrad)"   name="Heart Rate" />
-                      <Area type="monotone" dataKey="spo2" stroke="#3b82f6" fill="url(#spo2Grad)" name="SpO2" />
+                      <Area type="monotone" dataKey="hr"   stroke="#ef4444" strokeWidth={2} fill="url(#hrGrad)"   name="Heart Rate" />
+                      <Area type="monotone" dataKey="spo2" stroke="#0ea5e9" strokeWidth={2} fill="url(#spo2Grad)" name="SpO2" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
               )}
 
               {/* Readings history */}
-              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-                <div style={{ padding: '14px 20px', borderBottom: '1px solid #f3f4f6', fontWeight: 600, fontSize: 13, color: '#374151' }}>
+              <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e0f2fe', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.03)' }}>
+                <div style={{ padding: '16px 22px', borderBottom: '1px solid #f3f4f6', fontWeight: 700, fontSize: 13.5, color: '#374151' }}>
                   Reading History
                 </div>
                 {readings.length === 0 ? (
-                  <div style={{ padding: '24px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No readings logged yet.</div>
+                  <div style={{ padding: '26px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No readings logged yet.</div>
                 ) : (
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
-                        <tr style={{ background: '#f9fafb' }}>
+                        <tr style={{ background: '#f8fbff' }}>
                           {['Time', 'HR', 'SpO2', 'BP', 'Temp', 'RR', 'Note'].map(h => (
-                            <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 600, color: '#6b7280', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
+                            <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#6b7280', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {readings.map(r => (
                           <tr key={r.id} style={{ borderTop: '1px solid #f3f4f6' }}>
-                            <td style={{ padding: '9px 14px', color: '#6b7280', whiteSpace: 'nowrap' }}>{new Date(r.recorded_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                            <td style={{ padding: '9px 14px', color: STATUS_COLORS[statusFor('heart_rate', r.heart_rate)], fontWeight: 600 }}>{r.heart_rate ?? '—'}</td>
-                            <td style={{ padding: '9px 14px', color: STATUS_COLORS[statusFor('spo2', r.spo2)], fontWeight: 600 }}>{r.spo2 ? `${r.spo2}%` : '—'}</td>
-                            <td style={{ padding: '9px 14px', color: '#374151' }}>{r.systolic_bp && r.diastolic_bp ? `${r.systolic_bp}/${r.diastolic_bp}` : '—'}</td>
-                            <td style={{ padding: '9px 14px', color: STATUS_COLORS[statusFor('temperature', r.temperature)] }}>{r.temperature ?? '—'}</td>
-                            <td style={{ padding: '9px 14px', color: STATUS_COLORS[statusFor('resp_rate', r.resp_rate)] }}>{r.resp_rate ?? '—'}</td>
-                            <td style={{ padding: '9px 14px', color: '#6b7280', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.note || '—'}</td>
+                            <td style={{ padding: '10px 14px', color: '#6b7280', whiteSpace: 'nowrap' }}>{new Date(r.recorded_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                            <td style={{ padding: '10px 14px', color: STATUS_COLORS[statusFor('heart_rate', r.heart_rate)], fontWeight: 700 }}>{r.heart_rate ?? '—'}</td>
+                            <td style={{ padding: '10px 14px', color: STATUS_COLORS[statusFor('spo2', r.spo2)], fontWeight: 700 }}>{r.spo2 ? `${r.spo2}%` : '—'}</td>
+                            <td style={{ padding: '10px 14px', color: '#374151' }}>{r.systolic_bp && r.diastolic_bp ? `${r.systolic_bp}/${r.diastolic_bp}` : '—'}</td>
+                            <td style={{ padding: '10px 14px', color: STATUS_COLORS[statusFor('temperature', r.temperature)] }}>{r.temperature ?? '—'}</td>
+                            <td style={{ padding: '10px 14px', color: STATUS_COLORS[statusFor('resp_rate', r.resp_rate)] }}>{r.resp_rate ?? '—'}</td>
+                            <td style={{ padding: '10px 14px', color: '#6b7280', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.note || '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -273,35 +326,38 @@ export default function RPM() {
 
       {/* Add Reading Modal */}
       {adding && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <form onSubmit={saveReading} style={{ background: '#fff', borderRadius: 14, padding: '28px 32px', width: 520, maxWidth: '95vw' }}>
-            <h2 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700 }}>Log Vital Reading</h2>
-            <div style={{ marginBottom: 14 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,20,35,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, animation: 'rpmFade .18s ease' }}>
+          <form onSubmit={saveReading} style={{ background: '#fff', borderRadius: 18, padding: '30px 32px', width: 520, maxWidth: '95vw', boxShadow: '0 30px 80px -20px rgba(0,0,0,.4)', animation: 'rpmIn .22s cubic-bezier(.16,1,.3,1)' }}>
+            <h2 style={{ margin: '0 0 20px', fontSize: 19, fontWeight: 800, color: '#111827' }}>Log Vital Reading</h2>
+            <div style={{ marginBottom: 15 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 5 }}>Patient</label>
               <select value={form.patient_id} onChange={e => setForm(f => ({ ...f, patient_id: e.target.value }))} required
-                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 10px', fontSize: 13 }}>
+                className="rpm-input"
+                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13 }}>
                 <option value="">— select —</option>
                 {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 15 }}>
               {VITALS_CONFIG.map(cfg => (
                 <div key={cfg.key}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>{cfg.label} ({cfg.unit})</label>
                   <input type="number" step="any" value={form[cfg.key]} onChange={e => setForm(f => ({ ...f, [cfg.key]: e.target.value }))}
                     placeholder={`${cfg.normal[0]}–${cfg.normal[1]}`}
-                    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                    className="rpm-input"
+                    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13, boxSizing: 'border-box' }} />
                 </div>
               ))}
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Note (optional)</label>
               <textarea value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} rows={2}
-                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 10px', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
+                className="rpm-input"
+                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setAdding(false)} style={{ padding: '9px 18px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-              <button type="submit" disabled={saving} style={{ padding: '9px 18px', border: 'none', borderRadius: 8, background: '#10b981', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+              <button type="button" onClick={() => setAdding(false)} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
+              <button type="submit" disabled={saving} style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, boxShadow: '0 8px 18px -6px rgba(14,165,233,.55)' }}>
                 {saving ? 'Saving…' : 'Save Reading'}
               </button>
             </div>
@@ -311,28 +367,35 @@ export default function RPM() {
 
       {/* Add Patient Modal */}
       {showAddPatient && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <form onSubmit={addPatient} style={{ background: '#fff', borderRadius: 14, padding: '28px 32px', width: 400, maxWidth: '95vw' }}>
-            <h2 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700 }}>Enroll Patient in RPM</h2>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,20,35,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, animation: 'rpmFade .18s ease' }}>
+          <form onSubmit={addPatient} style={{ background: '#fff', borderRadius: 18, padding: '30px 32px', width: 400, maxWidth: '95vw', boxShadow: '0 30px 80px -20px rgba(0,0,0,.4)', animation: 'rpmIn .22s cubic-bezier(.16,1,.3,1)' }}>
+            <h2 style={{ margin: '0 0 20px', fontSize: 19, fontWeight: 800, color: '#111827' }}>Enroll Patient in RPM</h2>
             {[
               { label: 'Full Name', key: 'name', type: 'text', required: true },
               { label: 'Date of Birth', key: 'dob', type: 'date', required: false },
               { label: 'Primary Condition', key: 'condition', type: 'text', required: false },
             ].map(f => (
-              <div key={f.key} style={{ marginBottom: 14 }}>
+              <div key={f.key} style={{ marginBottom: 15 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>{f.label}</label>
                 <input type={f.type} required={f.required} value={newPatient[f.key]}
+                  className="rpm-input"
                   onChange={e => setNewPatient(p => ({ ...p, [f.key]: e.target.value }))}
-                  style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                  style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13, boxSizing: 'border-box' }} />
               </div>
             ))}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-              <button type="button" onClick={() => setShowAddPatient(false)} style={{ padding: '9px 18px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-              <button type="submit" style={{ padding: '9px 18px', border: 'none', borderRadius: 8, background: '#0ea5e9', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Enroll</button>
+              <button type="button" onClick={() => setShowAddPatient(false)} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
+              <button type="submit" style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, boxShadow: '0 8px 18px -6px rgba(14,165,233,.55)' }}>Enroll</button>
             </div>
           </form>
         </div>
       )}
+
+      <style>{`
+        @keyframes rpmFade { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes rpmIn { from { opacity: 0; transform: translateY(10px) scale(.97) } to { opacity: 1; transform: translateY(0) scale(1) } }
+        .rpm-input:focus { outline: none; border-color: ${ACCENT} !important; box-shadow: 0 0 0 3px ${ACCENT}22; }
+      `}</style>
     </div>
   )
 }
