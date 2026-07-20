@@ -241,7 +241,7 @@ export default function Login() {
               display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32,
             }}>
               {[
-                { value: '12,400+', label: 'Patients managed' },
+                { value: '1000+', label: 'Patients managed' },
                 { value: '99.9%',   label: 'Uptime SLA'       },
                 { value: '2.1s',    label: 'Avg AI response'  },
                 { value: 'HIPAA',   label: 'Compliant'        },
