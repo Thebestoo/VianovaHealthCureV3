@@ -125,6 +125,21 @@
   .feature-row:last-child{ border-bottom:none; }
   .feature-row .num{ font-size:13px; font-weight:800; color:var(--accent); width:30px; flex-shrink:0; padding-top:2px; }
   .feature-row .ftitle{ font-size:15.5px; font-weight:700; color:var(--text); }
+
+  /* ---------- product screenshots ---------- */
+  .shot{
+    background:#fff; border:1px solid var(--border); border-radius:14px; overflow:hidden;
+    box-shadow:0 6px 20px rgba(15,23,42,.08); display:flex; flex-direction:column;
+  }
+  .shot img{ width:100%; display:block; border-bottom:1px solid var(--border); }
+  .shot-cap{ padding:12px 16px; }
+  .shot-cap .st{ font-size:13.5px; font-weight:700; color:var(--text); }
+  .shot-cap .sd{ font-size:12px; color:var(--text2); margin-top:3px; line-height:1.4; }
+  .shot-grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .shot-grid-4{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .shot-single{ max-width:760px; margin:0 auto; }
+  .shot-single img{ max-height:56vh; object-fit:cover; object-position:top; }
+  .shot-grid-2 img, .shot-grid-4 img{ max-height:30vh; object-fit:cover; object-position:top; }
   .feature-row .fdesc{ font-size:13.5px; color:var(--text2); margin-top:4px; line-height:1.55; }
 
   .pill{
@@ -225,6 +240,27 @@
           <div class="card"><h3>10 · Safety & Emergency</h3><p>How red flags and urgent cases are escalated.</p></div>
           <div class="card"><h3>11 · Compliance & Audit</h3><p>Every action logged, every consent tracked.</p></div>
           <div class="card"><h3>12 · Design & Accessibility</h3><p>A responsive, mobile-ready interface.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1B. PRODUCT TOUR — SIGN IN & DASHBOARD -->
+  <section class="slide" id="slide-1b">
+    <div class="slide-inner">
+      <span class="eyebrow">Product Tour</span>
+      <h2 class="slide-title">Signing in and the dashboard</h2>
+      <p class="slide-sub">No public sign-up — accounts are provisioned by a superadmin. The dashboard gives an instant read on case volume, urgency, and trends.</p>
+      <div class="content">
+        <div class="shot-grid-2">
+          <div class="shot">
+            <img src="presentation-assets/01-login.jpg" alt="Login screen">
+            <div class="shot-cap"><div class="st">Sign in</div><div class="sd">The only entry point — no patient accounts exist.</div></div>
+          </div>
+          <div class="shot">
+            <img src="presentation-assets/02-dashboard.jpg" alt="Dashboard">
+            <div class="shot-cap"><div class="st">Dashboard</div><div class="sd">Case counts, urgency triage, and trend charts in one view.</div></div>
+          </div>
         </div>
       </div>
     </div>
@@ -339,6 +375,35 @@
     </div>
   </section>
 
+  <!-- 4B. PRODUCT TOUR — NEW CASE WIZARD -->
+  <section class="slide" id="slide-4b">
+    <div class="slide-inner">
+      <span class="eyebrow">Product Tour</span>
+      <h2 class="slide-title">Creating a case: the 5-step wizard</h2>
+      <p class="slide-sub">Live screenshots of the guided intake flow — nothing here is a mockup.</p>
+      <div class="content">
+        <div class="shot-grid-4">
+          <div class="shot">
+            <img src="presentation-assets/03-new-case-step1.jpg" alt="Step 1 — Import FHIR">
+            <div class="shot-cap"><div class="st">1 · Import FHIR</div><div class="sd">Auto-fill from a FHIR bundle, or skip and enter manually.</div></div>
+          </div>
+          <div class="shot">
+            <img src="presentation-assets/04-new-case-step2.jpg" alt="Step 2 — Patient Info">
+            <div class="shot-cap"><div class="st">2 · Patient Info</div><div class="sd">Age, sex, and free-text clinical context for the AI.</div></div>
+          </div>
+          <div class="shot">
+            <img src="presentation-assets/05-new-case-step3.jpg" alt="Step 3 — Medical History">
+            <div class="shot-cap"><div class="st">3 · Medical History</div><div class="sd">Conditions, medications, allergies feed the AI.</div></div>
+          </div>
+          <div class="shot">
+            <img src="presentation-assets/06-new-case-step4.jpg" alt="Step 4 — Intake Questions">
+            <div class="shot-cap"><div class="st">4 · Intake Questions</div><div class="sd">Structured symptoms + a 1–10 severity slider.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- 5. AI CLINICAL ENGINE -->
   <section class="slide" id="slide-5">
     <div class="slide-inner">
@@ -421,6 +486,35 @@
     </div>
   </section>
 
+  <!-- 7B. PRODUCT TOUR — CASES, PATIENTS, CHANNELS, ADMIN -->
+  <section class="slide" id="slide-7b">
+    <div class="slide-inner">
+      <span class="eyebrow">Product Tour</span>
+      <h2 class="slide-title">Cases, patients, channels &amp; admin</h2>
+      <p class="slide-sub">From the case queue to secure team messaging to the superadmin controls behind assignment.</p>
+      <div class="content">
+        <div class="shot-grid-4">
+          <div class="shot">
+            <img src="presentation-assets/07-cases-list.jpg" alt="All Cases list">
+            <div class="shot-cap"><div class="st">All Cases</div><div class="sd">Filterable by status, confidence, date.</div></div>
+          </div>
+          <div class="shot">
+            <img src="presentation-assets/08-patients.jpg" alt="Patients list">
+            <div class="shot-cap"><div class="st">Patients</div><div class="sd">Longitudinal record behind every case.</div></div>
+          </div>
+          <div class="shot">
+            <img src="presentation-assets/09-channels.jpg" alt="Doctor Channels">
+            <div class="shot-cap"><div class="st">Doctor Channels</div><div class="sd">Secure, in-app team messaging.</div></div>
+          </div>
+          <div class="shot">
+            <img src="presentation-assets/10-admin.jpg" alt="Admin panel">
+            <div class="shot-cap"><div class="st">Admin</div><div class="sd">Superadmin-only case assignment &amp; users.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- 8. NOTIFICATIONS -->
   <section class="slide" id="slide-8">
     <div class="slide-inner">
@@ -493,6 +587,27 @@
           <div class="card"><h3 style="font-size:14px;">🗒️ NLP Notes</h3><p>AI-assisted clinical note parsing.</p></div>
           <div class="card"><h3 style="font-size:14px;">🔗 Interoperability</h3><p>FHIR-based data exchange preview.</p></div>
           <div class="card"><h3 style="font-size:14px;">💳 Billing</h3><p>Billing &amp; claims overview.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10B. PRODUCT TOUR — POPULATION HEALTH & ADVERSE EVENTS -->
+  <section class="slide" id="slide-10b">
+    <div class="slide-inner">
+      <span class="eyebrow">Product Tour</span>
+      <h2 class="slide-title">Population health &amp; safety signals</h2>
+      <p class="slide-sub">Beyond individual cases — aggregate trends and automated adverse-event detection across the whole patient population.</p>
+      <div class="content">
+        <div class="shot-grid-2">
+          <div class="shot">
+            <img src="presentation-assets/11-population-health.jpg" alt="Population Health">
+            <div class="shot-cap"><div class="st">Population Health</div><div class="sd">Aggregate trends across all patients.</div></div>
+          </div>
+          <div class="shot">
+            <img src="presentation-assets/12-adverse-events.jpg" alt="Adverse Events">
+            <div class="shot-cap"><div class="st">Adverse Events</div><div class="sd">Automated safety signal detection.</div></div>
+          </div>
         </div>
       </div>
     </div>
