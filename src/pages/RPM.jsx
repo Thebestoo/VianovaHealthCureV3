@@ -93,6 +93,30 @@ export default function RPM() {
     } catch {}
   }
 
+  // Cuts data-entry time for routine readings — pulls the patient's last
+  // recorded vitals or a clinically-normal baseline into the form instead
+  // of requiring every field to be typed by hand.
+  function autofillFromLast() {
+    if (!latest || !readings.length) return
+    setForm(f => ({
+      ...f,
+      heart_rate: latest.heart_rate ?? f.heart_rate,
+      spo2: latest.spo2 ?? f.spo2,
+      systolic_bp: latest.systolic_bp ?? f.systolic_bp,
+      diastolic_bp: latest.diastolic_bp ?? f.diastolic_bp,
+      temperature: latest.temperature ?? f.temperature,
+      resp_rate: latest.resp_rate ?? f.resp_rate,
+    }))
+  }
+
+  function autofillNormalRange() {
+    setForm(f => {
+      const next = { ...f }
+      VITALS_CONFIG.forEach(cfg => { next[cfg.key] = String(Math.round((cfg.normal[0] + cfg.normal[1]) / 2)) })
+      return next
+    })
+  }
+
   async function disenrollPatient() {
     setDisenrolling(true)
     try {
@@ -346,7 +370,19 @@ export default function RPM() {
       {adding && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,20,35,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, animation: 'rpmFade .18s ease' }}>
           <form onSubmit={saveReading} style={{ background: '#fff', borderRadius: 18, padding: '30px 32px', width: 520, maxWidth: '95vw', boxShadow: '0 30px 80px -20px rgba(0,0,0,.4)', animation: 'rpmIn .22s cubic-bezier(.16,1,.3,1)' }}>
-            <h2 style={{ margin: '0 0 20px', fontSize: 19, fontWeight: 800, color: '#111827' }}>Log Vital Reading</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: '#111827' }}>Log Vital Reading</h2>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" onClick={autofillFromLast} disabled={!readings.length}
+                  style={{ padding: '5px 11px', borderRadius: 8, border: '1px dashed #bae6fd', background: readings.length ? '#f0f9ff' : '#f9fafb', color: readings.length ? '#0369a1' : '#c0c8d0', fontSize: 11.5, fontWeight: 600, cursor: readings.length ? 'pointer' : 'default' }}>
+                  Copy Last Reading
+                </button>
+                <button type="button" onClick={autofillNormalRange}
+                  style={{ padding: '5px 11px', borderRadius: 8, border: '1px dashed #bae6fd', background: '#f0f9ff', color: '#0369a1', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
+                  Use Normal Range
+                </button>
+              </div>
+            </div>
             <div style={{ marginBottom: 15 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 5 }}>Patient</label>
               <select value={form.patient_id} onChange={e => setForm(f => ({ ...f, patient_id: e.target.value }))} required

@@ -54,6 +54,14 @@ const CARE_PLAN_TEMPLATES = {
   'Custom': [],
 }
 
+const QUICK_MINUTES = [5, 10, 15, 20, 30]
+const NOTE_TEMPLATES = [
+  { label: 'Medication review', notes: 'Reviewed current medications and adherence with patient. No new side effects reported.' },
+  { label: 'Symptom check-in', notes: 'Called patient to review current symptoms and overall status since last contact.' },
+  { label: 'Care coordination', notes: 'Coordinated care with specialist/pharmacy on behalf of patient regarding treatment plan.' },
+  { label: 'Lab/vitals follow-up', notes: 'Reviewed recent lab results / vitals with patient and discussed next steps.' },
+]
+
 const STATUS_COLOR = { active: '#10b981', inactive: '#94a3b8', discharged: '#ef4444' }
 const STATUS_BG    = { active: '#ecfdf5', inactive: '#f1f5f9', discharged: '#fef2f2' }
 const ACCENT = '#8b5cf6'
@@ -464,10 +472,29 @@ export default function CCM() {
             <h2 style={{ margin: '0 0 20px', fontSize: 19, fontWeight: 800, color: '#111827' }}>Log CCM Check-in</h2>
             <div style={{ marginBottom: 13 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Time Spent (minutes) *</label>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                {QUICK_MINUTES.map(m => (
+                  <button key={m} type="button" onClick={() => setCheckinForm(f => ({ ...f, minutes: String(m) }))}
+                    style={{ padding: '5px 12px', borderRadius: 99, border: `1px solid ${String(m) === String(checkinForm.minutes) ? '#8b5cf6' : '#e5e7eb'}`, background: String(m) === String(checkinForm.minutes) ? '#f5f3ff' : '#fff', color: String(m) === String(checkinForm.minutes) ? '#7c3aed' : '#6b7280', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                    {m}m
+                  </button>
+                ))}
+              </div>
               <input type="number" min="1" required value={checkinForm.minutes} onChange={e => setCheckinForm(f => ({ ...f, minutes: e.target.value }))}
                 className="ccm-input"
                 style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13, boxSizing: 'border-box' }} />
               <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Need ≥ 20 min/month for CPT 99490 billing</div>
+            </div>
+            <div style={{ marginBottom: 13 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Quick-fill Clinical Notes</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {NOTE_TEMPLATES.map(t => (
+                  <button key={t.label} type="button" onClick={() => setCheckinForm(f => ({ ...f, notes: t.notes }))}
+                    style={{ padding: '5px 11px', borderRadius: 8, border: '1px dashed #ddd6fe', background: '#faf9ff', color: '#7c3aed', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
             {[
               { label: 'Clinical Notes', key: 'notes' },
