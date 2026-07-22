@@ -1940,6 +1940,15 @@ app.post('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
   res.json({ ok: true })
 })
 
+// Disenroll — removes the patient and their vitals history from RPM.
+app.delete('/api/rpm/patients/:pid', auth, async (req, res) => {
+  const existing = (await db.execute({ sql: 'SELECT id FROM rpm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
+  if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
+  await db.execute({ sql: 'DELETE FROM rpm_readings WHERE patient_id = ?', args: [req.params.pid] })
+  await db.execute({ sql: 'DELETE FROM rpm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })
+  res.json({ ok: true })
+})
+
 // ── CCM routes ─────────────────────────────────────────────────────────────────
 app.get('/api/ccm/patients', auth, async (req, res) => {
   const rows = (await db.execute({ sql: 'SELECT * FROM ccm_patients WHERE owner_email = ? ORDER BY name', args: [req.apiKey] })).rows
@@ -1986,6 +1995,16 @@ app.post('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
     sql: `INSERT INTO ccm_checkins (patient_id, minutes, notes, checkin_date, created_at) VALUES (?,?,?,?,?)`,
     args: [req.params.pid, minutes || 0, notes || null, new Date().toISOString(), new Date().toISOString()]
   })
+  res.json({ ok: true })
+})
+
+// Disenroll — removes the patient, care plan and check-in history from CCM.
+app.delete('/api/ccm/patients/:pid', auth, async (req, res) => {
+  const existing = (await db.execute({ sql: 'SELECT id FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
+  if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
+  await db.execute({ sql: 'DELETE FROM ccm_checkins WHERE patient_id = ?', args: [req.params.pid] })
+  await db.execute({ sql: 'DELETE FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })
+  await db.execute({ sql: 'DELETE FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })
   res.json({ ok: true })
 })
 

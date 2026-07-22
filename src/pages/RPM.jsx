@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, Plus, RefreshCw, Sparkles, Search } from 'lucide-react'
+import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, Plus, RefreshCw, Sparkles, Search, UserMinus } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
@@ -42,6 +42,8 @@ export default function RPM() {
   const [saving, setSaving] = useState(false)
   const [showAddPatient, setShowAddPatient] = useState(false)
   const [newPatient, setNewPatient] = useState({ name: '', dob: '', condition: '' })
+  const [showDisenroll, setShowDisenroll] = useState(false)
+  const [disenrolling, setDisenrolling] = useState(false)
 
   useEffect(() => { if (key) loadPatients() }, [key])
   useEffect(() => { if (selected) loadReadings(selected.id) }, [selected])
@@ -89,6 +91,16 @@ export default function RPM() {
       setNewPatient({ name: '', dob: '', condition: '' })
       loadPatients()
     } catch {}
+  }
+
+  async function disenrollPatient() {
+    setDisenrolling(true)
+    try {
+      await fetch(`/api/rpm/patients/${selected.id}`, { method: 'DELETE', headers: { 'x-api-key': key } })
+      setShowDisenroll(false)
+      setSelected(null)
+      loadPatients()
+    } finally { setDisenrolling(false) }
   }
 
   const chartData = readings.slice().reverse().slice(-20).map(r => ({
@@ -227,9 +239,15 @@ export default function RPM() {
                     </div>
                     <div style={{ fontWeight: 800, fontSize: 17, color: '#111827' }}>{selected.name}</div>
                   </div>
-                  <button onClick={() => loadReadings(selected.id)} style={{ background: '#fff', border: '1px solid #e0f2fe', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#0369a1', fontWeight: 600 }}>
-                    <RefreshCw size={12} /> Refresh
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => loadReadings(selected.id)} style={{ background: '#fff', border: '1px solid #e0f2fe', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#0369a1', fontWeight: 600 }}>
+                      <RefreshCw size={12} /> Refresh
+                    </button>
+                    <button onClick={() => setShowDisenroll(true)} title="Disenroll from RPM"
+                      style={{ background: '#fff', border: '1px solid #fecaca', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#ef4444', fontWeight: 600 }}>
+                      <UserMinus size={12} /> Disenroll
+                    </button>
+                  </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                   {VITALS_CONFIG.map(cfg => {
@@ -388,6 +406,27 @@ export default function RPM() {
               <button type="submit" style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, boxShadow: '0 8px 18px -6px rgba(14,165,233,.55)' }}>Enroll</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Disenroll Confirm Modal */}
+      {showDisenroll && selected && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,20,35,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, animation: 'rpmFade .18s ease' }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: '30px 32px', width: 420, maxWidth: '95vw', boxShadow: '0 30px 80px -20px rgba(0,0,0,.4)', animation: 'rpmIn .22s cubic-bezier(.16,1,.3,1)', textAlign: 'center' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <UserMinus size={24} color="#ef4444" />
+            </div>
+            <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800, color: '#111827' }}>Disenroll {selected.name}?</h2>
+            <p style={{ fontSize: 13.5, color: '#6b7280', margin: '0 0 24px', lineHeight: 1.5 }}>
+              This removes the patient from RPM along with their vitals reading history. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button type="button" onClick={() => setShowDisenroll(false)} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
+              <button type="button" disabled={disenrolling} onClick={disenrollPatient} style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, boxShadow: '0 8px 18px -6px rgba(239,68,68,.5)' }}>
+                {disenrolling ? 'Disenrolling…' : 'Disenroll'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

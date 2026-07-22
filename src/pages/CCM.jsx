@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, User, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search } from 'lucide-react'
+import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, User, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 const CARE_PLAN_TEMPLATES = {
@@ -78,6 +78,8 @@ export default function CCM() {
   const [planTemplate, setPlanTemplate] = useState('Diabetes Type 2')
   const [saving, setSaving]         = useState(false)
   const [expanded, setExpanded]     = useState({})
+  const [showDisenroll, setShowDisenroll] = useState(false)
+  const [disenrolling, setDisenrolling] = useState(false)
 
   useEffect(() => { if (key) loadPatients() }, [key])
   useEffect(() => {
@@ -164,6 +166,16 @@ export default function CCM() {
       body: JSON.stringify({ tasks: JSON.stringify(updated) })
     })
     loadPlan(selected.id)
+  }
+
+  async function disenrollPatient() {
+    setDisenrolling(true)
+    try {
+      await fetch(`/api/ccm/patients/${selected.id}`, { method: 'DELETE', headers: { 'x-api-key': key } })
+      setShowDisenroll(false)
+      setSelected(null)
+      loadPatients()
+    } finally { setDisenrolling(false) }
   }
 
   function applyTemplate(tpl) {
@@ -321,6 +333,10 @@ export default function CCM() {
                     <button onClick={() => { setShowCheckin(true) }}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg,#8b5cf6,#a855f7)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 8px 18px -6px rgba(139,92,246,.55)' }}>
                       <Clock size={14} /> Log Check-in
+                    </button>
+                    <button onClick={() => setShowDisenroll(true)} title="Disenroll from CCM"
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', color: '#ef4444', border: '1px solid #fecaca', borderRadius: 10, padding: '11px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                      <UserMinus size={14} /> Disenroll
                     </button>
                   </div>
                 </div>
@@ -515,6 +531,27 @@ export default function CCM() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Disenroll Confirm Modal */}
+      {showDisenroll && selected && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,10,30,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, animation: 'ccmFade .18s ease' }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: '30px 32px', width: 420, maxWidth: '95vw', boxShadow: '0 30px 80px -20px rgba(0,0,0,.4)', animation: 'ccmIn .22s cubic-bezier(.16,1,.3,1)', textAlign: 'center' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <UserMinus size={24} color="#ef4444" />
+            </div>
+            <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800, color: '#111827' }}>Disenroll {selected.name}?</h2>
+            <p style={{ fontSize: 13.5, color: '#6b7280', margin: '0 0 24px', lineHeight: 1.5 }}>
+              This removes the patient from CCM along with their care plan and check-in history. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button type="button" onClick={() => setShowDisenroll(false)} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
+              <button type="button" disabled={disenrolling} onClick={disenrollPatient} style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, boxShadow: '0 8px 18px -6px rgba(239,68,68,.5)' }}>
+                {disenrolling ? 'Disenrolling…' : 'Disenroll'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
