@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, User, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus, Timer, Pause, Play, Wand2 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
-import AiHelp from '../components/AiHelp.jsx'
 
 const CARE_PLAN_TEMPLATES = {
   'Diabetes Type 2': [
@@ -739,7 +738,6 @@ export default function CCM() {
         @keyframes ccmIn { from { opacity: 0; transform: translateY(10px) scale(.97) } to { opacity: 1; transform: translateY(0) scale(1) } }
         .ccm-input:focus { outline: none; border-color: ${ACCENT} !important; box-shadow: 0 0 0 3px ${ACCENT}22; }
       `}</style>
-      <AiHelp module="ccm" accent={ACCENT} />
     </div>
   )
 }

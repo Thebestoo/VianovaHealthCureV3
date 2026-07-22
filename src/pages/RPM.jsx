@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, Plus, RefreshCw, Sparkles, Search, UserMinus, Wand2 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
-import AiHelp from '../components/AiHelp.jsx'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts'
@@ -558,7 +557,6 @@ export default function RPM() {
         @keyframes rpmIn { from { opacity: 0; transform: translateY(10px) scale(.97) } to { opacity: 1; transform: translateY(0) scale(1) } }
         .rpm-input:focus { outline: none; border-color: ${ACCENT} !important; box-shadow: 0 0 0 3px ${ACCENT}22; }
       `}</style>
-      <AiHelp module="rpm" accent={ACCENT} />
     </div>
   )
 }
