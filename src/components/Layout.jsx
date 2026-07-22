@@ -374,7 +374,7 @@ export default function Layout({ children }) {
         ))}
       </nav>
 
-      {!pathname.startsWith('/channels') && <FloatingChat />}
+      {!pathname.startsWith('/channels') && !pathname.startsWith('/ccm') && !pathname.startsWith('/rpm') && <FloatingChat />}
 
       {/* ── Profile Settings Modal ── */}
       {settingsOpen && (
