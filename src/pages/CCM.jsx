@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, User, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus } from 'lucide-react'
+import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, User, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus, Timer, Pause, Play } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 const CARE_PLAN_TEMPLATES = {
@@ -66,6 +66,12 @@ const STATUS_COLOR = { active: '#10b981', inactive: '#94a3b8', discharged: '#ef4
 const STATUS_BG    = { active: '#ecfdf5', inactive: '#f1f5f9', discharged: '#fef2f2' }
 const ACCENT = '#8b5cf6'
 
+function formatTimer(seconds) {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0')
+  const s = (seconds % 60).toString().padStart(2, '0')
+  return `${m}:${s}`
+}
+
 function initials(name = '') {
   return name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase()
 }
@@ -88,14 +94,33 @@ export default function CCM() {
   const [expanded, setExpanded]     = useState({})
   const [showDisenroll, setShowDisenroll] = useState(false)
   const [disenrolling, setDisenrolling] = useState(false)
+  const [timerRunning, setTimerRunning] = useState(false)
+  const [timerSeconds, setTimerSeconds] = useState(0)
 
   useEffect(() => { if (key) loadPatients() }, [key])
   useEffect(() => {
     if (selected) {
       loadPlan(selected.id)
       loadCheckins(selected.id)
+      setTimerRunning(false)
+      setTimerSeconds(0)
     }
   }, [selected])
+
+  // Auto-tracks live time-on-task per patient so CCM minutes are captured
+  // automatically instead of being estimated and typed in after the fact.
+  useEffect(() => {
+    if (!timerRunning) return
+    const id = setInterval(() => setTimerSeconds(s => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [timerRunning])
+
+  function openCheckinFromTimer() {
+    setTimerRunning(false)
+    const mins = Math.max(1, Math.round(timerSeconds / 60))
+    setCheckinForm(f => ({ ...f, minutes: String(mins) }))
+    setShowCheckin(true)
+  }
 
   async function loadPatients() {
     try {
@@ -147,6 +172,7 @@ export default function CCM() {
       })
       setShowCheckin(false)
       setCheckinForm({ minutes: '', notes: '', barriers: '', plan_update: '' })
+      setTimerSeconds(0)
       loadCheckins(selected.id)
     } finally { setSaving(false) }
   }
@@ -338,6 +364,23 @@ export default function CCM() {
                         {ccmEligible ? '✓ Billable' : 'min this month'}
                       </div>
                     </div>
+
+                    {/* Live time-on-task tracker — auto-captures minutes instead of guessing them */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: timerRunning ? '#f5f3ff' : '#fafafa', border: `1px solid ${timerRunning ? '#ddd6fe' : '#e5e7eb'}`, borderRadius: 14, padding: '10px 14px' }}>
+                      <Timer size={15} color={timerRunning ? '#7c3aed' : '#9ca3af'} />
+                      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 800, fontSize: 15, color: timerRunning ? '#7c3aed' : '#6b7280', minWidth: 46 }}>{formatTimer(timerSeconds)}</span>
+                      <button type="button" onClick={() => setTimerRunning(r => !r)} title={timerRunning ? 'Pause timer' : 'Start timer'}
+                        style={{ width: 26, height: 26, borderRadius: 8, border: 'none', background: timerRunning ? '#ede9fe' : '#8b5cf6', color: timerRunning ? '#7c3aed' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {timerRunning ? <Pause size={13} /> : <Play size={13} />}
+                      </button>
+                      {timerSeconds > 0 && (
+                        <button type="button" onClick={openCheckinFromTimer} title="Log this time as a check-in"
+                          style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                          Log time
+                        </button>
+                      )}
+                    </div>
+
                     <button onClick={() => { setShowCheckin(true) }}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg,#8b5cf6,#a855f7)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 8px 18px -6px rgba(139,92,246,.55)' }}>
                       <Clock size={14} /> Log Check-in
