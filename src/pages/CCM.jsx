@@ -86,7 +86,10 @@ export default function CCM() {
   const [showAddPt, setShowAddPt]   = useState(false)
   const [showCheckin, setShowCheckin] = useState(false)
   const [showPlanEdit, setShowPlanEdit] = useState(false)
-  const [newPt, setNewPt]           = useState({ name: '', dob: '', phone: '', condition: 'Diabetes Type 2', insurance: '', care_manager: '' })
+  const [roster, setRoster]         = useState([])
+  const [rosterSearch, setRosterSearch] = useState('')
+  const [pickedPatient, setPickedPatient] = useState(null)
+  const [newPt, setNewPt]           = useState({ condition: 'Diabetes Type 2', insurance: '', care_manager: '' })
   const [checkinForm, setCheckinForm] = useState({ minutes: '', notes: '', barriers: '', plan_update: '' })
   const [planTasks, setPlanTasks]   = useState([])
   const [planTemplate, setPlanTemplate] = useState('Diabetes Type 2')
@@ -98,6 +101,7 @@ export default function CCM() {
   const [timerSeconds, setTimerSeconds] = useState(0)
 
   useEffect(() => { if (key) loadPatients() }, [key])
+  useEffect(() => { if (key && showAddPt) loadRoster() }, [key, showAddPt])
   useEffect(() => {
     if (selected) {
       loadPlan(selected.id)
@@ -147,16 +151,35 @@ export default function CCM() {
     } catch {}
   }
 
+  // Enrollment now pulls demographics straight from the existing Patients
+  // roster (gen_patients) instead of retyping name/DOB/phone by hand —
+  // only the CCM-specific fields (condition, insurance, care manager) are entered here.
+  async function loadRoster() {
+    try {
+      const r = await fetch('/api/patients', { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setRoster(Array.isArray(d) ? d : [])
+    } catch {}
+  }
+
   async function savePatient(e) {
     e.preventDefault()
+    if (!pickedPatient) return
     try {
       await fetch('/api/ccm/patients', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify(newPt)
+        body: JSON.stringify({
+          name: pickedPatient.name,
+          dob: pickedPatient.dob,
+          phone: pickedPatient.phone,
+          ...newPt,
+        })
       })
       setShowAddPt(false)
-      setNewPt({ name: '', dob: '', phone: '', condition: 'Diabetes Type 2', insurance: '', care_manager: '' })
+      setPickedPatient(null)
+      setRosterSearch('')
+      setNewPt({ condition: 'Diabetes Type 2', insurance: '', care_manager: '' })
       loadPatients()
     } catch {}
   }
@@ -472,26 +495,74 @@ export default function CCM() {
         </div>
       </div>
 
-      {/* Enroll Patient Modal */}
+      {/* Enroll Patient Modal — picks from the existing Patients roster instead of manual entry */}
       {showAddPt && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,10,30,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, animation: 'ccmFade .18s ease' }}>
-          <form onSubmit={savePatient} style={{ background: '#fff', borderRadius: 18, padding: '30px 32px', width: 460, maxWidth: '95vw', boxShadow: '0 30px 80px -20px rgba(0,0,0,.4)', animation: 'ccmIn .22s cubic-bezier(.16,1,.3,1)' }}>
-            <h2 style={{ margin: '0 0 20px', fontSize: 19, fontWeight: 800, color: '#111827' }}>Enroll in CCM</h2>
-            {[
-              { label: 'Full Name *', key: 'name', type: 'text', req: true },
-              { label: 'Date of Birth', key: 'dob', type: 'date', req: false },
-              { label: 'Phone', key: 'phone', type: 'tel', req: false },
-              { label: 'Insurance / Payer', key: 'insurance', type: 'text', req: false },
-              { label: 'Care Manager', key: 'care_manager', type: 'text', req: false },
-            ].map(f => (
-              <div key={f.key} style={{ marginBottom: 13 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>{f.label}</label>
-                <input type={f.type} required={f.req} value={newPt[f.key]}
-                  className="ccm-input"
-                  onChange={e => setNewPt(p => ({ ...p, [f.key]: e.target.value }))}
-                  style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13, boxSizing: 'border-box' }} />
+          <form onSubmit={savePatient} style={{ background: '#fff', borderRadius: 18, padding: '30px 32px', width: 460, maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 30px 80px -20px rgba(0,0,0,.4)', animation: 'ccmIn .22s cubic-bezier(.16,1,.3,1)' }}>
+            <h2 style={{ margin: '0 0 6px', fontSize: 19, fontWeight: 800, color: '#111827' }}>Enroll in CCM</h2>
+            <p style={{ margin: '0 0 16px', fontSize: 12.5, color: '#6b7280' }}>Select an existing patient from your Patients list — demographics are pulled in automatically.</p>
+
+            {!pickedPatient ? (
+              <>
+                <div style={{ position: 'relative', marginBottom: 10 }}>
+                  <Search size={13} color="#a0aec0" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
+                  <input value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} placeholder="Search patients by name…" autoFocus
+                    className="ccm-input"
+                    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px 9px 30px', fontSize: 13, boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, maxHeight: 260, overflowY: 'auto', marginBottom: 16 }}>
+                  {roster.filter(p => p.name?.toLowerCase().includes(rosterSearch.toLowerCase()) && !patients.some(cp => cp.name === p.name && cp.dob === p.dob)).length === 0 ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: 12.5 }}>
+                      {roster.length === 0 ? 'No patients found — add one in the Patients page first.' : 'No matches (or already enrolled).'}
+                    </div>
+                  ) : (
+                    roster
+                      .filter(p => p.name?.toLowerCase().includes(rosterSearch.toLowerCase()) && !patients.some(cp => cp.name === p.name && cp.dob === p.dob))
+                      .slice(0, 30)
+                      .map(p => (
+                        <button key={p.id} type="button" onClick={() => setPickedPatient(p)}
+                          style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#faf9ff'}
+                          onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                          <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#8b5cf6,#c084fc)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                            {initials(p.name)}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>{p.name}</div>
+                            <div style={{ fontSize: 11, color: '#6b7280' }}>{p.dob || 'DOB unknown'}{p.conditions ? ` · ${p.conditions}` : ''}</div>
+                          </div>
+                        </button>
+                      ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#faf9ff', border: '1px solid #ddd6fe', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,#8b5cf6,#c084fc)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                  {initials(pickedPatient.name)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, color: '#111827' }}>{pickedPatient.name}</div>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>{pickedPatient.dob || 'DOB unknown'}{pickedPatient.phone ? ` · ${pickedPatient.phone}` : ''}</div>
+                </div>
+                <button type="button" onClick={() => setPickedPatient(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7c3aed', fontSize: 11.5, fontWeight: 700 }}>Change</button>
               </div>
-            ))}
+            )}
+
+            <div style={{ marginBottom: 13 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Insurance / Payer</label>
+              <input type="text" value={newPt.insurance}
+                className="ccm-input"
+                onChange={e => setNewPt(p => ({ ...p, insurance: e.target.value }))}
+                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ marginBottom: 13 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Care Manager</label>
+              <input type="text" value={newPt.care_manager}
+                className="ccm-input"
+                onChange={e => setNewPt(p => ({ ...p, care_manager: e.target.value }))}
+                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Primary Condition</label>
               <select value={newPt.condition} onChange={e => setNewPt(p => ({ ...p, condition: e.target.value }))}
@@ -501,8 +572,8 @@ export default function CCM() {
               </select>
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setShowAddPt(false)} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
-              <button type="submit" style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: 'linear-gradient(135deg,#8b5cf6,#a855f7)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, boxShadow: '0 8px 18px -6px rgba(139,92,246,.55)' }}>Enroll</button>
+              <button type="button" onClick={() => { setShowAddPt(false); setPickedPatient(null); setRosterSearch('') }} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
+              <button type="submit" disabled={!pickedPatient} style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: pickedPatient ? 'linear-gradient(135deg,#8b5cf6,#a855f7)' : '#d1d5db', color: '#fff', fontWeight: 700, cursor: pickedPatient ? 'pointer' : 'default', fontSize: 13, boxShadow: pickedPatient ? '0 8px 18px -6px rgba(139,92,246,.55)' : 'none' }}>Enroll</button>
             </div>
           </form>
         </div>
