@@ -1946,11 +1946,13 @@ app.post('/api/rpm/patients/:pid/readings/ai-suggest', auth, aiLimiter, async (r
   const patient = (await db.execute({ sql: 'SELECT * FROM rpm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
   if (!patient) return res.status(404).json({ error: 'Patient not found' })
   const { heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate } = req.body
+  const lastReading = (await db.execute({ sql: 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 1', args: [req.params.pid] })).rows[0]
 
-  const prompt = `You are drafting a Remote Patient Monitoring (RPM) reading note.
+  const prompt = `You are drafting a Remote Patient Monitoring (RPM) reading note for ${patient.name}.
 Patient condition: ${patient.condition || 'not specified'}
 Vitals just recorded: heart rate ${heart_rate ?? 'n/a'} bpm, SpO2 ${spo2 ?? 'n/a'}%, BP ${systolic_bp ?? 'n/a'}/${diastolic_bp ?? 'n/a'} mmHg, temp ${temperature ?? 'n/a'}°C, resp rate ${resp_rate ?? 'n/a'}/min.
-Write a concise, professional 1-2 sentence clinical note describing these readings and whether they appear within normal range for this patient.
+Previous reading on file: ${lastReading ? `heart rate ${lastReading.heart_rate ?? 'n/a'} bpm, SpO2 ${lastReading.spo2 ?? 'n/a'}%, BP ${lastReading.systolic_bp ?? 'n/a'}/${lastReading.diastolic_bp ?? 'n/a'} mmHg (recorded ${lastReading.recorded_at?.slice(0, 10)})` : 'none on record'}
+Write a concise, professional 1-2 sentence clinical note describing these readings, whether they appear within normal range for this patient, and whether they represent a meaningful change from the previous reading.
 Respond with JSON only: {"note": "string"}`
 
   try {
@@ -2030,15 +2032,24 @@ app.post('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
 app.post('/api/ccm/patients/:pid/checkins/ai-suggest', auth, aiLimiter, async (req, res) => {
   const patient = (await db.execute({ sql: 'SELECT * FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
   if (!patient) return res.status(404).json({ error: 'Patient not found' })
-  const planRow = (await db.execute({ sql: 'SELECT tasks FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
+  const [planRow, pastCheckins] = await Promise.all([
+    db.execute({ sql: 'SELECT tasks FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] }).then(r => r.rows[0]),
+    db.execute({ sql: 'SELECT minutes, notes, barriers, created_at FROM ccm_checkins WHERE patient_id = ? ORDER BY created_at DESC LIMIT 3', args: [req.params.pid] }).then(r => r.rows),
+  ])
   let tasks = []
   try { tasks = planRow?.tasks ? JSON.parse(planRow.tasks) : [] } catch {}
   const openTasks = tasks.filter(t => !t.done).map(t => t.text || t.label || t).slice(0, 5)
+  const history = pastCheckins.map(c => `- ${c.created_at?.slice(0, 10)}: ${c.minutes || 0}min — ${c.notes || 'no notes'}${c.barriers ? ` (barrier: ${c.barriers})` : ''}`).join('\n')
 
   const prompt = `You are drafting a Chronic Care Management (CCM) monthly check-in call note for a care manager.
-Patient condition: ${patient.condition || 'not specified'}
+Patient: ${patient.name}
+Condition: ${patient.condition || 'not specified'}
+Care manager: ${patient.care_manager || 'not assigned'}
 Open care plan tasks: ${openTasks.join('; ') || 'none'}
-Write a concise, professional check-in note (2-3 sentences) documenting a routine telephone check-in covering symptom review, medication adherence, and progress on the open tasks above. Suggest a realistic minutes value for a CCM call (typically 10-20).
+Previous check-ins (most recent first):
+${history || 'none on record — this is the first check-in'}
+
+Write a concise, professional check-in note (2-3 sentences) documenting a routine telephone check-in with ${patient.name}, covering symptom review, medication adherence, and progress on the open tasks above. If there are previous check-ins, reference continuity (e.g. follow-up on a prior barrier) rather than repeating the same note verbatim. Suggest a realistic minutes value for a CCM call (typically 10-20).
 Respond with JSON only: {"minutes": number, "notes": "string", "plan_update": "1 short sentence or empty string"}`
 
   try {

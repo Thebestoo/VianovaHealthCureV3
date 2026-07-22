@@ -126,6 +126,7 @@ export default function CCM() {
     const mins = Math.max(1, Math.round(timerSeconds / 60))
     setCheckinForm(f => ({ ...f, minutes: String(mins) }))
     setShowCheckin(true)
+    aiSuggestCheckin()
   }
 
   async function loadPatients() {
@@ -202,8 +203,9 @@ export default function CCM() {
     } finally { setSaving(false) }
   }
 
-  // Drafts a note + minutes estimate from the patient's condition/care plan so
-  // staff aren't starting the check-in form from a blank page.
+  // Drafts a note + minutes estimate from the patient's own info (condition,
+  // care plan, recent check-in history) so staff who aren't sure what to write
+  // aren't starting the form from a blank page.
   async function aiSuggestCheckin() {
     if (!selected || aiSuggesting) return
     setAiSuggesting(true)
@@ -221,6 +223,13 @@ export default function CCM() {
         plan_update: d.plan_update || f.plan_update,
       }))
     } catch {} finally { setAiSuggesting(false) }
+  }
+
+  // Opens the check-in form pre-filled by AI using the patient's own record —
+  // covers staff who don't know what to enter and would otherwise leave it blank.
+  function openCheckin() {
+    setShowCheckin(true)
+    aiSuggestCheckin()
   }
 
   async function savePlan(e) {
@@ -427,7 +436,7 @@ export default function CCM() {
                       )}
                     </div>
 
-                    <button onClick={() => { setShowCheckin(true) }}
+                    <button onClick={openCheckin}
                       style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg,#8b5cf6,#a855f7)', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 8px 18px -6px rgba(139,92,246,.55)' }}>
                       <Clock size={14} /> Log Check-in
                     </button>
