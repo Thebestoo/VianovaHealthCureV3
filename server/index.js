@@ -1934,10 +1934,37 @@ app.get('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
 app.post('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
   const { heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note } = req.body
   await db.execute({
-    sql: `INSERT INTO rpm_readings (patient_id, heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note, recorded_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-    args: [req.params.pid, heart_rate || null, spo2 || null, systolic_bp || null, diastolic_bp || null, temperature || null, resp_rate || null, note || null, new Date().toISOString()]
+    sql: `INSERT INTO rpm_readings (patient_id, owner_key, heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note, recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    args: [req.params.pid, req.apiKey, heart_rate || null, spo2 || null, systolic_bp || null, diastolic_bp || null, temperature || null, resp_rate || null, note || null, new Date().toISOString()]
   })
   res.json({ ok: true })
+})
+
+// AI-assisted reading note — summarizes whether the just-entered vitals are in range
+// and drafts a short clinical note, so staff don't have to interpret each value by hand.
+app.post('/api/rpm/patients/:pid/readings/ai-suggest', auth, aiLimiter, async (req, res) => {
+  const patient = (await db.execute({ sql: 'SELECT * FROM rpm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+  const { heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate } = req.body
+
+  const prompt = `You are drafting a Remote Patient Monitoring (RPM) reading note.
+Patient condition: ${patient.condition || 'not specified'}
+Vitals just recorded: heart rate ${heart_rate ?? 'n/a'} bpm, SpO2 ${spo2 ?? 'n/a'}%, BP ${systolic_bp ?? 'n/a'}/${diastolic_bp ?? 'n/a'} mmHg, temp ${temperature ?? 'n/a'}°C, resp rate ${resp_rate ?? 'n/a'}/min.
+Write a concise, professional 1-2 sentence clinical note describing these readings and whether they appear within normal range for this patient.
+Respond with JSON only: {"note": "string"}`
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3, max_tokens: 120,
+    })
+    const m = chat.choices[0].message.content.match(/\{[\s\S]*\}/)
+    const parsed = m ? JSON.parse(m[0]) : null
+    res.json(parsed || { note: 'Readings recorded during routine remote monitoring check.' })
+  } catch (e) {
+    res.json({ note: 'Readings recorded during routine remote monitoring check.' })
+  }
 })
 
 // Disenroll — removes the patient and their vitals history from RPM.
@@ -1960,8 +1987,8 @@ app.post('/api/ccm/patients', auth, async (req, res) => {
   if (!name) return res.status(400).json({ error: 'name required' })
   const id = randomUUID()
   await db.execute({
-    sql: `INSERT INTO ccm_patients (id, owner_email, name, dob, conditions, created_at) VALUES (?,?,?,?,?,?)`,
-    args: [id, req.apiKey, name, dob || null, condition || null, new Date().toISOString()]
+    sql: `INSERT INTO ccm_patients (id, owner_email, name, dob, phone, condition, insurance, care_manager, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+    args: [id, req.apiKey, name, dob || null, phone || null, condition || null, insurance || null, care_manager || null, new Date().toISOString()]
   })
   res.json({ id })
 })
@@ -1979,7 +2006,7 @@ app.post('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
   if (existing) {
     await db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, updated_at = ? WHERE patient_id = ?', args: [tasks || '[]', now, req.params.pid] })
   } else {
-    await db.execute({ sql: 'INSERT INTO ccm_care_plans (patient_id, template, tasks, goals, created_at, updated_at) VALUES (?,?,?,?,?,?)', args: [req.params.pid, '', tasks || '[]', null, now, now] })
+    await db.execute({ sql: 'INSERT INTO ccm_care_plans (patient_id, owner_key, tasks, updated_at) VALUES (?,?,?,?)', args: [req.params.pid, req.apiKey, tasks || '[]', now] })
   }
   res.json({ ok: true })
 })
@@ -1992,10 +2019,40 @@ app.get('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
 app.post('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
   const { minutes, notes, barriers, plan_update } = req.body
   await db.execute({
-    sql: `INSERT INTO ccm_checkins (patient_id, minutes, notes, checkin_date, created_at) VALUES (?,?,?,?,?)`,
-    args: [req.params.pid, minutes || 0, notes || null, new Date().toISOString(), new Date().toISOString()]
+    sql: `INSERT INTO ccm_checkins (patient_id, owner_key, minutes, notes, barriers, plan_update, created_at) VALUES (?,?,?,?,?,?,?)`,
+    args: [req.params.pid, req.apiKey, minutes || 0, notes || null, barriers || null, plan_update || null, new Date().toISOString()]
   })
   res.json({ ok: true })
+})
+
+// AI-assisted check-in — drafts a clinically-reasonable note + minute estimate
+// from the patient's condition and care plan so staff aren't starting from a blank form.
+app.post('/api/ccm/patients/:pid/checkins/ai-suggest', auth, aiLimiter, async (req, res) => {
+  const patient = (await db.execute({ sql: 'SELECT * FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+  const planRow = (await db.execute({ sql: 'SELECT tasks FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
+  let tasks = []
+  try { tasks = planRow?.tasks ? JSON.parse(planRow.tasks) : [] } catch {}
+  const openTasks = tasks.filter(t => !t.done).map(t => t.text || t.label || t).slice(0, 5)
+
+  const prompt = `You are drafting a Chronic Care Management (CCM) monthly check-in call note for a care manager.
+Patient condition: ${patient.condition || 'not specified'}
+Open care plan tasks: ${openTasks.join('; ') || 'none'}
+Write a concise, professional check-in note (2-3 sentences) documenting a routine telephone check-in covering symptom review, medication adherence, and progress on the open tasks above. Suggest a realistic minutes value for a CCM call (typically 10-20).
+Respond with JSON only: {"minutes": number, "notes": "string", "plan_update": "1 short sentence or empty string"}`
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4, max_tokens: 220,
+    })
+    const m = chat.choices[0].message.content.match(/\{[\s\S]*\}/)
+    const parsed = m ? JSON.parse(m[0]) : null
+    res.json(parsed || { minutes: 15, notes: 'Routine telephone check-in completed with patient.', plan_update: '' })
+  } catch (e) {
+    res.json({ minutes: 15, notes: 'Routine telephone check-in completed with patient.', plan_update: '' })
+  }
 })
 
 // Disenroll — removes the patient, care plan and check-in history from CCM.
@@ -3823,6 +3880,28 @@ Rules: Never diagnose. Always recommend seeing a doctor for serious symptoms. Be
     const messages = [{ role: 'system', content: sysPrompt }, ...history, { role: 'user', content: message }]
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages, temperature: 0.5, max_tokens: 400 })
+    res.json({ reply: aiRes.choices[0].message.content })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// In-app "what do I do here" helper for staff working the CCM/RPM beta modules —
+// answers questions about the workflow itself (enrolling, logging check-ins,
+// disenrolling, etc.) rather than about a specific patient's clinical data.
+const BETA_ASSIST_GUIDES = {
+  ccm: `You are a product guide embedded in the Chronic Care Management (CCM) module of Vianova Health.
+Explain how to use the CCM screen: enrolling a patient (pick them from the existing Patients list, then set condition/insurance/care manager), building or editing a care plan (task checklist, template per condition), logging a monthly check-in (minutes + notes, quick-fill chips, the live timer that auto-fills call minutes, or the AI Suggest button that drafts a note), and disenrolling a patient (removes their care plan and check-in history). Keep answers short, concrete, and step-by-step.`,
+  rpm: `You are a product guide embedded in the Remote Patient Monitoring (RPM) module of Vianova Health.
+Explain how to use the RPM screen: enrolling a patient (pick them from the existing Patients list, then set their primary condition), adding a vitals reading (heart rate, SpO2, BP, temperature, resp rate — using Copy Last Reading or Use Normal Range to autofill, or AI Suggest to draft the note), reading the normal/warning/critical badges on the vitals chart, and disenrolling a patient (removes their reading history). Keep answers short, concrete, and step-by-step.`,
+}
+
+app.post('/api/beta/assist', auth, aiLimiter, async (req, res) => {
+  try {
+    const { message, context, module: mod } = req.body
+    if (!message) return res.status(400).json({ error: 'message required' })
+    const sysPrompt = BETA_ASSIST_GUIDES[mod] || BETA_ASSIST_GUIDES.ccm
+    const history = Array.isArray(context) ? context.slice(-6) : []
+    const messages = [{ role: 'system', content: sysPrompt }, ...history, { role: 'user', content: message }]
+    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages, temperature: 0.3, max_tokens: 300 })
     res.json({ reply: aiRes.choices[0].message.content })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

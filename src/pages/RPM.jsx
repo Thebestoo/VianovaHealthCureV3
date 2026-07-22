@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, Plus, RefreshCw, Sparkles, Search, UserMinus } from 'lucide-react'
+import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, Plus, RefreshCw, Sparkles, Search, UserMinus, Wand2 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import AiHelp from '../components/AiHelp.jsx'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts'
@@ -47,6 +48,7 @@ export default function RPM() {
   const [pickedPatient, setPickedPatient] = useState(null)
   const [showDisenroll, setShowDisenroll] = useState(false)
   const [disenrolling, setDisenrolling] = useState(false)
+  const [aiSuggesting, setAiSuggesting] = useState(false)
 
   useEffect(() => { if (key) loadPatients() }, [key])
   useEffect(() => { if (selected) loadReadings(selected.id) }, [selected])
@@ -136,6 +138,22 @@ export default function RPM() {
       VITALS_CONFIG.forEach(cfg => { next[cfg.key] = String(Math.round((cfg.normal[0] + cfg.normal[1]) / 2)) })
       return next
     })
+  }
+
+  // Drafts a short clinical note interpreting the entered vitals so staff
+  // don't have to eyeball each value against normal ranges by hand.
+  async function aiSuggestNote() {
+    if (!form.patient_id || aiSuggesting) return
+    setAiSuggesting(true)
+    try {
+      const r = await fetch(`/api/rpm/patients/${form.patient_id}/readings/ai-suggest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify(form),
+      })
+      const d = await r.json()
+      if (d.note) setForm(f => ({ ...f, note: d.note }))
+    } catch {} finally { setAiSuggesting(false) }
   }
 
   async function disenrollPatient() {
@@ -402,6 +420,10 @@ export default function RPM() {
                   style={{ padding: '5px 11px', borderRadius: 8, border: '1px dashed #bae6fd', background: '#f0f9ff', color: '#0369a1', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
                   Use Normal Range
                 </button>
+                <button type="button" onClick={aiSuggestNote} disabled={!form.patient_id || aiSuggesting}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 8, border: '1px dashed #bae6fd', background: form.patient_id ? '#f0f9ff' : '#f9fafb', color: form.patient_id ? '#0369a1' : '#c0c8d0', fontSize: 11.5, fontWeight: 600, cursor: form.patient_id ? 'pointer' : 'default' }}>
+                  <Wand2 size={12} /> {aiSuggesting ? 'Drafting…' : 'AI Suggest Note'}
+                </button>
               </div>
             </div>
             <div style={{ marginBottom: 15 }}>
@@ -536,6 +558,7 @@ export default function RPM() {
         @keyframes rpmIn { from { opacity: 0; transform: translateY(10px) scale(.97) } to { opacity: 1; transform: translateY(0) scale(1) } }
         .rpm-input:focus { outline: none; border-color: ${ACCENT} !important; box-shadow: 0 0 0 3px ${ACCENT}22; }
       `}</style>
+      <AiHelp module="rpm" accent={ACCENT} />
     </div>
   )
 }

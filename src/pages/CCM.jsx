@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, User, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus, Timer, Pause, Play } from 'lucide-react'
+import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, User, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus, Timer, Pause, Play, Wand2 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import AiHelp from '../components/AiHelp.jsx'
 
 const CARE_PLAN_TEMPLATES = {
   'Diabetes Type 2': [
@@ -99,6 +100,7 @@ export default function CCM() {
   const [disenrolling, setDisenrolling] = useState(false)
   const [timerRunning, setTimerRunning] = useState(false)
   const [timerSeconds, setTimerSeconds] = useState(0)
+  const [aiSuggesting, setAiSuggesting] = useState(false)
 
   useEffect(() => { if (key) loadPatients() }, [key])
   useEffect(() => { if (key && showAddPt) loadRoster() }, [key, showAddPt])
@@ -198,6 +200,27 @@ export default function CCM() {
       setTimerSeconds(0)
       loadCheckins(selected.id)
     } finally { setSaving(false) }
+  }
+
+  // Drafts a note + minutes estimate from the patient's condition/care plan so
+  // staff aren't starting the check-in form from a blank page.
+  async function aiSuggestCheckin() {
+    if (!selected || aiSuggesting) return
+    setAiSuggesting(true)
+    try {
+      const r = await fetch(`/api/ccm/patients/${selected.id}/checkins/ai-suggest`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({}),
+      })
+      const d = await r.json()
+      setCheckinForm(f => ({
+        ...f,
+        minutes: f.minutes || String(d.minutes ?? 15),
+        notes: d.notes || f.notes,
+        plan_update: d.plan_update || f.plan_update,
+      }))
+    } catch {} finally { setAiSuggesting(false) }
   }
 
   async function savePlan(e) {
@@ -583,7 +606,13 @@ export default function CCM() {
       {showCheckin && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,10,30,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, animation: 'ccmFade .18s ease' }}>
           <form onSubmit={saveCheckin} style={{ background: '#fff', borderRadius: 18, padding: '30px 32px', width: 460, maxWidth: '95vw', boxShadow: '0 30px 80px -20px rgba(0,0,0,.4)', animation: 'ccmIn .22s cubic-bezier(.16,1,.3,1)' }}>
-            <h2 style={{ margin: '0 0 20px', fontSize: 19, fontWeight: 800, color: '#111827' }}>Log CCM Check-in</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, gap: 10 }}>
+              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: '#111827' }}>Log CCM Check-in</h2>
+              <button type="button" onClick={aiSuggestCheckin} disabled={aiSuggesting}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 99, border: '1px solid #ddd6fe', background: '#faf9ff', color: '#7c3aed', fontSize: 12, fontWeight: 700, cursor: aiSuggesting ? 'default' : 'pointer', flexShrink: 0, opacity: aiSuggesting ? .6 : 1 }}>
+                <Wand2 size={13} /> {aiSuggesting ? 'Drafting…' : 'AI Suggest'}
+              </button>
+            </div>
             <div style={{ marginBottom: 13 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Time Spent (minutes) *</label>
               <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -701,6 +730,7 @@ export default function CCM() {
         @keyframes ccmIn { from { opacity: 0; transform: translateY(10px) scale(.97) } to { opacity: 1; transform: translateY(0) scale(1) } }
         .ccm-input:focus { outline: none; border-color: ${ACCENT} !important; box-shadow: 0 0 0 3px ${ACCENT}22; }
       `}</style>
+      <AiHelp module="ccm" accent={ACCENT} />
     </div>
   )
 }
