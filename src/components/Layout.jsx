@@ -69,7 +69,7 @@ const NAV_GROUPS = [
         ],
       },
       {
-        label: 'RPM Team Performance', icon: Users2, path: '/population-health',
+        label: 'Population Health', icon: Users2, path: '/population-health',
         children: [
           { label: 'Population Health',  path: '/population-health'  },
           { label: 'Chronic Disease',    path: '/chronic-disease'    },

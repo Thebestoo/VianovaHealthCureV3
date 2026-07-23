@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { ShieldCheck, Plus, Trash2, X, Loader2, ToggleLeft, ToggleRight, Mail, Edit3, Save, Lock, CheckCircle, XCircle, Users, Search, UserPlus } from 'lucide-react'
+import { ShieldCheck, Plus, Trash2, X, Loader2, ToggleLeft, ToggleRight, Mail, Edit3, Save, Lock, CheckCircle, XCircle, Users, Search, UserPlus, Stethoscope, Check, ClipboardList } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 const EMPTY_FORM = { name: '', email: '', role: 'doctor', password: '' }
@@ -55,6 +55,7 @@ export default function Admin() {
   const [passwordVal, setPasswordVal]   = useState('')
   const [savingPassword, setSavingPassword] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [tab, setTab] = useState('users')
 
   async function load() {
     setLoading(true)
@@ -239,6 +240,21 @@ export default function Admin() {
           ))}
         </div>
 
+        {/* Tab row */}
+        <div className="tab-row" style={{ marginBottom: 20 }}>
+          <div className={`tab-item${tab === 'users' ? ' active' : ''}`} onClick={() => setTab('users')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Users size={14} /> All Users
+          </div>
+          <div className={`tab-item${tab === 'pending' ? ' active' : ''}`} onClick={() => setTab('pending')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <ShieldCheck size={14} /> Pending Approval{pendingUsers.length > 0 ? ` (${pendingUsers.length})` : ''}
+          </div>
+          <div className={`tab-item${tab === 'roles' ? ' active' : ''}`} onClick={() => setTab('roles')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <ClipboardList size={14} /> Roles & Permissions
+          </div>
+        </div>
+
+        {tab === 'users' && (
+        <>
         {/* Info banner */}
         <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--primary-light)', border: '1px solid var(--primary-light)', borderRadius: 10, fontSize: 13, color: 'var(--primary-dark)' }}>
           <Mail size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'text-bottom' }} />
@@ -291,59 +307,6 @@ export default function Admin() {
           </div>
         ) : (
           <>
-            {/* Pending Approval section */}
-            {pendingUsers.length > 0 && (
-              <div className="animate-fade-up" style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--warning)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <ShieldCheck size={16} />
-                  Pending Approval ({pendingUsers.length})
-                </div>
-                <div className="card hoverable" style={{ padding: 0, overflow: 'hidden', border: '1.5px solid var(--warning-light)' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: 'var(--warning-light)', borderBottom: '1px solid var(--warning-light)' }}>
-                        {['Name', 'Email', 'Role', 'Actions'].map(h => (
-                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--warning)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pendingUsers.map((u, i) => (
-                        <tr key={u.id} style={{ borderBottom: i < pendingUsers.length - 1 ? '1px solid var(--warning-light)' : 'none' }}>
-                          <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <UserAvatar name={u.name} src={u.avatar} />
-                              {u.name}
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px 14px', color: 'var(--text)' }}>{u.email}</td>
-                          <td style={{ padding: '12px 14px' }}>{roleBadge(u.role)}</td>
-                          <td style={{ padding: '12px 14px' }}>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button
-                                onClick={() => handleApprove(u)}
-                                disabled={approvingId === u.id}
-                                style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: 'var(--success)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-                                {approvingId === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={13} />}
-                                Approve
-                              </button>
-                              <button
-                                onClick={() => setConfirmDelete(u)}
-                                disabled={deleting === u.id}
-                                style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: 'var(--danger)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-                                {deleting === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <XCircle size={13} />}
-                                Remove
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
             {/* All users table */}
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
               <Users size={16} color="var(--text2)" />
@@ -474,6 +437,108 @@ export default function Admin() {
               </table>
             </div>
           </>
+        )}
+        </>
+        )}
+
+        {tab === 'pending' && (
+          <div className="animate-fade-up">
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--warning)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <ShieldCheck size={16} />
+              Pending Approval ({pendingUsers.length})
+            </div>
+            {pendingUsers.length === 0 ? (
+              <div className="card" style={{ padding: '32px 14px', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+                No accounts are waiting for approval.
+              </div>
+            ) : (
+              <div className="card hoverable" style={{ padding: 0, overflow: 'hidden', border: '1.5px solid var(--warning-light)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: 'var(--warning-light)', borderBottom: '1px solid var(--warning-light)' }}>
+                      {['Name', 'Email', 'Role', 'Actions'].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--warning)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingUsers.map((u, i) => (
+                      <tr key={u.id} style={{ borderBottom: i < pendingUsers.length - 1 ? '1px solid var(--warning-light)' : 'none' }}>
+                        <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <UserAvatar name={u.name} src={u.avatar} />
+                            {u.name}
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px 14px', color: 'var(--text)' }}>{u.email}</td>
+                        <td style={{ padding: '12px 14px' }}>{roleBadge(u.role)}</td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              onClick={() => handleApprove(u)}
+                              disabled={approvingId === u.id}
+                              style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: 'var(--success)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                              {approvingId === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={13} />}
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => setConfirmDelete(u)}
+                              disabled={deleting === u.id}
+                              style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: 'var(--danger)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                              {deleting === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <XCircle size={13} />}
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'roles' && (
+          <div className="animate-fade-up" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            {[
+              {
+                icon: Stethoscope, title: 'Doctor', bg: 'var(--primary-light)', color: 'var(--primary)',
+                perms: [
+                  'View and manage assigned patients',
+                  'Join AI Assistant, Doctor Calls & Patient Calls',
+                  'Review alerts, labs, and clinical notes',
+                  'Update their own notification email & password',
+                ],
+              },
+              {
+                icon: ShieldCheck, title: 'Super Admin', bg: '#f3e8ff', color: '#7c3aed',
+                perms: [
+                  'Everything a Doctor can do',
+                  'Add, approve, activate/deactivate, or delete users',
+                  'Assign roles and reset any user\'s password',
+                  'Configure notification email routing for the team',
+                ],
+              },
+            ].map(r => (
+              <div key={r.title} className="card" style={{ flex: '1 1 300px', minWidth: 280 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: r.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <r.icon size={18} color={r.color} />
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{r.title}</div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {r.perms.map(p => (
+                    <div key={p} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--text2)' }}>
+                      <Check size={14} color={r.color} style={{ marginTop: 2, flexShrink: 0 }} />
+                      {p}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
