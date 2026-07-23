@@ -206,8 +206,19 @@ export default function Admin() {
 
       <div style={{ padding: '24px 32px' }}>
 
+        {/* Hero header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,var(--primary),var(--success))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <ShieldCheck size={22} color="var(--surface)" />
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--text)' }}>User Management</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)' }}>Accounts · Approvals · Roles & permissions · Notification routing · Password resets</div>
+          </div>
+        </div>
+
         {/* Stats row */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginBottom: 28 }}>
+        <div className="stats-grid" style={{ padding: 0, marginBottom: 28 }}>
           {[
             { label: 'Total Users', value: totalUsers, icon: Users, bg: 'var(--primary-light)', color: 'var(--primary)' },
             { label: 'Active', value: activeCount, icon: CheckCircle, bg: 'var(--success-light)', color: 'var(--success)' },
@@ -215,7 +226,7 @@ export default function Admin() {
             { label: 'Super Admins', value: adminCount, icon: UserPlus, bg: '#f3e8ff', color: '#7c3aed' },
           ].map((s, idx) => (
             <div key={s.label} className="stat-card animate-fade-up" style={{
-              flex: '1 1 190px', minWidth: 170, background: 'var(--surface)', border: '1px solid var(--border)',
+              background: 'var(--surface)', border: '1px solid var(--border)',
               display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8,
               animationDelay: `${idx * 0.06}s`,
             }}>
@@ -334,6 +345,10 @@ export default function Admin() {
             )}
 
             {/* All users table */}
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Users size={16} color="var(--text2)" />
+              All Users ({filteredActiveUsers.length})
+            </div>
             <div className="card hoverable animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
