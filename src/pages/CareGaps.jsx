@@ -12,15 +12,15 @@ const CHANNELS = [
 import { useKey } from '../context/KeyContext.jsx'
 
 const PRIORITY_STYLES = {
-  high:   { color: '#dc2626', bg: '#fee2e2' },
-  medium: { color: '#d97706', bg: '#fef3c7' },
-  low:    { color: '#059669', bg: '#d1fae5' },
+  high:   { color: 'var(--danger)', bg: 'var(--danger-light)' },
+  medium: { color: 'var(--warning)', bg: 'var(--warning-light)' },
+  low:    { color: 'var(--success)', bg: 'var(--success-light)' },
 }
 
 const STATUS_STYLES = {
-  open:       { color: '#1d4ed8', bg: '#dbeafe' },
-  closed:     { color: '#059669', bg: '#d1fae5' },
-  suppressed: { color: '#6b7280', bg: '#f3f4f6' },
+  open:       { color: 'var(--primary)', bg: 'var(--primary-light)' },
+  closed:     { color: 'var(--success)', bg: 'var(--success-light)' },
+  suppressed: { color: 'var(--text2)', bg: 'var(--surface2)' },
 }
 
 function Badge({ label, color, bg }) {
@@ -35,8 +35,8 @@ function Chip({ label, active, onClick }) {
   return (
     <button onClick={onClick} style={{
       padding: '5px 14px', borderRadius: 99, fontSize: 12.5, fontWeight: active ? 700 : 500,
-      border: active ? '1.5px solid #2563eb' : '1.5px solid #e5e7eb',
-      background: active ? '#dbeafe' : '#fff', color: active ? '#1d4ed8' : '#6b7280',
+      border: active ? '1.5px solid var(--primary)' : '1.5px solid var(--border)',
+      background: active ? 'var(--primary-light)' : 'var(--surface)', color: active ? 'var(--primary)' : 'var(--text2)',
       cursor: 'pointer', transition: 'all .15s'
     }}>
       {label}
@@ -187,7 +187,7 @@ export default function CareGaps() {
           <select
             value={selectedPatient}
             onChange={e => setSelectedPatient(e.target.value)}
-            style={{ padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', minWidth: 180, color: selectedPatient ? '#111827' : '#9ca3af' }}
+            style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none', minWidth: 180, color: selectedPatient ? 'var(--text)' : 'var(--text3)' }}
           >
             <option value="">All patients</option>
             {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -210,9 +210,9 @@ export default function CareGaps() {
         {detectResult && (
           <div style={{
             marginBottom: 20, padding: '12px 16px', borderRadius: 10,
-            background: detectResult.error ? '#fee2e2' : '#d1fae5',
-            border: `1px solid ${detectResult.error ? '#fca5a5' : '#6ee7b7'}`,
-            color: detectResult.error ? '#b91c1c' : '#065f46',
+            background: detectResult.error ? 'var(--danger-light)' : 'var(--success-light)',
+            border: `1px solid ${detectResult.error ? 'var(--danger)' : 'var(--success)'}`,
+            color: detectResult.error ? 'var(--danger)' : 'var(--success)',
             fontSize: 13, display: 'flex', alignItems: 'center', gap: 8
           }}>
             {detectResult.error
@@ -224,11 +224,11 @@ export default function CareGaps() {
 
         {/* Detection loading overlay card */}
         {detecting && (
-          <div style={{ marginBottom: 20, padding: '20px 24px', borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: 14 }}>
-            <Loader2 size={22} color="#2563eb" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+          <div style={{ marginBottom: 20, padding: '20px 24px', borderRadius: 12, background: 'var(--primary-light)', border: '1px solid var(--primary)', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <Loader2 size={22} color="var(--primary)" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} />
             <div>
-              <div style={{ fontWeight: 600, fontSize: 14, color: '#1d4ed8' }}>AI is scanning patient record…</div>
-              <div style={{ fontSize: 12, color: '#3b82f6', marginTop: 2 }}>Analyzing clinical history, guidelines, and outstanding care needs</div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--primary-dark)' }}>AI is scanning patient record…</div>
+              <div style={{ fontSize: 12, color: 'var(--primary)', marginTop: 2 }}>Analyzing clinical history, guidelines, and outstanding care needs</div>
             </div>
           </div>
         )}
@@ -236,9 +236,9 @@ export default function CareGaps() {
         {/* Stats */}
         <div style={{ display: 'flex', gap: 20, marginBottom: 28, flexWrap: 'wrap' }}>
           {[
-            { label: 'Open Gaps', value: openGaps.length, color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe' },
-            { label: 'High Priority', value: highPriority.length, color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
-            { label: 'Closed This Month', value: closedThisMonth.length, color: '#059669', bg: '#f0fdf4', border: '#a7f3d0' },
+            { label: 'Open Gaps', value: openGaps.length, color: 'var(--primary-dark)', bg: 'var(--primary-light)', border: 'var(--border)' },
+            { label: 'High Priority', value: highPriority.length, color: 'var(--danger)', bg: 'var(--danger-light)', border: 'var(--border)' },
+            { label: 'Closed This Month', value: closedThisMonth.length, color: 'var(--success)', bg: 'var(--success-light)', border: 'var(--border)' },
           ].map(s => (
             <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 14, padding: '22px 28px', minWidth: 190, flex: '1 1 190px', textAlign: 'center' }}>
               <div style={{ fontSize: 34, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
@@ -256,13 +256,13 @@ export default function CareGaps() {
 
         {/* Content */}
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
             <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px', display: 'block' }} />
           </div>
         ) : displayed.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text3)' }}>
             <CheckCircle2 size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: .35 }} />
-            <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>No care gaps found</div>
+            <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No care gaps found</div>
             <div style={{ fontSize: 13 }}>Select a patient and click "Detect Gaps" to run AI analysis.</div>
           </div>
         ) : (
@@ -279,25 +279,25 @@ export default function CareGaps() {
               const sendBusy = sendLoading[gap.id]
 
               return (
-                <div key={gap.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,.03)' }}>
+                <div key={gap.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,.03)' }}>
                   <div style={{ padding: '20px 24px' }}>
                     {/* Header row */}
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
-                          <span style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>{gap.gap_type}</span>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{gap.gap_type}</span>
                           <Badge label={gap.priority} color={pStyle.color} bg={pStyle.bg} />
                           <Badge label={gap.status} color={sStyle.color} bg={sStyle.bg} />
                         </div>
-                        <div style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.5, marginBottom: 6 }}>{gap.description}</div>
-                        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: '#6b7280' }}>
+                        <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 6 }}>{gap.description}</div>
+                        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: 'var(--text2)' }}>
                           {gap.patient_name && (
                             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                               <User size={11} /> {gap.patient_name}
                             </span>
                           )}
                           {gap.due_date && (
-                            <span>Due: <strong style={{ color: '#374151' }}>{gap.due_date}</strong></span>
+                            <span>Due: <strong style={{ color: 'var(--text)' }}>{gap.due_date}</strong></span>
                           )}
                         </div>
                       </div>
@@ -320,7 +320,7 @@ export default function CareGaps() {
                           >
                             <XCircle size={12} /> Suppress
                           </button>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid #e5e7eb', borderRadius: 8, padding: 2 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid var(--border)', borderRadius: 8, padding: 2 }}>
                             {CHANNELS.map(c => (
                               <button
                                 key={c.id}
@@ -329,7 +329,7 @@ export default function CareGaps() {
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: 4, padding: '5px 8px', borderRadius: 6, fontSize: 11.5,
                                   border: 'none', cursor: 'pointer', fontWeight: channel === c.id ? 700 : 500,
-                                  background: channel === c.id ? '#e0f2fe' : 'transparent', color: channel === c.id ? '#0369a1' : '#6b7280'
+                                  background: channel === c.id ? 'var(--primary-light)' : 'transparent', color: channel === c.id ? 'var(--primary-dark)' : 'var(--text2)'
                                 }}
                               >
                                 <c.icon size={12} /> {c.label}
@@ -356,7 +356,7 @@ export default function CareGaps() {
                           placeholder="Suppression reason (optional)…"
                           value={suppressReasons[gap.id] || ''}
                           onChange={e => setSuppressReasons(prev => ({ ...prev, [gap.id]: e.target.value }))}
-                          style={{ flex: 1, padding: '7px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 12.5, outline: 'none' }}
+                          style={{ flex: 1, padding: '7px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 12.5, outline: 'none' }}
                         />
                         <button className="btn btn-secondary btn-sm" onClick={() => setSuppressingId(null)}>Cancel</button>
                         <button className="btn btn-primary btn-sm" onClick={() => handleSuppress(gap.id)}>Confirm</button>

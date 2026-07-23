@@ -8,23 +8,23 @@ import { useKey } from '../context/KeyContext.jsx'
 
 /* ── helpers ── */
 function FL({ children }) {
-  return <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>{children}</label>
+  return <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{children}</label>
 }
 function FI({ value, onChange, placeholder, type = 'text', style: extra }) {
   return (
     <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box', ...extra }} />
+      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box', ...extra }} />
   )
 }
 
 function statusBadge(status) {
   const map = {
-    scheduled:  { bg: '#dbeafe', color: '#1d4ed8', label: 'Scheduled' },
-    completed:  { bg: '#d1fae5', color: '#047857', label: 'Completed' },
-    cancelled:  { bg: '#f3f4f6', color: '#6b7280', label: 'Cancelled' },
-    'no-show':  { bg: '#fee2e2', color: '#b91c1c', label: 'No-Show' },
+    scheduled:  { bg: 'var(--primary-light)', color: 'var(--primary)', label: 'Scheduled' },
+    completed:  { bg: 'var(--success-light)', color: 'var(--success)', label: 'Completed' },
+    cancelled:  { bg: 'var(--surface2)', color: 'var(--text2)', label: 'Cancelled' },
+    'no-show':  { bg: 'var(--danger-light)', color: 'var(--danger)', label: 'No-Show' },
   }
-  const s = map[status] || { bg: '#f3f4f6', color: '#6b7280', label: status }
+  const s = map[status] || { bg: 'var(--surface2)', color: 'var(--text2)', label: status }
   return (
     <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: s.color, background: s.bg }}>{s.label}</span>
   )
@@ -34,9 +34,9 @@ function riskBadge(risk) {
   if (risk == null) return null
   const pct = typeof risk === 'string' ? parseFloat(risk) : risk
   const display = isNaN(pct) ? risk : `${Math.round(pct)}%`
-  let color = '#047857', bg = '#d1fae5', label = 'Low Risk'
-  if (pct >= 50)      { color = '#b91c1c'; bg = '#fee2e2'; label = 'High Risk' }
-  else if (pct >= 25) { color = '#92400e'; bg = '#fef3c7'; label = 'Mod Risk' }
+  let color = 'var(--success)', bg = 'var(--success-light)', label = 'Low Risk'
+  if (pct >= 50)      { color = 'var(--danger)'; bg = 'var(--danger-light)'; label = 'High Risk' }
+  else if (pct >= 25) { color = 'var(--warning)'; bg = 'var(--warning-light)'; label = 'Mod Risk' }
   return (
     <span title={`No-show risk: ${display}`} style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, color, background: bg }}>{display} {label}</span>
   )
@@ -49,7 +49,7 @@ function fmtDate(str) {
   } catch { return str }
 }
 
-const STATUS_DOT = { scheduled: '#2563eb', completed: '#059669', cancelled: '#9ca3af', 'no-show': '#dc2626' }
+const STATUS_DOT = { scheduled: 'var(--primary)', completed: 'var(--success)', cancelled: 'var(--text3)', 'no-show': 'var(--danger)' }
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function sameDay(a, b) {
@@ -90,26 +90,26 @@ function AppointmentCalendar({
   const selectedList = selectedDay ? (byDay[selectedDay] || []) : []
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px 20px', background: 'linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)', color: '#fff'
+        padding: '16px 20px', background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)', color: 'var(--surface)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={() => { const d = new Date(year, monthIdx - 1, 1); setMonth(d); setSelectedDay(null) }}
-            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
+            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--surface)' }}>
             <ChevronLeft size={16} />
           </button>
           <div style={{ fontWeight: 700, fontSize: 16, minWidth: 150, textAlign: 'center' }}>
             {month.toLocaleString('en-US', { month: 'long', year: 'numeric' })}
           </div>
           <button onClick={() => { const d = new Date(year, monthIdx + 1, 1); setMonth(d); setSelectedDay(null) }}
-            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
+            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--surface)' }}>
             <ChevronRight size={16} />
           </button>
           <button onClick={() => { const d = new Date(); d.setDate(1); setMonth(d); setSelectedDay(null) }}
-            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 7, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#fff' }}>
+            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 7, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: 'var(--surface)' }}>
             Today
           </button>
         </div>
@@ -121,8 +121,8 @@ function AppointmentCalendar({
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
             border: 'none', fontSize: 12.5, fontWeight: 700, cursor: dueForNotify ? 'pointer' : 'default',
-            background: dueForNotify ? '#fff' : 'rgba(255,255,255,.15)',
-            color: dueForNotify ? '#1d4ed8' : 'rgba(255,255,255,.6)'
+            background: dueForNotify ? 'var(--surface)' : 'rgba(255,255,255,.15)',
+            color: dueForNotify ? 'var(--primary)' : 'rgba(255,255,255,.6)'
           }}
         >
           {notifyingAll ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={13} />}
@@ -131,15 +131,15 @@ function AppointmentCalendar({
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
           <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px', display: 'block' }} />
         </div>
       ) : (
         <>
           {/* Weekday header */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)' }}>
             {WEEKDAYS.map(w => (
-              <div key={w} style={{ padding: '8px 0', textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              <div key={w} style={{ padding: '8px 0', textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
                 {w}
               </div>
             ))}
@@ -148,7 +148,7 @@ function AppointmentCalendar({
           {/* Day grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
             {cells.map((day, i) => {
-              if (day === null) return <div key={i} style={{ minHeight: 92, background: '#fafafa', borderRight: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6' }} />
+              if (day === null) return <div key={i} style={{ minHeight: 92, background: 'var(--surface2)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }} />
               const dayDate = new Date(year, monthIdx, day)
               const isToday = sameDay(dayDate, today)
               const isSelected = selectedDay === day
@@ -161,15 +161,15 @@ function AppointmentCalendar({
                   key={i}
                   onClick={() => setSelectedDay(isSelected ? null : day)}
                   style={{
-                    minHeight: 92, padding: '6px 6px 8px', borderRight: '1px solid #f3f4f6', borderBottom: '1px solid #f3f4f6',
-                    cursor: list.length ? 'pointer' : 'default', background: isSelected ? '#eff6ff' : '#fff',
+                    minHeight: 92, padding: '6px 6px 8px', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)',
+                    cursor: list.length ? 'pointer' : 'default', background: isSelected ? 'var(--primary-light)' : 'var(--surface)',
                     transition: 'background .1s'
                   }}
                 >
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     width: 22, height: 22, borderRadius: 99, fontSize: 12, fontWeight: isToday ? 700 : 500,
-                    color: isToday ? '#fff' : '#374151', background: isToday ? '#1d4ed8' : 'transparent', marginBottom: 4
+                    color: isToday ? 'var(--surface)' : 'var(--text)', background: isToday ? 'var(--primary)' : 'transparent', marginBottom: 4
                   }}>
                     {day}
                   </div>
@@ -177,13 +177,13 @@ function AppointmentCalendar({
                     {visible.map(a => (
                       <div key={a.id} title={`${a.patient_name} — ${a.appointment_type}`} style={{
                         display: 'flex', alignItems: 'center', gap: 4, fontSize: 10.5, padding: '1.5px 5px',
-                        borderRadius: 5, background: '#f3f4f6', color: '#374151', overflow: 'hidden', whiteSpace: 'nowrap'
+                        borderRadius: 5, background: 'var(--surface2)', color: 'var(--text)', overflow: 'hidden', whiteSpace: 'nowrap'
                       }}>
-                        <span style={{ width: 6, height: 6, borderRadius: 99, background: STATUS_DOT[a.status] || '#9ca3af', flexShrink: 0 }} />
+                        <span style={{ width: 6, height: 6, borderRadius: 99, background: STATUS_DOT[a.status] || 'var(--text3)', flexShrink: 0 }} />
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.patient_name}</span>
                       </div>
                     ))}
-                    {overflow > 0 && <div style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 5 }}>+{overflow} more</div>}
+                    {overflow > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', paddingLeft: 5 }}>+{overflow} more</div>}
                   </div>
                 </div>
               )
@@ -192,46 +192,46 @@ function AppointmentCalendar({
 
           {/* Selected day detail */}
           {selectedDay && (
-            <div style={{ padding: '16px 20px', borderTop: '1px solid #e5e7eb', background: '#fafbff' }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#111827', marginBottom: 10 }}>
+            <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface2)' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 10 }}>
                 {new Date(year, monthIdx, selectedDay).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
               </div>
               {selectedList.length === 0 ? (
-                <div style={{ fontSize: 12.5, color: '#9ca3af' }}>No appointments on this day.</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>No appointments on this day.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {selectedList.map(a => (
-                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', flexWrap: 'wrap' }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 99, background: STATUS_DOT[a.status] || '#9ca3af', flexShrink: 0 }} />
+                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', flexWrap: 'wrap' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 99, background: STATUS_DOT[a.status] || 'var(--text3)', flexShrink: 0 }} />
                       <div style={{ minWidth: 130 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>{a.patient_name}</div>
-                        <div style={{ fontSize: 11.5, color: '#6b7280' }}>{a.appointment_type}</div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{a.patient_name}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text2)' }}>{a.appointment_type}</div>
                       </div>
-                      <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Clock size={11} /> {new Date(a.appointment_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · {a.duration_minutes} min
                       </div>
                       {statusBadge(a.status)}
                       {a.reminder_sent && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 99, fontSize: 10.5, fontWeight: 600, color: '#059669', background: '#d1fae5' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 99, fontSize: 10.5, fontWeight: 600, color: 'var(--success)', background: 'var(--success-light)' }}>
                           <Check size={9} strokeWidth={3} /> Reminded
                         </span>
                       )}
                       {a.status === 'scheduled' && (
                         <div style={{ display: 'flex', gap: 5, marginLeft: 'auto' }}>
                           <button onClick={() => onComplete(a.id)} disabled={!!actionLoading[`${a.id}_status`]}
-                            style={{ padding: '4px 9px', border: '1px solid #bbf7d0', borderRadius: 6, background: '#f0fdf4', cursor: 'pointer', fontSize: 11, color: '#047857' }}>
+                            style={{ padding: '4px 9px', border: '1px solid var(--success-light)', borderRadius: 6, background: 'var(--success-light)', cursor: 'pointer', fontSize: 11, color: 'var(--success)' }}>
                             Complete
                           </button>
                           <button onClick={() => onNoShow(a.id)} disabled={!!actionLoading[`${a.id}_status`]}
-                            style={{ padding: '4px 9px', border: '1px solid #fecaca', borderRadius: 6, background: '#fef2f2', cursor: 'pointer', fontSize: 11, color: '#b91c1c' }}>
+                            style={{ padding: '4px 9px', border: '1px solid var(--danger-light)', borderRadius: 6, background: 'var(--danger-light)', cursor: 'pointer', fontSize: 11, color: 'var(--danger)' }}>
                             No-Show
                           </button>
                           <button onClick={() => onCancel(a.id)} disabled={!!actionLoading[`${a.id}_status`]}
-                            style={{ padding: '4px 9px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#f9fafb', cursor: 'pointer', fontSize: 11, color: '#6b7280' }}>
+                            style={{ padding: '4px 9px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface2)', cursor: 'pointer', fontSize: 11, color: 'var(--text2)' }}>
                             Cancel
                           </button>
                           <button onClick={() => onRemind(a.id)} disabled={a.reminder_sent || !!actionLoading[`${a.id}_remind`]}
-                            style={{ padding: '4px 9px', border: '1px solid #ddd6fe', borderRadius: 6, background: '#fff', cursor: a.reminder_sent ? 'not-allowed' : 'pointer', fontSize: 11, color: '#7c3aed', opacity: a.reminder_sent ? .6 : 1, display: 'flex', alignItems: 'center', gap: 3 }}>
+                            style={{ padding: '4px 9px', border: '1px solid #ddd6fe', borderRadius: 6, background: 'var(--surface)', cursor: a.reminder_sent ? 'not-allowed' : 'pointer', fontSize: 11, color: '#7c3aed', opacity: a.reminder_sent ? .6 : 1, display: 'flex', alignItems: 'center', gap: 3 }}>
                             {actionLoading[`${a.id}_remind`] ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} /> : <Bell size={10} />}
                             {a.reminder_sent ? 'Sent' : 'Remind'}
                           </button>
@@ -394,10 +394,10 @@ export default function Appointments() {
         {/* Filters row */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
           {/* View toggle */}
-          <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
             {['upcoming', 'past', 'all', ...(isSuperadmin ? ['calendar'] : [])].map(v => (
               <button key={v} onClick={() => setView(v)}
-                style={{ padding: '7px 16px', fontSize: 13, fontWeight: view === v ? 700 : 400, background: view === v ? '#2563eb' : '#fff', color: view === v ? '#fff' : '#374151', border: 'none', cursor: 'pointer', textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 5 }}>
+                style={{ padding: '7px 16px', fontSize: 13, fontWeight: view === v ? 700 : 400, background: view === v ? 'var(--primary)' : 'var(--surface)', color: view === v ? 'var(--surface)' : 'var(--text)', border: 'none', cursor: 'pointer', textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 5 }}>
                 {v === 'calendar' && <Calendar size={12} />}
                 {v.charAt(0).toUpperCase() + v.slice(1)}
               </button>
@@ -406,7 +406,7 @@ export default function Appointments() {
 
           {/* Patient filter */}
           <select value={patientFilter} onChange={e => setPatientFilter(e.target.value)}
-            style={{ padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', color: '#374151', background: '#fff', cursor: 'pointer' }}>
+            style={{ padding: '7px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface)', cursor: 'pointer' }}>
             <option value="">All Patients</option>
             {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
@@ -430,32 +430,32 @@ export default function Appointments() {
             onCancel={id => updateStatus(id, 'cancelled')}
           />
         ) : loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
             <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px', display: 'block' }} />
           </div>
         ) : appts.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text3)' }}>
             <Calendar size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: .35 }} />
-            <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>No appointments found</div>
+            <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No appointments found</div>
             <div style={{ fontSize: 13 }}>Click "New Appointment" to schedule one.</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {appts.map(a => (
-              <div key={a.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
+              <div key={a.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 20px' }}>
                 <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                   {/* Icon */}
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Calendar size={18} color="#2563eb" />
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Calendar size={18} color="var(--primary)" />
                   </div>
 
                   {/* Main info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>{a.patient_name}</span>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: '#2563eb' }}>{a.appointment_type}</span>
+                      <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{a.patient_name}</span>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--primary)' }}>{a.appointment_type}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#6b7280', flexWrap: 'wrap', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--text2)', flexWrap: 'wrap', marginBottom: 8 }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Calendar size={11} />{fmtDate(a.appointment_date)}</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Clock size={11} />{a.duration_minutes} min</span>
                       {a.provider && <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Stethoscope size={11} />{a.provider}</span>}
@@ -465,37 +465,37 @@ export default function Appointments() {
                       {statusBadge(a.status)}
                       {riskBadge(a.no_show_risk)}
                       {a.reminder_sent && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, color: '#059669', background: '#d1fae5' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, color: 'var(--success)', background: 'var(--success-light)' }}>
                           <Check size={10} strokeWidth={3} /> Reminder Sent
                         </span>
                       )}
                     </div>
-                    {a.notes && <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>{a.notes}</div>}
+                    {a.notes && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text2)', fontStyle: 'italic' }}>{a.notes}</div>}
                   </div>
 
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0, alignItems: 'flex-start' }}>
                     {a.status === 'scheduled' && <>
                       <button onClick={() => updateStatus(a.id, 'completed')} disabled={!!actionLoading[`${a.id}_status`]}
-                        style={{ padding: '5px 10px', border: '1px solid #bbf7d0', borderRadius: 7, background: '#f0fdf4', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#047857' }}>
+                        style={{ padding: '5px 10px', border: '1px solid var(--success-light)', borderRadius: 7, background: 'var(--success-light)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--success)' }}>
                         {actionLoading[`${a.id}_status`] ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle2 size={12} />} Complete
                       </button>
                       <button onClick={() => updateStatus(a.id, 'no-show')} disabled={!!actionLoading[`${a.id}_status`]}
-                        style={{ padding: '5px 10px', border: '1px solid #fecaca', borderRadius: 7, background: '#fef2f2', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#b91c1c' }}>
+                        style={{ padding: '5px 10px', border: '1px solid var(--danger-light)', borderRadius: 7, background: 'var(--danger-light)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--danger)' }}>
                         <XCircle size={12} /> No-Show
                       </button>
                       <button onClick={() => updateStatus(a.id, 'cancelled')} disabled={!!actionLoading[`${a.id}_status`]}
-                        style={{ padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 7, background: '#f9fafb', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#6b7280' }}>
+                        style={{ padding: '5px 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--surface2)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text2)' }}>
                         <X size={12} /> Cancel
                       </button>
                       <button onClick={() => sendReminder(a.id)} disabled={a.reminder_sent || !!actionLoading[`${a.id}_remind`]}
-                        style={{ padding: '5px 10px', border: '1px solid #ddd6fe', borderRadius: 7, background: a.reminder_sent ? '#f5f3ff' : '#fff', cursor: a.reminder_sent ? 'not-allowed' : 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: a.reminder_sent ? '#7c3aed' : '#374151', opacity: a.reminder_sent ? .65 : 1 }}>
+                        style={{ padding: '5px 10px', border: '1px solid #ddd6fe', borderRadius: 7, background: a.reminder_sent ? '#f5f3ff' : 'var(--surface)', cursor: a.reminder_sent ? 'not-allowed' : 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: a.reminder_sent ? '#7c3aed' : 'var(--text)', opacity: a.reminder_sent ? .65 : 1 }}>
                         {actionLoading[`${a.id}_remind`] ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : (a.reminder_sent ? <BellOff size={12} /> : <Bell size={12} />)}
                         {a.reminder_sent ? 'Sent' : 'Remind'}
                       </button>
                     </>}
                     <button onClick={() => deleteAppt(a.id)} disabled={!!actionLoading[`${a.id}_del`]}
-                      style={{ padding: '5px 8px', border: '1px solid #fecaca', borderRadius: 7, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#dc2626' }}>
+                      style={{ padding: '5px 8px', border: '1px solid var(--danger-light)', borderRadius: 7, background: 'var(--surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--danger)' }}>
                       {actionLoading[`${a.id}_del`] ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <X size={13} />}
                     </button>
                   </div>
@@ -510,10 +510,10 @@ export default function Appointments() {
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '28px 16px', overflowY: 'auto' }}
           onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.22)', marginBottom: 28 }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#111827' }}>New Appointment</div>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}><X size={18} /></button>
+          <div style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.22)', marginBottom: 28 }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)' }}>New Appointment</div>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 4 }}><X size={18} /></button>
             </div>
 
             <form onSubmit={handleSave} noValidate style={{ padding: '20px 24px' }}>
@@ -522,7 +522,7 @@ export default function Appointments() {
                 <FL>Patient *</FL>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <select value={form.patient_id} onChange={e => { setField('patient_id', e.target.value); setSuggestion(null) }}
-                    style={{ flex: 1, padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none' }}>
+                    style={{ flex: 1, padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none' }}>
                     <option value="">— Select patient —</option>
                     {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
@@ -540,14 +540,14 @@ export default function Appointments() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 12, fontWeight: 700, color: '#7c3aed' }}>
                     <Sparkles size={13} /> AI Recommendation
                   </div>
-                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 4 }}>
                     <strong>{suggestion.appointment_type}</strong> — {suggestion.duration_minutes} min
                   </div>
-                  {suggestion.reason && <div style={{ fontSize: 12, color: '#6b7280' }}>{suggestion.reason}</div>}
+                  {suggestion.reason && <div style={{ fontSize: 12, color: 'var(--text2)' }}>{suggestion.reason}</div>}
                   {suggestion.urgency && (
                     <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700,
-                      color: suggestion.urgency === 'high' ? '#b91c1c' : suggestion.urgency === 'medium' ? '#92400e' : '#047857',
-                      background: suggestion.urgency === 'high' ? '#fee2e2' : suggestion.urgency === 'medium' ? '#fef3c7' : '#d1fae5' }}>
+                      color: suggestion.urgency === 'high' ? 'var(--danger)' : suggestion.urgency === 'medium' ? 'var(--warning)' : 'var(--success)',
+                      background: suggestion.urgency === 'high' ? 'var(--danger-light)' : suggestion.urgency === 'medium' ? 'var(--warning-light)' : 'var(--success-light)' }}>
                       {suggestion.urgency.charAt(0).toUpperCase() + suggestion.urgency.slice(1)} Urgency
                     </div>
                   )}
@@ -556,7 +556,7 @@ export default function Appointments() {
 
               {/* Lead-time hint */}
               {leadTimeDays !== null && leadTimeDays > 14 && (
-                <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, fontSize: 12, color: '#92400e', display: 'flex', gap: 6, alignItems: 'center' }}>
+                <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--warning-light)', border: '1px solid var(--warning-light)', borderRadius: 7, fontSize: 12, color: 'var(--warning)', display: 'flex', gap: 6, alignItems: 'center' }}>
                   <AlertTriangle size={13} /> Lead time is {leadTimeDays} days — moderate no-show risk. Consider sending a reminder closer to the date.
                 </div>
               )}
@@ -585,7 +585,7 @@ export default function Appointments() {
                 <div style={{ gridColumn: '1/-1' }}>
                   <FL>Notes</FL>
                   <textarea value={form.notes} onChange={e => setField('notes', e.target.value)} rows={2} placeholder="Any additional notes…"
-                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
                 </div>
               </div>
 

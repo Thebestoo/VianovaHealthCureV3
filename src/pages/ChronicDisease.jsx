@@ -6,10 +6,10 @@ function statusBadge(status) {
   if (!status) return null
   const s = status.toLowerCase()
   let color, bg
-  if (s === 'stable') { color = '#059669'; bg = '#d1fae5' }
-  else if (s === 'improving') { color = '#2563eb'; bg = '#dbeafe' }
-  else if (s === 'worsening') { color = '#d97706'; bg = '#fef3c7' }
-  else if (s === 'critical') { color = '#b91c1c'; bg = '#fee2e2' }
+  if (s === 'stable') { color = 'var(--success)'; bg = 'var(--success-light)' }
+  else if (s === 'improving') { color = 'var(--primary)'; bg = 'var(--primary-light)' }
+  else if (s === 'worsening') { color = 'var(--warning)'; bg = 'var(--warning-light)' }
+  else if (s === 'critical') { color = 'var(--danger)'; bg = 'var(--danger-light)' }
   else { color = 'var(--text2)'; bg = 'var(--surface2)' }
   return (
     <span style={{
@@ -24,16 +24,16 @@ function statusBadge(status) {
 
 function metricDot(status) {
   const s = (status || '').toLowerCase()
-  if (s === 'critical') return '#b91c1c'
-  if (s === 'warning') return '#d97706'
-  return '#059669'
+  if (s === 'critical') return 'var(--danger)'
+  if (s === 'warning') return 'var(--warning)'
+  return 'var(--success)'
 }
 
 function alertBorderColor(severity) {
   const s = (severity || '').toLowerCase()
-  if (s === 'critical') return '#b91c1c'
-  if (s === 'warning') return '#d97706'
-  return '#2563eb'
+  if (s === 'critical') return 'var(--danger)'
+  if (s === 'warning') return 'var(--warning)'
+  return 'var(--primary)'
 }
 
 function ProgramCard({ program }) {
@@ -112,7 +112,7 @@ function ProgramCard({ program }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {program.recommendations.map((r, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--text)' }}>
-                    <Check size={14} style={{ color: '#059669', flexShrink: 0, marginTop: 2 }} />
+                    <Check size={14} style={{ color: 'var(--success)', flexShrink: 0, marginTop: 2 }} />
                     <span>{r}</span>
                   </div>
                 ))}
@@ -141,8 +141,8 @@ function ProgramCard({ program }) {
                         <td style={{ padding: '8px 10px', color: 'var(--text)' }}>{g.current}</td>
                         <td style={{ padding: '8px 10px' }}>
                           {g.met
-                            ? <Check size={15} color="#059669" />
-                            : <X size={15} color="#b91c1c" />}
+                            ? <Check size={15} color="var(--success)" />
+                            : <X size={15} color="var(--danger)" />}
                         </td>
                       </tr>
                     ))}
@@ -221,7 +221,7 @@ export default function ChronicDisease() {
     padding: '8px 18px', border: 'none', borderRadius: 8, cursor: 'pointer',
     fontSize: 13.5, fontWeight: active ? 700 : 500,
     background: active ? 'var(--primary)' : 'transparent',
-    color: active ? '#fff' : 'var(--text2)',
+    color: active ? 'var(--surface)' : 'var(--text2)',
     transition: 'all .15s'
   })
 
@@ -292,13 +292,13 @@ export default function ChronicDisease() {
                 {/* Priority action banner */}
                 {result.priority_action && (
                   <div style={{
-                    background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 10,
+                    background: 'var(--warning-light)', border: '1px solid var(--warning)', borderRadius: 10,
                     padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 10
                   }}>
-                    <Zap size={18} color="#d97706" style={{ flexShrink: 0, marginTop: 1 }} />
+                    <Zap size={18} color="var(--warning)" style={{ flexShrink: 0, marginTop: 1 }} />
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>Priority Action</div>
-                      <div style={{ fontSize: 13.5, color: '#92400e', fontWeight: 500 }}>{result.priority_action}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--warning)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>Priority Action</div>
+                      <div style={{ fontSize: 13.5, color: 'var(--warning)', fontWeight: 500 }}>{result.priority_action}</div>
                     </div>
                   </div>
                 )}

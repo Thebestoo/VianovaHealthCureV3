@@ -4,8 +4,8 @@ import { useKey } from '../context/KeyContext.jsx'
 import SummaryActions from '../components/SummaryActions.jsx'
 
 const ACTION_COLORS = {
-  read: '#2563eb', write: '#059669', delete: '#dc2626',
-  consent: '#7c3aed', export: '#d97706', login: '#0891b2'
+  read: 'var(--primary)', write: 'var(--success)', delete: 'var(--danger)',
+  consent: '#7c3aed', export: 'var(--warning)', login: 'var(--accent)'
 }
 
 function actionColor(action = '') {
@@ -13,13 +13,13 @@ function actionColor(action = '') {
   for (const [k, v] of Object.entries(ACTION_COLORS)) {
     if (a.includes(k)) return v
   }
-  return '#6b7280'
+  return 'var(--text2)'
 }
 
 function StatusIcon({ status }) {
-  if (status === 'pass') return <CheckCircle size={16} color="#059669" />
-  if (status === 'fail') return <XCircle size={16} color="#dc2626" />
-  return <AlertTriangle size={16} color="#d97706" />
+  if (status === 'pass') return <CheckCircle size={16} color="var(--success)" />
+  if (status === 'fail') return <XCircle size={16} color="var(--danger)" />
+  return <AlertTriangle size={16} color="var(--warning)" />
 }
 
 export default function AuditCompliance() {
@@ -71,7 +71,7 @@ export default function AuditCompliance() {
     return checks.length ? Math.round((passed / checks.length) * 100) : 0
   })() : null
 
-  const scoreColor = score === null ? '#9ca3af' : score >= 80 ? '#059669' : score >= 60 ? '#d97706' : '#dc2626'
+  const scoreColor = score === null ? 'var(--text3)' : score >= 80 ? 'var(--success)' : score >= 60 ? 'var(--warning)' : 'var(--danger)'
 
   return (
     <div>
@@ -108,24 +108,24 @@ export default function AuditCompliance() {
               {/* Score + Metrics */}
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, marginBottom: 28, alignItems: 'start' }}>
                 {/* Score circle */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '36px 40px', background: '#fff', border: '1px solid var(--border)', borderRadius: 16, minWidth: 240 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '36px 40px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, minWidth: 240 }}>
                   <div style={{ fontSize: 80, fontWeight: 800, color: scoreColor, lineHeight: 1.1 }}>{score}</div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text2)', marginTop: 8 }}>Compliance Score</div>
-                  <div style={{ marginTop: 14, padding: '6px 16px', borderRadius: 99, fontSize: 12, fontWeight: 700, letterSpacing: '.03em', background: score >= 80 ? '#d1fae5' : score >= 60 ? '#fef3c7' : '#fee2e2', color: scoreColor, whiteSpace: 'nowrap' }}>
+                  <div style={{ marginTop: 14, padding: '6px 16px', borderRadius: 99, fontSize: 12, fontWeight: 700, letterSpacing: '.03em', background: score >= 80 ? 'var(--success-light)' : score >= 60 ? 'var(--warning-light)' : 'var(--danger-light)', color: scoreColor, whiteSpace: 'nowrap' }}>
                     {score >= 80 ? 'GOOD' : score >= 60 ? 'REVIEW NEEDED' : 'ACTION REQUIRED'}
                   </div>
                 </div>
                 {/* Metrics grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
                   {[
-                    { label: 'Patients', value: report.metrics.patients, color: '#2563eb' },
-                    { label: 'Active Consents', value: report.metrics.active_consents, color: '#059669' },
-                    { label: 'Expired Consents', value: report.metrics.expired_consents, color: report.metrics.expired_consents > 0 ? '#dc2626' : '#9ca3af' },
+                    { label: 'Patients', value: report.metrics.patients, color: 'var(--primary)' },
+                    { label: 'Active Consents', value: report.metrics.active_consents, color: 'var(--success)' },
+                    { label: 'Expired Consents', value: report.metrics.expired_consents, color: report.metrics.expired_consents > 0 ? 'var(--danger)' : 'var(--text3)' },
                     { label: 'Audit Events (7d)', value: report.metrics.audit_events_7d, color: '#7c3aed' },
-                    { label: 'Open Adverse Events', value: report.metrics.open_adverse_events, color: report.metrics.open_adverse_events > 0 ? '#d97706' : '#9ca3af' },
-                    { label: 'Open Care Gaps', value: report.metrics.open_care_gaps, color: '#0891b2' },
+                    { label: 'Open Adverse Events', value: report.metrics.open_adverse_events, color: report.metrics.open_adverse_events > 0 ? 'var(--warning)' : 'var(--text3)' },
+                    { label: 'Open Care Gaps', value: report.metrics.open_care_gaps, color: 'var(--accent)' },
                   ].map(m => (
-                    <div key={m.label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: '22px 24px', textAlign: 'center' }}>
+                    <div key={m.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '22px 24px', textAlign: 'center' }}>
                       <div style={{ fontSize: 34, fontWeight: 800, color: m.color, lineHeight: 1.1 }}>{m.value}</div>
                       <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600, marginTop: 5 }}>{m.label}</div>
                     </div>
@@ -134,7 +134,7 @@ export default function AuditCompliance() {
               </div>
 
               {/* Compliance checks */}
-              <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                 <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>Compliance Checklist</div>
                 {(report.compliance_checks || []).map((c, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: i < report.compliance_checks.length - 1 ? '1px solid var(--border)' : 'none' }}>
@@ -143,7 +143,7 @@ export default function AuditCompliance() {
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{c.check}</div>
                       <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{c.detail}</div>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: c.status === 'pass' ? '#d1fae5' : c.status === 'fail' ? '#fee2e2' : '#fef3c7', color: c.status === 'pass' ? '#059669' : c.status === 'fail' ? '#dc2626' : '#d97706' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: c.status === 'pass' ? 'var(--success-light)' : c.status === 'fail' ? 'var(--danger-light)' : 'var(--warning-light)', color: c.status === 'pass' ? 'var(--success)' : c.status === 'fail' ? 'var(--danger)' : 'var(--warning)' }}>
                       {c.status.toUpperCase()}
                     </span>
                   </div>
@@ -176,11 +176,11 @@ export default function AuditCompliance() {
             {/* AI Analysis panel */}
             {aiAnalysis && (
               <div style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-                <button onClick={() => setShowAiPanel(o => !o)} style={{ width: '100%', padding: '12px 16px', background: '#f8fafc', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <button onClick={() => setShowAiPanel(o => !o)} style={{ width: '100%', padding: '12px 16px', background: 'var(--surface2)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <ShieldCheck size={15} color="var(--primary)" />
                     <span style={{ fontWeight: 700, fontSize: 13 }}>AI Analysis — {aiAnalysis.event_count} events, {aiAnalysis.period_days} days</span>
-                    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: aiAnalysis.risk_level === 'low' ? '#d1fae5' : aiAnalysis.risk_level === 'medium' ? '#fef3c7' : '#fee2e2', color: aiAnalysis.risk_level === 'low' ? '#059669' : aiAnalysis.risk_level === 'medium' ? '#d97706' : '#dc2626' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: aiAnalysis.risk_level === 'low' ? 'var(--success-light)' : aiAnalysis.risk_level === 'medium' ? 'var(--warning-light)' : 'var(--danger-light)', color: aiAnalysis.risk_level === 'low' ? 'var(--success)' : aiAnalysis.risk_level === 'medium' ? 'var(--warning)' : 'var(--danger)' }}>
                       {aiAnalysis.risk_level?.toUpperCase()} RISK
                     </span>
                   </div>
@@ -200,12 +200,12 @@ export default function AuditCompliance() {
                         ].filter(Boolean).join('\n')}
                       />
                     </div>
-                    <div style={{ fontSize: 13, color: '#374151', marginBottom: 12 }}>{aiAnalysis.summary}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 12 }}>{aiAnalysis.summary}</div>
                     {aiAnalysis.anomalies?.length > 0 && (
                       <div style={{ marginBottom: 12 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 8 }}>Anomalies</div>
                         {aiAnalysis.anomalies.map((a, i) => (
-                          <div key={i} style={{ padding: '8px 12px', borderRadius: 8, background: a.severity === 'high' ? '#fee2e2' : a.severity === 'medium' ? '#fef3c7' : '#f3f4f6', marginBottom: 6, fontSize: 13 }}>
+                          <div key={i} style={{ padding: '8px 12px', borderRadius: 8, background: a.severity === 'high' ? 'var(--danger-light)' : a.severity === 'medium' ? 'var(--warning-light)' : 'var(--surface2)', marginBottom: 6, fontSize: 13 }}>
                             <span style={{ fontWeight: 700 }}>{a.type}</span>: {a.description}
                           </div>
                         ))}
@@ -214,7 +214,7 @@ export default function AuditCompliance() {
                     {aiAnalysis.recommendations?.length > 0 && (
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 6 }}>Recommendations</div>
-                        {aiAnalysis.recommendations.map((r, i) => <div key={i} style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>• {r}</div>)}
+                        {aiAnalysis.recommendations.map((r, i) => <div key={i} style={{ fontSize: 13, color: 'var(--text)', marginBottom: 4 }}>• {r}</div>)}
                       </div>
                     )}
                   </div>
@@ -233,7 +233,7 @@ export default function AuditCompliance() {
                 <div style={{ fontWeight: 600 }}>No audit events in this period</div>
               </div>
             ) : (
-              <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>

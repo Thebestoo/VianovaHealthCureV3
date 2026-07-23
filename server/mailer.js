@@ -1093,3 +1093,41 @@ export function tplPopulationHealthReport({ cohortName, memberCount, highRiskCou
     }),
   }
 }
+
+export function tplIncomingCallRequest({ patientName, requestedBy, reason, patientPhone }) {
+  return {
+    subject: `Call Request — ${patientName || 'Patient'} would like a call back`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#0f766e,#0e7490)',
+      title: 'Patient Call Request',
+      accentColor: '#0e7490',
+      emoji: '📞',
+      rows: [
+        { label: 'Patient', value: patientName || '—' },
+        { label: 'Requested By', value: requestedBy || '—' },
+        { label: 'Callback Number', value: patientPhone || '—' },
+        { label: 'Reason', value: reason || 'Not specified' },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/calls',
+      actionLabel: 'Open Calls →',
+    }),
+  }
+}
+
+export function tplVoiceCallMissed({ callerName, calleeName }) {
+  return {
+    subject: `Missed Call — ${callerName || 'A colleague'} tried to reach you`,
+    html: buildEmail({
+      headerGradient: 'linear-gradient(135deg,#334155,#64748b)',
+      title: 'Missed Call',
+      accentColor: '#64748b',
+      emoji: '📞',
+      rows: [
+        { label: 'From', value: callerName || '—' },
+        { label: 'To', value: calleeName || '—' },
+      ],
+      actionUrl: 'https://vianova-health.onrender.com/calls',
+      actionLabel: 'Open Calls →',
+    }),
+  }
+}

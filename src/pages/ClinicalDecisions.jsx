@@ -11,31 +11,31 @@ import SummaryActions from '../components/SummaryActions.jsx'
 
 /* ── colour helpers ─────────────────────────────────────────────────────────── */
 const RISK_CFG = {
-  low:      { color: '#059669', bg: '#dcfce7', ring: '#86efac' },
-  moderate: { color: '#d97706', bg: '#fef3c7', ring: '#fde68a' },
-  medium:   { color: '#d97706', bg: '#fef3c7', ring: '#fde68a' },
+  low:      { color: 'var(--success)', bg: 'var(--success-light)', ring: 'var(--success)' },
+  moderate: { color: 'var(--warning)', bg: 'var(--warning-light)', ring: 'var(--warning-light)' },
+  medium:   { color: 'var(--warning)', bg: 'var(--warning-light)', ring: 'var(--warning-light)' },
   high:     { color: '#ea580c', bg: '#ffedd5', ring: '#fdba74' },
-  critical: { color: '#dc2626', bg: '#fee2e2', ring: '#fca5a5' },
+  critical: { color: 'var(--danger)', bg: 'var(--danger-light)', ring: 'var(--danger)' },
 }
 const SEV_CFG = {
-  none:            { color: '#059669', bg: '#dcfce7' },
-  minor:           { color: '#2563eb', bg: '#dbeafe' },
-  low:             { color: '#2563eb', bg: '#dbeafe' },
-  moderate:        { color: '#d97706', bg: '#fef3c7' },
+  none:            { color: 'var(--success)', bg: 'var(--success-light)' },
+  minor:           { color: 'var(--primary)', bg: 'var(--primary-light)' },
+  low:             { color: 'var(--primary)', bg: 'var(--primary-light)' },
+  moderate:        { color: 'var(--warning)', bg: 'var(--warning-light)' },
   major:           { color: '#ea580c', bg: '#ffedd5' },
   high:            { color: '#ea580c', bg: '#ffedd5' },
-  critical:        { color: '#dc2626', bg: '#fee2e2' },
-  contraindicated: { color: '#dc2626', bg: '#fee2e2' },
+  critical:        { color: 'var(--danger)', bg: 'var(--danger-light)' },
+  contraindicated: { color: 'var(--danger)', bg: 'var(--danger-light)' },
 }
 const EVIDENCE_CFG = {
-  A: { color: '#059669', bg: '#dcfce7', label: 'Level A' },
-  B: { color: '#2563eb', bg: '#dbeafe', label: 'Level B' },
-  C: { color: '#d97706', bg: '#fef3c7', label: 'Level C' },
+  A: { color: 'var(--success)', bg: 'var(--success-light)', label: 'Level A' },
+  B: { color: 'var(--primary)', bg: 'var(--primary-light)', label: 'Level B' },
+  C: { color: 'var(--warning)', bg: 'var(--warning-light)', label: 'Level C' },
 }
-const INDICATOR_COLOR = { info: '#2563eb', warning: '#d97706', critical: '#dc2626' }
+const INDICATOR_COLOR = { info: 'var(--primary)', warning: 'var(--warning)', critical: 'var(--danger)' }
 
 function riskCfg(label) { return RISK_CFG[(label||'').toLowerCase()] || RISK_CFG.low }
-function sevCfg(s)       { return SEV_CFG[(s||'').toLowerCase()] || { color: '#64748b', bg: '#f1f5f9' } }
+function sevCfg(s)       { return SEV_CFG[(s||'').toLowerCase()] || { color: 'var(--text2)', bg: 'var(--surface2)' } }
 
 function Badge({ label, color, bg }) {
   return (
@@ -57,7 +57,7 @@ function RiskGauge({ score, label }) {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
       <div style={{ position: 'relative', width: 120, height: 120 }}>
         <svg width={120} height={120} style={{ transform: 'rotate(-90deg)' }}>
-          <circle cx={60} cy={60} r={r} fill="none" stroke="#e2e8f0" strokeWidth={11} />
+          <circle cx={60} cy={60} r={r} fill="none" stroke="var(--border)" strokeWidth={11} />
           <circle cx={60} cy={60} r={r} fill="none" stroke={cfg.color} strokeWidth={11}
             strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
             style={{ transition: 'stroke-dasharray .7s ease', filter: `drop-shadow(0 0 6px ${cfg.ring})` }} />
@@ -134,15 +134,15 @@ const inp = {
 
 /* NEWS2 score colour */
 function news2Cfg(score) {
-  if (score === 0)   return { color: '#059669', bg: '#dcfce7', label: 'Low' }
-  if (score <= 4)    return { color: '#2563eb', bg: '#dbeafe', label: 'Low-Medium' }
-  if (score <= 6)    return { color: '#d97706', bg: '#fef3c7', label: 'Medium' }
-  return               { color: '#dc2626', bg: '#fee2e2', label: 'High' }
+  if (score === 0)   return { color: 'var(--success)', bg: 'var(--success-light)', label: 'Low' }
+  if (score <= 4)    return { color: 'var(--primary)', bg: 'var(--primary-light)', label: 'Low-Medium' }
+  if (score <= 6)    return { color: 'var(--warning)', bg: 'var(--warning-light)', label: 'Medium' }
+  return               { color: 'var(--danger)', bg: 'var(--danger-light)', label: 'High' }
 }
 
 function VitalRow({ label, value, unit, pts }) {
   const hasPoints = pts != null
-  const ptColor   = pts === 0 ? '#059669' : pts <= 1 ? '#d97706' : '#dc2626'
+  const ptColor   = pts === 0 ? 'var(--success)' : pts <= 1 ? 'var(--warning)' : 'var(--danger)'
   return (
     <div style={{ display: 'flex', alignItems: 'center', padding: '9px 14px',
       borderBottom: '1px solid var(--border)', gap: 12 }}>
@@ -152,7 +152,7 @@ function VitalRow({ label, value, unit, pts }) {
       </div>
       {hasPoints && (
         <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99,
-          color: ptColor, background: pts === 0 ? '#dcfce7' : pts <= 1 ? '#fef3c7' : '#fee2e2' }}>
+          color: ptColor, background: pts === 0 ? 'var(--success-light)' : pts <= 1 ? 'var(--warning-light)' : 'var(--danger-light)' }}>
           {pts === 0 ? '+0 pts' : `+${pts} pts`}
         </span>
       )}
@@ -161,9 +161,9 @@ function VitalRow({ label, value, unit, pts }) {
 }
 
 function DiffRow({ rank, diagnosis, probability, reasoning }) {
-  const cfg = probability === 'high' ? { color: '#dc2626', bg: '#fee2e2' }
-    : probability === 'moderate' ? { color: '#d97706', bg: '#fef3c7' }
-    : { color: '#2563eb', bg: '#dbeafe' }
+  const cfg = probability === 'high' ? { color: 'var(--danger)', bg: 'var(--danger-light)' }
+    : probability === 'moderate' ? { color: 'var(--warning)', bg: 'var(--warning-light)' }
+    : { color: 'var(--primary)', bg: 'var(--primary-light)' }
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 14px',
       borderBottom: '1px solid var(--border)' }}>
@@ -184,8 +184,8 @@ function DiffRow({ rank, diagnosis, probability, reasoning }) {
 }
 
 function HistoryRow({ visit }) {
-  const statusColor = visit.status === 'Approved' ? '#059669' : '#d97706'
-  const statusBg    = visit.status === 'Approved' ? '#dcfce7' : '#fef3c7'
+  const statusColor = visit.status === 'Approved' ? 'var(--success)' : 'var(--warning)'
+  const statusBg    = visit.status === 'Approved' ? 'var(--success-light)' : 'var(--warning-light)'
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px',
       borderBottom: '1px solid var(--border)',
@@ -202,7 +202,7 @@ function HistoryRow({ visit }) {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
         {visit.is_current && (
           <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 99,
-            background: 'var(--primary)', color: '#fff' }}>Current</span>
+            background: 'var(--primary)', color: 'var(--surface)' }}>Current</span>
         )}
         <Badge label={visit.status} color={statusColor} bg={statusBg} />
       </div>
@@ -260,8 +260,8 @@ function PatientCDSTab({ patients, apiKey }) {
           </button>
           {result && <button className="btn btn-secondary btn-sm" onClick={run} disabled={loading}><RefreshCw size={13} /></button>}
         </div>
-        {error && <div style={{ marginTop: 12, fontSize: 13, color: '#dc2626', padding: '8px 12px',
-          background: '#fee2e2', borderRadius: 8 }}>{error}</div>}
+        {error && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--danger)', padding: '8px 12px',
+          background: 'var(--danger-light)', borderRadius: 8 }}>{error}</div>}
       </div>
 
       {loading && <LoadingState label="Running full clinical analysis — vitals, labs, history, AI reasoning…" />}
@@ -342,7 +342,7 @@ function PatientCDSTab({ patients, apiKey }) {
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                         {result.medications.map((m, i) => (
                           <span key={i} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 99,
-                            background: '#dbeafe', border: '1px solid #93c5fd', color: '#1d4ed8' }}>{m}</span>
+                            background: 'var(--primary-light)', border: '1px solid var(--primary)', color: 'var(--primary)' }}>{m}</span>
                         ))}
                       </div>
                     </div>
@@ -350,19 +350,19 @@ function PatientCDSTab({ patients, apiKey }) {
                 </div>
 
                 {/* Allergy check */}
-                <div style={{ background: result.allergy_conflicts?.length > 0 ? '#fff1f2' : '#f0fdf4',
-                  border: `1px solid ${result.allergy_conflicts?.length > 0 ? '#fca5a5' : '#86efac'}`,
+                <div style={{ background: result.allergy_conflicts?.length > 0 ? 'var(--danger-light)' : 'var(--success-light)',
+                  border: `1px solid ${result.allergy_conflicts?.length > 0 ? 'var(--danger)' : 'var(--success)'}`,
                   borderRadius: 12, padding: '12px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     {result.allergy_conflicts?.length > 0
-                      ? <AlertTriangle size={14} color="#dc2626" />
-                      : <CheckCircle2 size={14} color="#059669" />}
+                      ? <AlertTriangle size={14} color="var(--danger)" />
+                      : <CheckCircle2 size={14} color="var(--success)" />}
                     <span style={{ fontWeight: 700, fontSize: 12,
-                      color: result.allergy_conflicts?.length > 0 ? '#dc2626' : '#059669' }}>
+                      color: result.allergy_conflicts?.length > 0 ? 'var(--danger)' : 'var(--success)' }}>
                       Allergy &amp; Interaction Check
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: result.allergy_conflicts?.length > 0 ? '#be123c' : '#166534', lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 12, color: result.allergy_conflicts?.length > 0 ? 'var(--danger)' : 'var(--success)', lineHeight: 1.5 }}>
                     {result.allergy_conflicts?.length > 0
                       ? result.allergy_conflicts.map((c, i) => (
                           <div key={i}>⚠ {c.medication} conflicts with {c.allergy} allergy</div>
@@ -407,9 +407,9 @@ function PatientCDSTab({ patients, apiKey }) {
             {visible.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {[
-                  { key: 'critical', title: 'Critical Alerts', icon: AlertTriangle, clr: '#dc2626' },
-                  { key: 'warning',  title: 'Warnings',        icon: AlertCircle,   clr: '#d97706' },
-                  { key: 'info',     title: 'Recommendations', icon: Info,          clr: '#2563eb' },
+                  { key: 'critical', title: 'Critical Alerts', icon: AlertTriangle, clr: 'var(--danger)' },
+                  { key: 'warning',  title: 'Warnings',        icon: AlertCircle,   clr: 'var(--warning)' },
+                  { key: 'info',     title: 'Recommendations', icon: Info,          clr: 'var(--primary)' },
                 ].map(({ key, title, icon: Ic, clr }) => byIndicator[key].length > 0 && (
                   <Section key={key} title={title} count={byIndicator[key].length} icon={Ic} defaultOpen={key !== 'info'}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -483,15 +483,15 @@ function PatientCDSTab({ patients, apiKey }) {
 
             {/* ── AI Summary for Doctor ── */}
             {result.doctor_summary && (
-              <div style={{ background: 'linear-gradient(135deg, #0c5f78 0%, #083d52 100%)',
+              <div style={{ background: 'linear-gradient(135deg, var(--primary-dark) 0%, #083d52 100%)',
                 borderRadius: 14, padding: '22px 24px', boxShadow: 'var(--shadow-lg)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                   <div style={{ width: 32, height: 32, borderRadius: 9, background: 'rgba(255,255,255,.15)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Brain size={16} color="#fff" />
+                    <Brain size={16} color="var(--surface)" />
                   </div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>AI Reasoning for Doctor</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--surface)' }}>AI Reasoning for Doctor</div>
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)' }}>
                       Patient Summary Draft · {result.generated_at ? new Date(result.generated_at).toLocaleTimeString() : ''}
                     </div>
@@ -598,10 +598,10 @@ function MedSafetyTab({ patients, apiKey }) {
 
   const statusCfg = result
     ? result.safe === true
-      ? { bg: '#f0fdf4', border: '#86efac', color: '#15803d', label: 'Safe to Prescribe', icon: CheckCircle2 }
+      ? { bg: 'var(--success-light)', border: 'var(--success)', color: 'var(--success)', label: 'Safe to Prescribe', icon: CheckCircle2 }
       : result.safe === false
-      ? { bg: '#fff1f2', border: '#fca5a5', color: '#dc2626', label: 'Do Not Prescribe', icon: X }
-      : { bg: '#fefce8', border: '#fde047', color: '#a16207', label: 'Use With Caution', icon: AlertCircle }
+      ? { bg: 'var(--danger-light)', border: 'var(--danger)', color: 'var(--danger)', label: 'Do Not Prescribe', icon: X }
+      : { bg: 'var(--warning-light)', border: 'var(--warning)', color: 'var(--warning)', label: 'Use With Caution', icon: AlertCircle }
     : null
 
   return (
@@ -815,10 +815,10 @@ function DDITab({ apiKey }) {
 
           {/* High-risk pairs */}
           {result.high_risk_pairs?.length > 0 && (
-            <div style={{ padding: '12px 16px', background: '#fff1f2', border: '1px solid #fca5a5',
+            <div style={{ padding: '12px 16px', background: 'var(--danger-light)', border: '1px solid var(--danger)',
               borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <AlertTriangle size={16} color="#dc2626" />
-              <div style={{ fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+              <AlertTriangle size={16} color="var(--danger)" />
+              <div style={{ fontSize: 13, color: 'var(--danger)', fontWeight: 600 }}>
                 High-risk pairs: {result.high_risk_pairs.join(' · ')}
               </div>
             </div>
@@ -923,7 +923,7 @@ function GuidelinesTab({ apiKey }) {
             <button key={c} onClick={() => setCondition(c)} style={{
               padding: '4px 11px', borderRadius: 99, border: '1px solid var(--border)',
               background: condition === c ? 'var(--primary)' : 'var(--surface2)',
-              color: condition === c ? '#fff' : 'var(--text2)',
+              color: condition === c ? 'var(--surface)' : 'var(--text2)',
               fontSize: 12, fontWeight: 500, cursor: 'pointer', transition: 'all .12s',
             }}>{c}</button>
           ))}
@@ -971,7 +971,7 @@ function GuidelinesTab({ apiKey }) {
             <Section title="First-Line Treatments" count={result.first_line_treatments.length} icon={Pill}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {result.first_line_treatments.map((t, i) => {
-                  const ev = EVIDENCE_CFG[t.evidence_level] || { color: '#64748b', bg: '#f1f5f9', label: t.evidence_level }
+                  const ev = EVIDENCE_CFG[t.evidence_level] || { color: 'var(--text2)', bg: 'var(--surface2)', label: t.evidence_level }
                   return (
                     <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12,
                       padding: '12px 14px', background: 'var(--surface2)',
@@ -1021,10 +1021,10 @@ function GuidelinesTab({ apiKey }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {result.red_flags.map((rf, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9,
-                    padding: '10px 12px', background: '#fff1f2',
-                    border: '1px solid #fecdd3', borderRadius: 9 }}>
-                    <AlertTriangle size={13} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />
-                    <span style={{ fontSize: 13, color: '#be123c', lineHeight: 1.5 }}>{rf}</span>
+                    padding: '10px 12px', background: 'var(--danger-light)',
+                    border: '1px solid var(--danger-light)', borderRadius: 9 }}>
+                    <AlertTriangle size={13} color="var(--danger)" style={{ flexShrink: 0, marginTop: 1 }} />
+                    <span style={{ fontSize: 13, color: 'var(--danger)', lineHeight: 1.5 }}>{rf}</span>
                   </div>
                 ))}
               </div>
@@ -1085,14 +1085,14 @@ export default function ClinicalDecisions() {
 
       <div style={{ padding: '24px 32px 40px' }}>
         {/* Tab bar */}
-        <div style={{ display: 'flex', gap: 2, background: '#e2e8f0', borderRadius: 13, padding: 4,
+        <div style={{ display: 'flex', gap: 2, background: 'var(--border)', borderRadius: 13, padding: 4,
           width: 'fit-content', marginBottom: 28 }}>
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setActiveTab(id)} style={{
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '9px 18px', borderRadius: 10, border: 'none', cursor: 'pointer',
               fontSize: 13, fontWeight: 600, transition: 'all .15s',
-              background: activeTab === id ? '#fff' : 'transparent',
+              background: activeTab === id ? 'var(--surface)' : 'transparent',
               color:      activeTab === id ? 'var(--primary)' : 'var(--text2)',
               boxShadow:  activeTab === id ? '0 1px 4px rgba(0,0,0,.1)' : 'none',
             }}>

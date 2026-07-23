@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Users, Plus, Search, FileJson, FileSpreadsheet, X, Check, User,
   Phone, Calendar, Pill, Heart, AlertTriangle, ChevronDown, ChevronUp,
   Edit3, Trash2, Loader2, Upload, Mail, MapPin, Languages, ArrowRight,
-  CheckCircle2, AlertCircle, SkipForward, RefreshCw, Briefcase
+  CheckCircle2, AlertCircle, SkipForward, RefreshCw, Briefcase, Settings, PhoneCall
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { parseFhirBundle } from '../utils/parseFhir.js'
 import FhirPreview from '../components/FhirPreview.jsx'
 import {
@@ -63,9 +63,35 @@ function tryParseArr(v) { const r = tryParse(v); return Array.isArray(r) ? r : (
 
 const EMPTY = { name: '', dob: '', sex: '', mrn: '', phone: '', email: '', address: '', language: '', conditions: '', medications: '', allergies: '', notes: '' }
 
+// Sidebar sub-nav lands here with ?view=, each backed by real assignment data
+// (not just relabeled copies of the same list): "mine"/"caseload" come from case
+// assignment (cases.assigned_to), "call-list" from upcoming appointments.
+const VIEW_TABS = [
+  { key: 'all',       label: 'All Patients'  },
+  { key: 'mine',      label: 'My Patients'   },
+  { key: 'call-list', label: 'My Call List'  },
+  { key: 'caseload',  label: 'My Caseload'   },
+]
+
+const LS_COLUMNS = 'vnh_patients_columns'
+const DEFAULT_COLUMNS = { dob: true, sex: true, mrn: true, phone: true, email: true, conditions: true }
+const COLUMN_OPTIONS = [
+  { key: 'dob',        label: 'Date of Birth' },
+  { key: 'sex',        label: 'Sex'           },
+  { key: 'mrn',        label: 'MRN'           },
+  { key: 'phone',      label: 'Phone'         },
+  { key: 'email',      label: 'Email'         },
+  { key: 'conditions', label: 'Conditions'    },
+]
+function readColumns() {
+  try { return { ...DEFAULT_COLUMNS, ...JSON.parse(localStorage.getItem(LS_COLUMNS) || '{}') } } catch { return DEFAULT_COLUMNS }
+}
+
 export default function Patients() {
-  const { key } = useKey()
+  const { key, email, label } = useKey()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const view = VIEW_TABS.some(t => t.key === searchParams.get('view')) ? searchParams.get('view') : 'all'
   const [patients, setPatients]   = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
@@ -77,6 +103,12 @@ export default function Patients() {
   const [dupWarning, setDupWarning] = useState('')
   const [patientCases, setPatientCases] = useState({})
   const [casesLoading, setCasesLoading] = useState({})
+
+  // Data backing the "My Patients" / "My Caseload" / "My Call List" views
+  const [allCases, setAllCases]         = useState([])
+  const [upcomingAppts, setUpcomingAppts] = useState([])
+  const [columns, setColumns]           = useState(readColumns)
+  const [columnsOpen, setColumnsOpen]   = useState(false)
 
   // FHIR
   const [fhirData, setFhirData]   = useState(null)
@@ -102,7 +134,31 @@ export default function Patients() {
   const [form, setForm] = useState(EMPTY)
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  useEffect(() => { if (key) load() }, [key])
+  useEffect(() => { if (key) { load(); loadCases(); loadAppointments() } }, [key])
+
+  async function loadCases() {
+    try {
+      const r = await fetch('/api/cases', { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setAllCases(Array.isArray(d) ? d : [])
+    } catch { setAllCases([]) }
+  }
+
+  async function loadAppointments() {
+    try {
+      const r = await fetch('/api/appointments?view=upcoming', { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setUpcomingAppts(Array.isArray(d) ? d : [])
+    } catch { setUpcomingAppts([]) }
+  }
+
+  function toggleColumn(k) {
+    setColumns(c => {
+      const next = { ...c, [k]: !c[k] }
+      localStorage.setItem(LS_COLUMNS, JSON.stringify(next))
+      return next
+    })
+  }
 
   async function fetchPatientCases(patientId) {
     if (patientCases[patientId] !== undefined) return
@@ -287,12 +343,67 @@ export default function Patients() {
     (p.email || '').toLowerCase().includes(search.toLowerCase())
   )
 
+  // Group each patient's linked cases (cases carry patient_id only when created
+  // from the "+ New Case" button on a patient row) to derive real assignment-based views.
+  const casesByPatient = useMemo(() => {
+    const map = {}
+    allCases.forEach(c => { if (c.patient_id) (map[c.patient_id] ||= []).push(c) })
+    return map
+  }, [allCases])
+
+  const mineIds = useMemo(() => new Set(
+    Object.entries(casesByPatient).filter(([, cs]) => cs.some(c => c.assigned_to === email)).map(([pid]) => pid)
+  ), [casesByPatient, email])
+
+  const caseloadIds = useMemo(() => new Set(
+    Object.entries(casesByPatient).filter(([, cs]) => cs.some(c => c.assigned_to === email && !c.approved)).map(([pid]) => pid)
+  ), [casesByPatient, email])
+
+  const viewFiltered =
+    view === 'mine'     ? filtered.filter(p => mineIds.has(String(p.id))) :
+    view === 'caseload' ? filtered.filter(p => caseloadIds.has(String(p.id))) :
+    filtered
+
+  // "My Call List" is appointment-centric rather than patient-centric, so it's
+  // rendered as its own list further down instead of filtering `patients`.
+  const callList = useMemo(() => {
+    const me = (label || '').toLowerCase().trim()
+    if (!me) return upcomingAppts
+    return upcomingAppts.filter(a => {
+      const prov = (a.provider || '').toLowerCase().trim()
+      return !prov || prov.includes(me) || me.includes(prov)
+    })
+  }, [upcomingAppts, label])
+
+  const VIEW_EMPTY_COPY = {
+    mine:      { title: 'No patients assigned to you yet',       body: 'Patients with a case assigned to you will show up here.' },
+    caseload:  { title: 'Your caseload is clear',                 body: 'Patients with an active, unresolved case assigned to you will show up here.' },
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div>
       <div className="topbar">
         <span className="topbar-title">Patients</span>
         <div className="topbar-right" style={{ display: 'flex', gap: 8 }}>
+          <div style={{ position: 'relative' }}>
+            <button className="btn btn-primary btn-sm" onClick={() => setColumnsOpen(o => !o)}>
+              <Settings size={14} /> Customize columns
+            </button>
+            {columnsOpen && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setColumnsOpen(false)} />
+                <div style={{ position: 'absolute', top: '110%', right: 0, background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.14)', padding: 8, zIndex: 50, minWidth: 170 }}>
+                  {COLUMN_OPTIONS.map(c => (
+                    <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', fontSize: 12.5, color: 'var(--text2)', cursor: 'pointer', borderRadius: 6 }}>
+                      <input type="checkbox" checked={columns[c.key]} onChange={() => toggleColumn(c.key)} />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button className="btn btn-secondary btn-sm" onClick={() => { resetCsvModal(); setShowCsvModal(true) }}>
             <FileSpreadsheet size={14} /> Import CSV
           </button>
@@ -302,30 +413,75 @@ export default function Patients() {
         </div>
       </div>
 
+      <div className="tab-row" style={{ padding: '0 32px' }}>
+        {VIEW_TABS.map(t => (
+          <button key={t.key} className={`tab-item ${view === t.key ? 'active' : ''}`}
+            onClick={() => navigate(t.key === 'all' ? '/patients' : `/patients?view=${t.key}`)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <div style={{ padding: '24px 32px' }}>
-        {/* Search */}
-        <div style={{ position: 'relative', marginBottom: 20, maxWidth: 400 }}>
-          <Search size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, condition, MRN or email…"
-            style={{ width: '100%', padding: '8px 12px 8px 32px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-        </div>
+        {/* Search — not applicable to the appointment-centric Call List view */}
+        {view !== 'call-list' && (
+          <div style={{ position: 'relative', marginBottom: 20, maxWidth: 400 }}>
+            <Search size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search by name, condition, MRN or email…"
+              style={{ width: '100%', padding: '8px 12px 8px 32px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
             <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px', display: 'block' }} />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : view === 'call-list' ? (
+          callList.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
+              <PhoneCall size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: .35 }} />
+              <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>No upcoming calls</div>
+              <div style={{ fontSize: 13 }}>Upcoming appointments assigned to you will show up here.</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {callList.map(a => {
+                const dt = new Date(a.appointment_date)
+                return (
+                  <div key={a.id} onClick={() => navigate('/appointments')}
+                    style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}>
+                    <div style={{ width: 42, height: 42, borderRadius: 99, background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <PhoneCall size={18} color="#2563eb" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>{a.patient_name || 'Unknown patient'}</div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        <span><Calendar size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />{dt.toLocaleDateString()} · {dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                        {a.appointment_type && <span>{a.appointment_type}</span>}
+                        {a.provider && <span>Provider: {a.provider}</span>}
+                      </div>
+                    </div>
+                    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#0369a1', background: '#e0f2fe', flexShrink: 0, textTransform: 'capitalize' }}>
+                      {a.status || 'scheduled'}
+                    </span>
+                    <ArrowRight size={13} color="#9ca3af" style={{ flexShrink: 0 }} />
+                  </div>
+                )
+              })}
+            </div>
+          )
+        ) : viewFiltered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
             <Users size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: .35 }} />
             <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>
-              {search ? 'No patients match your search' : 'No patients yet'}
+              {search ? 'No patients match your search' : (VIEW_EMPTY_COPY[view]?.title || 'No patients yet')}
             </div>
-            {!search && <div style={{ fontSize: 13 }}>Click "Add Patient" or "Import CSV" to get started.</div>}
+            {!search && <div style={{ fontSize: 13 }}>{VIEW_EMPTY_COPY[view]?.body || 'Click "Add Patient" or "Import CSV" to get started.'}</div>}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {filtered.map(p => {
+            {viewFiltered.map(p => {
               const conditions  = tryParseArr(p.conditions)
               const medications = tryParseArr(p.medications)
               const allergies   = tryParseArr(p.allergies)
@@ -346,13 +502,13 @@ export default function Patients() {
                         <SourceBadge source={p.import_source} />
                       </div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                        {p.dob   && <span><Calendar size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />{p.dob}</span>}
-                        {p.sex   && <span>{p.sex}</span>}
-                        {p.mrn   && <span style={{ fontFamily: 'monospace' }}>MRN: {p.mrn}</span>}
-                        {p.phone && <span><Phone size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />{p.phone}</span>}
-                        {p.email && <span><Mail size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />{p.email}</span>}
+                        {columns.dob   && p.dob   && <span><Calendar size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />{p.dob}</span>}
+                        {columns.sex   && p.sex   && <span>{p.sex}</span>}
+                        {columns.mrn   && p.mrn   && <span style={{ fontFamily: 'monospace' }}>MRN: {p.mrn}</span>}
+                        {columns.phone && p.phone && <span><Phone size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />{p.phone}</span>}
+                        {columns.email && p.email && <span><Mail size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />{p.email}</span>}
                       </div>
-                      {conditions.length > 0 && (
+                      {columns.conditions && conditions.length > 0 && (
                         <div style={{ marginTop: 5 }}>
                           {conditions.slice(0, 4).map(c => <Tag key={c} label={c} />)}
                           {conditions.length > 4 && <Tag label={`+${conditions.length - 4}`} color="#6b7280" bg="#f3f4f6" />}

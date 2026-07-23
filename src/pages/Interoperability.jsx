@@ -6,9 +6,9 @@ function interpBadge(value) {
   if (!value) return null
   const v = value.toLowerCase()
   let color, bg
-  if (v === 'normal' || v === 'final') { color = '#059669'; bg = '#d1fae5' }
-  else if (v === 'abnormal' || v === 'pending') { color = '#d97706'; bg = '#fef3c7' }
-  else if (v === 'critical') { color = '#b91c1c'; bg = '#fee2e2' }
+  if (v === 'normal' || v === 'final') { color = 'var(--success)'; bg = 'var(--success-light)' }
+  else if (v === 'abnormal' || v === 'pending') { color = 'var(--warning)'; bg = 'var(--warning-light)' }
+  else if (v === 'critical') { color = 'var(--danger)'; bg = 'var(--danger-light)' }
   else { color = 'var(--text2)'; bg = 'var(--surface2)' }
   return (
     <span style={{
@@ -22,10 +22,10 @@ function interpBadge(value) {
 
 function systemBadge(system) {
   const colors = {
-    'SNOMED CT': { color: '#1d4ed8', bg: '#dbeafe' },
+    'SNOMED CT': { color: 'var(--primary)', bg: 'var(--primary-light)' },
     'LOINC': { color: '#7c3aed', bg: '#ede9fe' },
-    'RxNorm': { color: '#065f46', bg: '#d1fae5' },
-    'ICD-10': { color: '#92400e', bg: '#fef3c7' },
+    'RxNorm': { color: 'var(--success)', bg: 'var(--success-light)' },
+    'ICD-10': { color: 'var(--warning)', bg: 'var(--warning-light)' },
   }
   const c = colors[system] || { color: 'var(--text2)', bg: 'var(--surface2)' }
   return (
@@ -40,10 +40,10 @@ function systemBadge(system) {
 
 function ConfidenceBar({ value }) {
   const pct = Math.round((value || 0) * 100)
-  const color = value >= 0.8 ? '#059669' : value >= 0.5 ? '#d97706' : '#b91c1c'
+  const color = value >= 0.8 ? 'var(--success)' : value >= 0.5 ? 'var(--warning)' : 'var(--danger)'
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ width: 80, height: 6, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
+      <div style={{ width: 80, height: 6, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 99 }} />
       </div>
       <span style={{ fontSize: 11.5, fontWeight: 700, color }}>{pct}%</span>
@@ -202,10 +202,10 @@ export default function Interoperability() {
   const sum = record?.summary || {}
 
   const statCards = [
-    { label: 'Lab Results', value: sum.lab_results ?? res.lab_results?.length ?? 0, color: '#2563eb' },
-    { label: 'Care Gaps', value: sum.care_gaps ?? res.care_gaps?.length ?? 0, color: '#d97706' },
-    { label: 'Appointments', value: sum.appointments ?? res.appointments?.length ?? 0, color: '#059669' },
-    { label: 'Adverse Events', value: sum.adverse_events ?? res.adverse_events?.length ?? 0, color: '#b91c1c' },
+    { label: 'Lab Results', value: sum.lab_results ?? res.lab_results?.length ?? 0, color: 'var(--primary)' },
+    { label: 'Care Gaps', value: sum.care_gaps ?? res.care_gaps?.length ?? 0, color: 'var(--warning)' },
+    { label: 'Appointments', value: sum.appointments ?? res.appointments?.length ?? 0, color: 'var(--success)' },
+    { label: 'Adverse Events', value: sum.adverse_events ?? res.adverse_events?.length ?? 0, color: 'var(--danger)' },
   ]
 
   return (
@@ -324,7 +324,7 @@ export default function Interoperability() {
                         <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                           <td style={{ padding: '7px 10px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{d.discharge_date?.slice(0, 10) || d.created_at?.slice(0, 10)}</td>
                           <td style={{ padding: '7px 10px' }}>{interpBadge(d.risk_level)}</td>
-                          <td style={{ padding: '7px 10px' }}>{d.finalized ? <Check size={14} color="#059669" /> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
+                          <td style={{ padding: '7px 10px' }}>{d.finalized ? <Check size={14} color="var(--success)" /> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
                         </tr>
                       ))}
                     />

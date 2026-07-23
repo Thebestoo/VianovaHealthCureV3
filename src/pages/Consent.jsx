@@ -22,13 +22,13 @@ const CONSENT_TYPES = [
 ]
 
 const TYPE_COLORS = {
-  treatment:                  { color: '#1d4ed8', bg: '#dbeafe' },
+  treatment:                  { color: 'var(--primary-dark)', bg: 'var(--primary-light)' },
   research:                   { color: '#7c3aed', bg: '#ede9fe' },
   data_sharing:               { color: '#0891b2', bg: '#cffafe' },
-  marketing:                  { color: '#6b7280', bg: '#f3f4f6' },
-  sensitive_mental_health:    { color: '#b91c1c', bg: '#fee2e2' },
-  sensitive_substance_abuse:  { color: '#b91c1c', bg: '#fee2e2' },
-  sensitive_hiv:              { color: '#92400e', bg: '#fef3c7' },
+  marketing:                  { color: 'var(--text2)', bg: 'var(--surface2)' },
+  sensitive_mental_health:    { color: 'var(--danger)', bg: 'var(--danger-light)' },
+  sensitive_substance_abuse:  { color: 'var(--danger)', bg: 'var(--danger-light)' },
+  sensitive_hiv:              { color: 'var(--warning)', bg: 'var(--warning-light)' },
   sensitive_reproductive:     { color: '#9d174d', bg: '#fce7f3' },
 }
 
@@ -50,7 +50,7 @@ function fmtDateTime(d) {
 
 function FL({ children }) {
   return (
-    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
       {children}
     </label>
   )
@@ -59,7 +59,7 @@ function FL({ children }) {
 function InputEl({ style, ...props }) {
   return (
     <input
-      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box', ...style }}
+      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border-strong)', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box', ...style }}
       {...props}
     />
   )
@@ -68,7 +68,7 @@ function InputEl({ style, ...props }) {
 function TextareaEl({ style, ...props }) {
   return (
     <textarea
-      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', ...style }}
+      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border-strong)', borderRadius: 7, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', ...style }}
       {...props}
     />
   )
@@ -77,7 +77,7 @@ function TextareaEl({ style, ...props }) {
 function SelectEl({ style, ...props }) {
   return (
     <select
-      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', background: '#fff', cursor: 'pointer', boxSizing: 'border-box', ...style }}
+      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border-strong)', borderRadius: 7, fontSize: 13, outline: 'none', background: 'var(--surface)', cursor: 'pointer', boxSizing: 'border-box', ...style }}
       {...props}
     />
   )
@@ -87,7 +87,7 @@ function TypeBadge({ type }) {
   const ct = CONSENT_TYPES.find(t => t.value === type)
   const label = ct ? ct.label : (type || '').replace(/_/g, ' ')
   const isSensitive = ct?.sensitive || (type || '').startsWith('sensitive_')
-  const c = TYPE_COLORS[type] || (isSensitive ? { color: '#b91c1c', bg: '#fee2e2' } : { color: '#6b7280', bg: '#f3f4f6' })
+  const c = TYPE_COLORS[type] || (isSensitive ? { color: 'var(--danger)', bg: 'var(--danger-light)' } : { color: 'var(--text2)', bg: 'var(--surface2)' })
   return (
     <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: c.color, background: c.bg, display: 'inline-flex', alignItems: 'center', gap: 4, textTransform: 'capitalize' }}>
       {isSensitive && <Lock size={9} />}
@@ -102,18 +102,18 @@ function StatusBadge({ status, expiresAt }) {
     return diff >= 0 && diff < 30
   })()
   const map = {
-    active:             { label: 'Active',             color: '#065f46', bg: '#d1fae5' },
-    pending:            { label: 'Pending Signature',  color: '#92400e', bg: '#fef3c7' },
-    revoked:            { label: 'Revoked',            color: '#991b1b', bg: '#fee2e2' },
-    expired:            { label: 'Expired',            color: '#6b7280', bg: '#f3f4f6' },
+    active:             { label: 'Active',             color: 'var(--success)', bg: 'var(--success-light)' },
+    pending:            { label: 'Pending Signature',  color: 'var(--warning)', bg: 'var(--warning-light)' },
+    revoked:            { label: 'Revoked',            color: 'var(--danger)', bg: 'var(--danger-light)' },
+    expired:            { label: 'Expired',            color: 'var(--text2)', bg: 'var(--surface2)' },
     deletion_requested: { label: 'Deletion Requested', color: '#7c2d12', bg: '#ffedd5' },
   }
-  const s = map[status] || { label: status, color: '#6b7280', bg: '#f3f4f6' }
+  const s = map[status] || { label: status, color: 'var(--text2)', bg: 'var(--surface2)' }
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
       <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: s.color, background: s.bg }}>{s.label}</span>
       {expiringSoon && (
-        <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fef3c7', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+        <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: 'var(--warning)', background: 'var(--warning-light)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
           <AlertTriangle size={10} /> Expiring Soon
         </span>
       )}
@@ -122,7 +122,7 @@ function StatusBadge({ status, expiresAt }) {
 }
 
 function SeverityBadge({ severity }) {
-  const map = { info: { color: '#1d4ed8', bg: '#dbeafe' }, high: { color: '#b91c1c', bg: '#fee2e2' }, medium: { color: '#92400e', bg: '#fef3c7' } }
+  const map = { info: { color: 'var(--primary-dark)', bg: 'var(--primary-light)' }, high: { color: 'var(--danger)', bg: 'var(--danger-light)' }, medium: { color: 'var(--warning)', bg: 'var(--warning-light)' } }
   const s = map[severity] || map.info
   return <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: s.color, background: s.bg, textTransform: 'capitalize' }}>{severity || 'info'}</span>
 }
@@ -132,9 +132,9 @@ function CopyBtn({ text }) {
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }) }}
-      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, color: '#374151', cursor: 'pointer' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', background: 'var(--surface)', fontSize: 11, color: 'var(--text)', cursor: 'pointer' }}
     >
-      {copied ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
+      {copied ? <Check size={11} color="var(--success)" /> : <Copy size={11} />}
       {copied ? 'Copied' : 'Copy'}
     </button>
   )
@@ -189,24 +189,24 @@ function ConsentCard({ c, apiKey, onRefresh }) {
   }
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px', transition: 'box-shadow .15s' }}>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 20px', transition: 'box-shadow .15s' }}>
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-            <span style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>{c.patient_name}</span>
+            <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{c.patient_name}</span>
             <StatusBadge status={c.status} expiresAt={c.expires_at} />
             {c.break_glass_accessed === 1 && (
-              <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fef3c7', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: 'var(--warning)', background: 'var(--warning-light)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                 <Zap size={9} /> Break-Glass Used
               </span>
             )}
           </div>
           <div style={{ marginBottom: 6 }}><TypeBadge type={c.consent_type} /></div>
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: '#6b7280' }}>
-            {c.signee_name && <span><User size={11} style={{ marginRight: 3 }} />Signed by: <strong style={{ color: '#374151' }}>{c.signee_name}</strong></span>}
-            {c.signed_at && <span><Calendar size={11} style={{ marginRight: 3 }} />Signed: <strong style={{ color: '#374151' }}>{fmtDate(c.signed_at)}</strong></span>}
-            {c.expires_at && <span><Calendar size={11} style={{ marginRight: 3 }} />Expires: <strong style={{ color: '#374151' }}>{fmtDate(c.expires_at)}</strong></span>}
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: 'var(--text2)' }}>
+            {c.signee_name && <span><User size={11} style={{ marginRight: 3 }} />Signed by: <strong style={{ color: 'var(--text)' }}>{c.signee_name}</strong></span>}
+            {c.signed_at && <span><Calendar size={11} style={{ marginRight: 3 }} />Signed: <strong style={{ color: 'var(--text)' }}>{fmtDate(c.signed_at)}</strong></span>}
+            {c.expires_at && <span><Calendar size={11} style={{ marginRight: 3 }} />Expires: <strong style={{ color: 'var(--text)' }}>{fmtDate(c.expires_at)}</strong></span>}
           </div>
         </div>
         {/* Action buttons */}
@@ -217,11 +217,11 @@ function ConsentCard({ c, apiKey, onRefresh }) {
             </button>
           )}
           {c.status === 'active' && (
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowRevokeModal(true)} style={{ color: '#dc2626', borderColor: '#fecaca' }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowRevokeModal(true)} style={{ color: 'var(--danger)', borderColor: 'var(--danger-light)' }}>
               <RotateCcw size={12} /> Revoke
             </button>
           )}
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowBgModal(true)} style={{ color: '#92400e', borderColor: '#fde68a' }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowBgModal(true)} style={{ color: 'var(--warning)', borderColor: 'var(--warning-light)' }}>
             <Zap size={12} /> Break-Glass
           </button>
           {fhirParsed && (
@@ -234,7 +234,7 @@ function ConsentCard({ c, apiKey, onRefresh }) {
               {deleteWorking ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <><X size={12} /> GDPR Delete</>}
             </button>
           )}
-          <button onClick={() => setExpanded(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4, display: 'flex' }}>
+          <button onClick={() => setExpanded(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 4, display: 'flex' }}>
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
         </div>
@@ -242,12 +242,12 @@ function ConsentCard({ c, apiKey, onRefresh }) {
 
       {/* Expanded details */}
       {expanded && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f3f4f6', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {c.scope && <div style={{ fontSize: 13 }}><strong style={{ color: '#374151' }}>Scope:</strong> <span style={{ color: '#6b7280' }}>{c.scope}</span></div>}
-          {c.restrictions && <div style={{ fontSize: 13 }}><strong style={{ color: '#374151' }}>Restrictions:</strong> <span style={{ color: '#6b7280' }}>{c.restrictions}</span></div>}
-          {c.signature && <div style={{ fontSize: 13 }}><strong style={{ color: '#374151' }}>E-Signature:</strong> <span style={{ color: '#6b7280', fontStyle: 'italic' }}>"{c.signature}"</span></div>}
-          {c.revoke_reason && <div style={{ fontSize: 13 }}><strong style={{ color: '#dc2626' }}>Revoke reason:</strong> <span style={{ color: '#6b7280' }}>{c.revoke_reason}</span></div>}
-          {c.break_glass_reason && <div style={{ fontSize: 13 }}><strong style={{ color: '#92400e' }}>Break-glass reason:</strong> <span style={{ color: '#6b7280' }}>{c.break_glass_reason}</span></div>}
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--surface2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {c.scope && <div style={{ fontSize: 13 }}><strong style={{ color: 'var(--text)' }}>Scope:</strong> <span style={{ color: 'var(--text2)' }}>{c.scope}</span></div>}
+          {c.restrictions && <div style={{ fontSize: 13 }}><strong style={{ color: 'var(--text)' }}>Restrictions:</strong> <span style={{ color: 'var(--text2)' }}>{c.restrictions}</span></div>}
+          {c.signature && <div style={{ fontSize: 13 }}><strong style={{ color: 'var(--text)' }}>E-Signature:</strong> <span style={{ color: 'var(--text2)', fontStyle: 'italic' }}>"{c.signature}"</span></div>}
+          {c.revoke_reason && <div style={{ fontSize: 13 }}><strong style={{ color: 'var(--danger)' }}>Revoke reason:</strong> <span style={{ color: 'var(--text2)' }}>{c.revoke_reason}</span></div>}
+          {c.break_glass_reason && <div style={{ fontSize: 13 }}><strong style={{ color: 'var(--warning)' }}>Break-glass reason:</strong> <span style={{ color: 'var(--text2)' }}>{c.break_glass_reason}</span></div>}
         </div>
       )}
 
@@ -255,7 +255,7 @@ function ConsentCard({ c, apiKey, onRefresh }) {
       {showFhir && fhirParsed && (
         <div style={{ marginTop: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '.06em' }}>FHIR Consent Resource</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '.06em' }}>FHIR Consent Resource</span>
             <CopyBtn text={JSON.stringify(fhirParsed, null, 2)} />
           </div>
           <pre style={{ background: '#1e293b', color: '#e2e8f0', borderRadius: 8, padding: '12px 14px', fontSize: 11, overflowX: 'auto', margin: 0, maxHeight: 300, overflowY: 'auto' }}>
@@ -268,28 +268,28 @@ function ConsentCard({ c, apiKey, onRefresh }) {
       {deleteReport && (
         <div style={{ marginTop: 12, padding: '12px 14px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: '#7c2d12', marginBottom: 8 }}>GDPR Deletion Report</div>
-          {deleteReport.summary && <p style={{ fontSize: 12, color: '#374151', margin: '0 0 8px' }}>{deleteReport.summary}</p>}
+          {deleteReport.summary && <p style={{ fontSize: 12, color: 'var(--text)', margin: '0 0 8px' }}>{deleteReport.summary}</p>}
           {deleteReport.summary && (
             <div style={{ marginBottom: 8 }}>
               <SummaryActions compact title="GDPR Deletion Report" filename="gdpr-deletion-report.txt" text={deleteReport.summary} />
             </div>
           )}
-          {deleteReport.can_delete?.length > 0 && <div style={{ fontSize: 12, marginBottom: 4 }}><strong style={{ color: '#065f46' }}>Can Delete:</strong> {deleteReport.can_delete.join(', ')}</div>}
-          {deleteReport.must_retain?.length > 0 && <div style={{ fontSize: 12, marginBottom: 4 }}><strong style={{ color: '#991b1b' }}>Must Retain ({deleteReport.retention_period_years}yr):</strong> {deleteReport.must_retain.join(', ')}</div>}
-          {deleteReport.redact_only?.length > 0 && <div style={{ fontSize: 12 }}><strong style={{ color: '#92400e' }}>Redact Only:</strong> {deleteReport.redact_only.join(', ')}</div>}
+          {deleteReport.can_delete?.length > 0 && <div style={{ fontSize: 12, marginBottom: 4 }}><strong style={{ color: 'var(--success)' }}>Can Delete:</strong> {deleteReport.can_delete.join(', ')}</div>}
+          {deleteReport.must_retain?.length > 0 && <div style={{ fontSize: 12, marginBottom: 4 }}><strong style={{ color: 'var(--danger)' }}>Must Retain ({deleteReport.retention_period_years}yr):</strong> {deleteReport.must_retain.join(', ')}</div>}
+          {deleteReport.redact_only?.length > 0 && <div style={{ fontSize: 12 }}><strong style={{ color: 'var(--warning)' }}>Redact Only:</strong> {deleteReport.redact_only.join(', ')}</div>}
         </div>
       )}
 
       {/* Revoke Modal */}
       {showRevokeModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={e => e.target === e.currentTarget && setShowRevokeModal(false)}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 400, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
-            <div style={{ fontWeight: 700, fontSize: 16, color: '#dc2626', marginBottom: 12 }}>Revoke Consent</div>
+          <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 400, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--danger)', marginBottom: 12 }}>Revoke Consent</div>
             <FL>Reason for revocation (optional)</FL>
             <TextareaEl rows={3} value={revokeReason} onChange={e => setRevokeReason(e.target.value)} placeholder="Patient withdrew consent…" />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowRevokeModal(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" onClick={doRevoke} disabled={working} style={{ background: '#dc2626', borderColor: '#dc2626' }}>
+              <button className="btn btn-primary btn-sm" onClick={doRevoke} disabled={working} style={{ background: 'var(--danger)', borderColor: 'var(--danger)' }}>
                 {working ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : 'Revoke'}
               </button>
             </div>
@@ -300,8 +300,8 @@ function ConsentCard({ c, apiKey, onRefresh }) {
       {/* Sign Modal */}
       {showSignModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={e => e.target === e.currentTarget && setShowSignModal(false)}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 420, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
-            <div style={{ fontWeight: 700, fontSize: 16, color: '#111827', marginBottom: 14 }}>Capture E-Signature</div>
+          <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 420, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 14 }}>Capture E-Signature</div>
             <div style={{ marginBottom: 12 }}>
               <FL>Signee Name *</FL>
               <InputEl value={signName} onChange={e => setSignName(e.target.value)} placeholder="Full legal name" />
@@ -309,7 +309,7 @@ function ConsentCard({ c, apiKey, onRefresh }) {
             <div style={{ marginBottom: 14 }}>
               <FL>Type Signature (legal e-signature) *</FL>
               <InputEl value={signSig} onChange={e => setSignSig(e.target.value)} placeholder="Type full name as signature…" style={{ fontFamily: 'Georgia, serif', fontSize: 15 }} />
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>By typing your name, you agree this constitutes a legally binding electronic signature.</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>By typing your name, you agree this constitutes a legally binding electronic signature.</div>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowSignModal(false)}>Cancel</button>
@@ -324,17 +324,17 @@ function ConsentCard({ c, apiKey, onRefresh }) {
       {/* Break-Glass Modal */}
       {showBgModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={e => e.target === e.currentTarget && setShowBgModal(false)}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 420, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.25)', border: '2px solid #f59e0b' }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 420, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.25)', border: '2px solid var(--warning)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <Zap size={18} color="#f59e0b" />
-              <span style={{ fontWeight: 700, fontSize: 16, color: '#92400e' }}>Emergency Break-Glass Access</span>
+              <Zap size={18} color="var(--warning)" />
+              <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--warning)' }}>Emergency Break-Glass Access</span>
             </div>
-            <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 14 }}>This action bypasses consent restrictions for emergency access. All access will be logged and audited.</p>
+            <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 14 }}>This action bypasses consent restrictions for emergency access. All access will be logged and audited.</p>
             <FL>Emergency reason (required) *</FL>
             <TextareaEl rows={3} value={bgReason} onChange={e => setBgReason(e.target.value)} placeholder="Patient is unconscious and requires immediate treatment…" />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowBgModal(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" onClick={doBreakGlass} disabled={working || !bgReason.trim()} style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' }}>
+              <button className="btn btn-primary btn-sm" onClick={doBreakGlass} disabled={working || !bgReason.trim()} style={{ background: 'var(--warning)', borderColor: 'var(--warning)', color: 'var(--surface)' }}>
                 {working ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <><Zap size={12} /> Confirm Emergency Access</>}
               </button>
             </div>
@@ -373,13 +373,13 @@ function NewConsentModal({ patients, onClose, onSaved, apiKey }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '28px 16px', overflowY: 'auto' }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.22)', marginBottom: 28 }}>
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}><ShieldCheck size={18} color="#2563eb" /> New Consent</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}><X size={18} /></button>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.22)', marginBottom: 28 }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}><ShieldCheck size={18} color="var(--primary)" /> New Consent</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 4 }}><X size={18} /></button>
         </div>
         <form onSubmit={handleSubmit} noValidate style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {err && <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, fontSize: 13, color: '#dc2626', display: 'flex', gap: 7, alignItems: 'center' }}><AlertTriangle size={13} /> {err}</div>}
+          {err && <div style={{ padding: '10px 14px', background: 'var(--danger-light)', border: '1px solid var(--danger-light)', borderRadius: 8, fontSize: 13, color: 'var(--danger)', display: 'flex', gap: 7, alignItems: 'center' }}><AlertTriangle size={13} /> {err}</div>}
           <div>
             <FL>Patient *</FL>
             <SelectEl value={form.patient_id} onChange={e => set('patient_id', e.target.value)}>
@@ -394,11 +394,11 @@ function NewConsentModal({ patients, onClose, onSaved, apiKey }) {
             </SelectEl>
           </div>
           <div>
-            <FL>Scope <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span></FL>
+            <FL>Scope <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(optional)</span></FL>
             <TextareaEl rows={2} value={form.scope} onChange={e => set('scope', e.target.value)} placeholder="What this consent covers…" />
           </div>
           <div>
-            <FL>Restrictions <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span></FL>
+            <FL>Restrictions <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(optional)</span></FL>
             <TextareaEl rows={2} value={form.restrictions} onChange={e => set('restrictions', e.target.value)} placeholder="Any limitations or conditions…" />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -407,14 +407,14 @@ function NewConsentModal({ patients, onClose, onSaved, apiKey }) {
               <InputEl value={form.signee_name} onChange={e => set('signee_name', e.target.value)} placeholder="Patient or guardian name" />
             </div>
             <div>
-              <FL>Expires At <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span></FL>
+              <FL>Expires At <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(optional)</span></FL>
               <InputEl type="date" value={form.expires_at} onChange={e => set('expires_at', e.target.value)} />
             </div>
           </div>
           <div>
-            <FL>E-Signature (typed) <span style={{ color: '#9ca3af', fontWeight: 400 }}>(leave blank to sign later)</span></FL>
+            <FL>E-Signature (typed) <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(leave blank to sign later)</span></FL>
             <InputEl value={form.signature} onChange={e => set('signature', e.target.value)} placeholder="Type full name as legal e-signature" style={{ fontFamily: 'Georgia, serif', fontSize: 14 }} />
-            {form.signature && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>By typing your name, you agree this constitutes a legally binding electronic signature.</div>}
+            {form.signature && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>By typing your name, you agree this constitutes a legally binding electronic signature.</div>}
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}>
             <button type="button" onClick={onClose} className="btn btn-secondary btn-sm">Cancel</button>
@@ -545,14 +545,14 @@ export default function Consent() {
 
   const tabStyle = (t) => ({
     padding: '8px 18px', border: 'none',
-    borderBottom: tab === t ? '2px solid #2563eb' : '2px solid transparent',
+    borderBottom: tab === t ? '2px solid var(--primary)' : '2px solid transparent',
     background: 'none', cursor: 'pointer',
     fontWeight: tab === t ? 700 : 500,
-    color: tab === t ? '#2563eb' : '#6b7280',
+    color: tab === t ? 'var(--primary)' : 'var(--text2)',
     fontSize: 14, transition: 'all .15s',
   })
 
-  const selectStyle = { padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', background: '#fff', cursor: 'pointer' }
+  const selectStyle = { padding: '8px 10px', border: '1.5px solid var(--border-strong)', borderRadius: 7, fontSize: 13, outline: 'none', background: 'var(--surface)', cursor: 'pointer' }
 
   // Bundle summary by resourceType
   const bundleSummary = exportBundle ? exportBundle.entry?.reduce((acc, e) => {
@@ -577,22 +577,22 @@ export default function Consent() {
 
         {/* Page header */}
         <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,#2563eb,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <ShieldCheck size={24} color="#fff" />
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,var(--primary),#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <ShieldCheck size={24} color="var(--surface)" />
           </div>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111827', margin: 0 }}>Patient Consent &amp; Privacy</h1>
-            <p style={{ fontSize: 14, color: '#6b7280', margin: '2px 0 0' }}>HIPAA-compliant consent management with FHIR support, audit logging, and GDPR right-to-erasure</p>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Patient Consent &amp; Privacy</h1>
+            <p style={{ fontSize: 14, color: 'var(--text2)', margin: '2px 0 0' }}>HIPAA-compliant consent management with FHIR support, audit logging, and GDPR right-to-erasure</p>
           </div>
         </div>
 
         {/* Stats strip */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 20, marginBottom: 28 }}>
           {[
-            { label: 'Total Consents', value: stats.total, color: '#1d4ed8', bg: '#dbeafe', icon: ShieldCheck },
-            { label: 'Active', value: stats.active, color: '#065f46', bg: '#d1fae5', icon: CheckCircle2 },
-            { label: 'Expiring Soon', value: stats.expiring, color: '#92400e', bg: '#fef3c7', icon: Bell },
-            { label: 'Violations', value: stats.violations, color: '#991b1b', bg: '#fee2e2', icon: AlertTriangle },
+            { label: 'Total Consents', value: stats.total, color: 'var(--primary-dark)', bg: 'var(--primary-light)', icon: ShieldCheck },
+            { label: 'Active', value: stats.active, color: 'var(--success)', bg: 'var(--success-light)', icon: CheckCircle2 },
+            { label: 'Expiring Soon', value: stats.expiring, color: 'var(--warning)', bg: 'var(--warning-light)', icon: Bell },
+            { label: 'Violations', value: stats.violations, color: 'var(--danger)', bg: 'var(--danger-light)', icon: AlertTriangle },
             { label: 'Pending Deletion', value: stats.pendingDeletion, color: '#7c2d12', bg: '#ffedd5', icon: X },
           ].map(({ label, value, color, bg, icon: Icon }) => (
             <div key={label} style={{ background: bg, borderRadius: 14, padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
@@ -604,7 +604,7 @@ export default function Consent() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: 24 }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
           {[
             { id: 'consents', label: 'Consents', icon: ShieldCheck },
             { id: 'audit', label: 'Audit Log', icon: ClipboardList },
@@ -620,7 +620,7 @@ export default function Consent() {
         {/* Patient filter (Consents + Audit) */}
         {(tab === 'consents' || tab === 'audit') && (
           <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <User size={14} color="#6b7280" />
+            <User size={14} color="var(--text2)" />
             <select value={filterPid} onChange={e => setFilterPid(e.target.value)} style={{ ...selectStyle, minWidth: 220 }}>
               <option value="">All Patients</option>
               {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -632,13 +632,13 @@ export default function Consent() {
         {tab === 'consents' && (
           <>
             {loadingConsents ? (
-              <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+              <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
                 <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px', display: 'block' }} />
               </div>
             ) : consents.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
+              <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text3)' }}>
                 <ShieldCheck size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: .3 }} />
-                <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>No consents found</div>
+                <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No consents found</div>
                 <div style={{ fontSize: 13 }}>Click "New Consent" to capture a patient consent.</div>
               </div>
             ) : (
@@ -655,22 +655,22 @@ export default function Consent() {
         {tab === 'audit' && (
           <>
             {loadingAudit ? (
-              <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+              <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
                 <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px', display: 'block' }} />
               </div>
             ) : auditEvents.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
+              <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text3)' }}>
                 <ClipboardList size={40} style={{ margin: '0 auto 12px', display: 'block', opacity: .3 }} />
-                <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>No audit events</div>
+                <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No audit events</div>
                 <div style={{ fontSize: 13 }}>Consent actions will appear here as they occur.</div>
               </div>
             ) : (
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--surface)' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
-                    <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                    <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                       {['Date', 'Event Type', 'Actor', 'Resource', 'Patient', 'Violation', 'Severity'].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -678,22 +678,22 @@ export default function Consent() {
                     {auditEvents.map((ev, i) => {
                       const isViolation = ev.violation === 1
                       const isBreakGlass = ev.event_type === 'break_glass'
-                      const rowBg = isViolation ? '#fef2f2' : isBreakGlass ? '#fffbeb' : 'transparent'
+                      const rowBg = isViolation ? 'var(--danger-light)' : isBreakGlass ? 'var(--warning-light)' : 'transparent'
                       return (
-                        <tr key={ev.id || i} style={{ borderBottom: i < auditEvents.length - 1 ? '1px solid #f3f4f6' : 'none', background: rowBg }}>
-                          <td style={{ padding: '10px 14px', color: '#6b7280', whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDateTime(ev.created_at)}</td>
+                        <tr key={ev.id || i} style={{ borderBottom: i < auditEvents.length - 1 ? '1px solid var(--surface2)' : 'none', background: rowBg }}>
+                          <td style={{ padding: '10px 14px', color: 'var(--text2)', whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDateTime(ev.created_at)}</td>
                           <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                            <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: isViolation ? '#991b1b' : isBreakGlass ? '#92400e' : '#1d4ed8', background: isViolation ? '#fee2e2' : isBreakGlass ? '#fef3c7' : '#dbeafe' }}>
+                            <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: isViolation ? 'var(--danger)' : isBreakGlass ? 'var(--warning)' : 'var(--primary-dark)', background: isViolation ? 'var(--danger-light)' : isBreakGlass ? 'var(--warning-light)' : 'var(--primary-light)' }}>
                               {(ev.event_type || '').replace(/_/g, ' ')}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 14px', color: '#374151', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.actor || '—'}</td>
-                          <td style={{ padding: '10px 14px', color: '#374151' }}>{ev.resource_accessed || '—'}</td>
-                          <td style={{ padding: '10px 14px', color: '#374151' }}>{ev.patient_name || ev.patient_id || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.actor || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{ev.resource_accessed || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{ev.patient_name || ev.patient_id || '—'}</td>
                           <td style={{ padding: '10px 14px' }}>
                             {isViolation
-                              ? <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#991b1b', background: '#fee2e2' }}>Yes</span>
-                              : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>}
+                              ? <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: 'var(--danger)', background: 'var(--danger-light)' }}>Yes</span>
+                              : <span style={{ color: 'var(--text3)', fontSize: 12 }}>—</span>}
                           </td>
                           <td style={{ padding: '10px 14px' }}><SeverityBadge severity={ev.severity} /></td>
                         </tr>
@@ -709,9 +709,9 @@ export default function Consent() {
         {/* ── Tab: Data Export ── */}
         {tab === 'export' && (
           <div style={{ maxWidth: 640 }}>
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 24, marginBottom: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#111827', marginBottom: 4 }}>FHIR $everything Export</div>
-              <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 18, margin: '0 0 18px' }}>Generate a FHIR Bundle containing all patient data (demographics, labs, appointments, consents, discharge summaries).</p>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 4 }}>FHIR $everything Export</div>
+              <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 18, margin: '0 0 18px' }}>Generate a FHIR Bundle containing all patient data (demographics, labs, appointments, consents, discharge summaries).</p>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
                 <div style={{ flex: 1 }}>
                   <FL>Select Patient *</FL>
@@ -727,11 +727,11 @@ export default function Consent() {
             </div>
 
             {exportBundle && (
-              <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 24 }}>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>Bundle Ready</div>
-                    <div style={{ fontSize: 12, color: '#9ca3af' }}>Exported at {fmtDateTime(exportedAt)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>Bundle Ready</div>
+                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>Exported at {fmtDateTime(exportedAt)}</div>
                   </div>
                   <button className="btn btn-primary btn-sm" onClick={downloadBundle}>
                     <Download size={13} /> Download JSON
@@ -739,16 +739,16 @@ export default function Consent() {
                 </div>
                 {bundleSummary && (
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Resource Summary</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>Resource Summary</div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {Object.entries(bundleSummary).map(([rt, count]) => (
-                        <div key={rt} style={{ padding: '6px 12px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, fontSize: 13 }}>
-                          <strong style={{ color: '#0369a1' }}>{count}</strong> <span style={{ color: '#6b7280' }}>{rt}</span>
+                        <div key={rt} style={{ padding: '6px 12px', background: 'var(--primary-light)', border: '1px solid var(--primary-light)', borderRadius: 8, fontSize: 13 }}>
+                          <strong style={{ color: 'var(--primary-dark)' }}>{count}</strong> <span style={{ color: 'var(--text2)' }}>{rt}</span>
                         </div>
                       ))}
                     </div>
-                    <div style={{ marginTop: 10, fontSize: 13, color: '#6b7280' }}>
-                      Total: <strong style={{ color: '#111827' }}>{exportBundle.entry?.length || 0}</strong> resources
+                    <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text2)' }}>
+                      Total: <strong style={{ color: 'var(--text)' }}>{exportBundle.entry?.length || 0}</strong> resources
                     </div>
                   </div>
                 )}
@@ -761,7 +761,7 @@ export default function Consent() {
         {tab === 'alerts' && (
           <>
             {loadingAlerts ? (
-              <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+              <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
                 <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 10px', display: 'block' }} />
               </div>
             ) : (
@@ -769,21 +769,21 @@ export default function Consent() {
                 {/* Expiring Soon */}
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                    <Bell size={16} color="#92400e" />
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#92400e', margin: 0 }}>Expiring Soon (next 30 days)</h3>
-                    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fef3c7' }}>{expiring.length}</span>
+                    <Bell size={16} color="var(--warning)" />
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--warning)', margin: 0 }}>Expiring Soon (next 30 days)</h3>
+                    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: 'var(--warning)', background: 'var(--warning-light)' }}>{expiring.length}</span>
                   </div>
                   {expiring.length === 0 ? (
-                    <div style={{ padding: '20px', background: '#f9fafb', borderRadius: 10, fontSize: 13, color: '#6b7280', textAlign: 'center' }}>No consents expiring in the next 30 days.</div>
+                    <div style={{ padding: '20px', background: 'var(--surface2)', borderRadius: 10, fontSize: 13, color: 'var(--text2)', textAlign: 'center' }}>No consents expiring in the next 30 days.</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {expiring.map(c => (
-                        <div key={c.id} style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                        <div key={c.id} style={{ background: 'var(--warning-light)', border: '1px solid var(--warning-light)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                           <div>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>{c.patient_name}</div>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{c.patient_name}</div>
                             <TypeBadge type={c.consent_type} />
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#92400e' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--warning)' }}>
                             <Calendar size={13} /> Expires: <strong>{fmtDate(c.expires_at)}</strong>
                           </div>
                         </div>
@@ -795,32 +795,32 @@ export default function Consent() {
                 {/* Recent Violations */}
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                    <AlertTriangle size={16} color="#991b1b" />
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#991b1b', margin: 0 }}>Recent Access Violations</h3>
-                    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#991b1b', background: '#fee2e2' }}>{violations.length}</span>
+                    <AlertTriangle size={16} color="var(--danger)" />
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--danger)', margin: 0 }}>Recent Access Violations</h3>
+                    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: 'var(--danger)', background: 'var(--danger-light)' }}>{violations.length}</span>
                   </div>
                   {violations.length === 0 ? (
-                    <div style={{ padding: '20px', background: '#f9fafb', borderRadius: 10, fontSize: 13, color: '#6b7280', textAlign: 'center' }}>No access violations recorded.</div>
+                    <div style={{ padding: '20px', background: 'var(--surface2)', borderRadius: 10, fontSize: 13, color: 'var(--text2)', textAlign: 'center' }}>No access violations recorded.</div>
                   ) : (
-                    <div style={{ border: '1px solid #fecaca', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                    <div style={{ border: '1px solid var(--danger-light)', borderRadius: 10, overflow: 'hidden', background: 'var(--surface)' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
-                          <tr style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
+                          <tr style={{ background: 'var(--danger-light)', borderBottom: '1px solid var(--danger-light)' }}>
                             {['Date', 'Event', 'Actor', 'Patient', 'Detail'].map(h => (
-                              <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
+                              <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {violations.map((ev, i) => (
-                            <tr key={ev.id || i} style={{ borderBottom: i < violations.length - 1 ? '1px solid #fee2e2' : 'none', background: '#fff' }}>
-                              <td style={{ padding: '9px 14px', color: '#6b7280', fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDateTime(ev.created_at)}</td>
+                            <tr key={ev.id || i} style={{ borderBottom: i < violations.length - 1 ? '1px solid var(--danger-light)' : 'none', background: 'var(--surface)' }}>
+                              <td style={{ padding: '9px 14px', color: 'var(--text2)', fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDateTime(ev.created_at)}</td>
                               <td style={{ padding: '9px 14px' }}>
-                                <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#991b1b', background: '#fee2e2' }}>{(ev.event_type || '').replace(/_/g, ' ')}</span>
+                                <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: 'var(--danger)', background: 'var(--danger-light)' }}>{(ev.event_type || '').replace(/_/g, ' ')}</span>
                               </td>
-                              <td style={{ padding: '9px 14px', color: '#374151' }}>{ev.actor || '—'}</td>
-                              <td style={{ padding: '9px 14px', color: '#374151' }}>{ev.patient_name || ev.patient_id || '—'}</td>
-                              <td style={{ padding: '9px 14px', color: '#6b7280', fontSize: 12 }}>{ev.detail || '—'}</td>
+                              <td style={{ padding: '9px 14px', color: 'var(--text)' }}>{ev.actor || '—'}</td>
+                              <td style={{ padding: '9px 14px', color: 'var(--text)' }}>{ev.patient_name || ev.patient_id || '—'}</td>
+                              <td style={{ padding: '9px 14px', color: 'var(--text2)', fontSize: 12 }}>{ev.detail || '—'}</td>
                             </tr>
                           ))}
                         </tbody>

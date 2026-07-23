@@ -32,6 +32,7 @@ const Interoperability = lazy(() => import('./pages/Interoperability.jsx'))
 const AuditCompliance  = lazy(() => import('./pages/AuditCompliance.jsx'))
 const Billing          = lazy(() => import('./pages/Billing.jsx'))
 const Channels         = lazy(() => import('./pages/Channels.jsx'))
+const Calls            = lazy(() => import('./pages/Calls.jsx'))
 const CCM              = lazy(() => import('./pages/CCM.jsx'))
 const RPM              = lazy(() => import('./pages/RPM.jsx'))
 
@@ -101,6 +102,7 @@ function AppRoutes() {
               <Route path="/billing"          element={<P component={Billing} />} />
               <Route path="/admin"            element={<P component={Admin} />} />
               <Route path="/channels"         element={<P component={Channels} />} />
+              <Route path="/calls"            element={<P component={Calls} />} />
               <Route path="/ccm"              element={<PBeta component={CCM} featureKey="ccm" title="Chronic Care Management" accent="#8b5cf6" />} />
               <Route path="/rpm"              element={<PBeta component={RPM} featureKey="rpm" title="Remote Patient Monitoring" accent="#0ea5e9" />} />
             </Routes>

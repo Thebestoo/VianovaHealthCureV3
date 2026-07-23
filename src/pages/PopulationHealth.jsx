@@ -27,17 +27,17 @@ function Badge({ label, color, bg }) {
 function riskBadge(level) {
   if (!level) return null
   const l = level.toLowerCase()
-  if (l === 'high') return <Badge label="High" color="#b91c1c" bg="#fee2e2" />
-  if (l === 'medium') return <Badge label="Medium" color="#d97706" bg="#fef3c7" />
-  return <Badge label="Low" color="#059669" bg="#d1fae5" />
+  if (l === 'high') return <Badge label="High" color="var(--danger)" bg="var(--danger-light)" />
+  if (l === 'medium') return <Badge label="Medium" color="var(--warning)" bg="var(--warning-light)" />
+  return <Badge label="Low" color="var(--success)" bg="var(--success-light)" />
 }
 
 function outreachBadge(status) {
   if (!status) return null
   const s = status.toLowerCase()
-  if (s === 'contacted') return <Badge label="Contacted" color="#2563eb" bg="#dbeafe" />
+  if (s === 'contacted') return <Badge label="Contacted" color="var(--primary)" bg="var(--primary-light)" />
   if (s === 'pending') return <Badge label="Pending" color="#7c3aed" bg="#ede9fe" />
-  return <Badge label={status} color="#64748b" bg="#f1f5f9" />
+  return <Badge label={status} color="var(--text2)" bg="var(--surface2)" />
 }
 
 const inputStyle = {
@@ -210,7 +210,7 @@ export default function PopulationHealth() {
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>Total Enrolled</div>
         </div>
         <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, borderRadius: 14, borderTop: highRiskCount ? '3px solid var(--danger)' : undefined }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: highRiskCount ? 'var(--danger-light)' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: highRiskCount ? 'var(--danger-light)' : 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <AlertTriangle size={22} color={highRiskCount ? 'var(--danger)' : 'var(--text3)'} />
           </div>
           <div style={{ fontSize: 28, fontWeight: 800, color: highRiskCount ? 'var(--danger)' : 'var(--text)', lineHeight: 1.1 }}>{highRiskCount}</div>
@@ -256,7 +256,7 @@ export default function PopulationHealth() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{cohort.name}</span>
                           <Badge label={cohort.program_type || 'General'} color="var(--primary)" bg="var(--primary-light)" />
-                          <Badge label={`${cohort.member_count || 0} members`} color="#64748b" bg="#f1f5f9" />
+                          <Badge label={`${cohort.member_count || 0} members`} color="var(--text2)" bg="var(--surface2)" />
                         </div>
                         {cohort.description && (
                           <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 5 }}>{cohort.description}</div>
@@ -276,10 +276,10 @@ export default function PopulationHealth() {
                     {(condKw.length > 0 || medKw.length > 0) && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
                         {condKw.map(kw => (
-                          <span key={kw} style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#fef3c7', color: '#d97706', border: '1px solid #fde68a' }}>{kw}</span>
+                          <span key={kw} style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: 'var(--warning-light)', color: 'var(--warning)', border: '1px solid var(--warning)' }}>{kw}</span>
                         ))}
                         {medKw.map(kw => (
-                          <span key={kw} style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#dbeafe', color: '#2563eb', border: '1px solid #bfdbfe' }}>{kw}</span>
+                          <span key={kw} style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--primary)' }}>{kw}</span>
                         ))}
                       </div>
                     )}
@@ -321,11 +321,11 @@ export default function PopulationHealth() {
                     {/* Stratify result */}
                     {strRes && strRes.breakdown && (
                       <span style={{ marginLeft: 4, fontSize: 12, fontWeight: 600, color: 'var(--text)', background: 'var(--surface2)', padding: '3px 10px', borderRadius: 99, border: '1px solid var(--border)' }}>
-                        <span style={{ color: '#b91c1c' }}>{strRes.breakdown.high}H</span>
+                        <span style={{ color: 'var(--danger)' }}>{strRes.breakdown.high}H</span>
                         {' / '}
-                        <span style={{ color: '#d97706' }}>{strRes.breakdown.medium}M</span>
+                        <span style={{ color: 'var(--warning)' }}>{strRes.breakdown.medium}M</span>
                         {' / '}
-                        <span style={{ color: '#059669' }}>{strRes.breakdown.low}L</span>
+                        <span style={{ color: 'var(--success)' }}>{strRes.breakdown.low}L</span>
                       </span>
                     )}
                   </div>

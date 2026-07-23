@@ -31,11 +31,11 @@ function interpBadge(interp) {
   const up = interp.toUpperCase()
   let color, bg, label
   if (up === 'HH' || up === 'LL') {
-    color = '#b91c1c'; bg = '#fee2e2'; label = `${interp} CRITICAL`
+    color = 'var(--danger)'; bg = 'var(--danger-light)'; label = `${interp} CRITICAL`
   } else if (up === 'H' || up === 'L') {
-    color = '#d97706'; bg = '#fef3c7'; label = interp
+    color = 'var(--warning)'; bg = 'var(--warning-light)'; label = interp
   } else {
-    color = '#059669'; bg = '#d1fae5'; label = 'N'
+    color = 'var(--success)'; bg = 'var(--success-light)'; label = 'N'
   }
   return (
     <span style={{
@@ -91,19 +91,19 @@ function RangeBar({ value, low, high, unit }) {
 
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ position: 'relative', width: 180, height: 6, borderRadius: 99, background: '#e2e8f0' }}>
+      <div style={{ position: 'relative', width: 180, height: 6, borderRadius: 99, background: 'var(--border)' }}>
         {/* normal zone highlight */}
         <div style={{
           position: 'absolute', top: 0, bottom: 0,
           left: `${lowPct}%`, width: `${highPct - lowPct}%`,
-          background: '#bbf7d0', borderRadius: 99
+          background: 'var(--success-light)', borderRadius: 99
         }} />
         {/* dot */}
         <div style={{
           position: 'absolute', top: '50%', left: `${valPct}%`,
           transform: 'translate(-50%, -50%)',
           width: 10, height: 10, borderRadius: 99,
-          background: dotColor, border: '2px solid #fff',
+          background: dotColor, border: '2px solid var(--surface)',
           boxShadow: '0 0 0 1px ' + dotColor,
           zIndex: 2
         }} />
@@ -146,7 +146,7 @@ function Sparkline({ data }) {
         <svg width={W} height={H} style={{ display: 'block' }}>
           <polyline points={polyline} fill="none" stroke="var(--primary)" strokeWidth={2} strokeLinejoin="round" />
           {pts.map(([x, y], i) => (
-            <circle key={i} cx={x} cy={y} r={3.5} fill="#fff" stroke="var(--primary)" strokeWidth={2} />
+            <circle key={i} cx={x} cy={y} r={3.5} fill="var(--surface)" stroke="var(--primary)" strokeWidth={2} />
           ))}
         </svg>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: 'var(--text3)', marginTop: 2, width: W }}>
@@ -344,7 +344,7 @@ export default function Labs() {
         </div>
         {/* Critical */}
         <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, borderRadius: 14, borderTop: criticals.length ? '3px solid var(--danger)' : undefined }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: criticals.length ? 'var(--danger-light)' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: criticals.length ? 'var(--danger-light)' : 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <AlertTriangle size={22} color={criticals.length ? 'var(--danger)' : 'var(--text3)'} />
           </div>
           <div style={{ fontSize: 28, fontWeight: 800, color: criticals.length ? 'var(--danger)' : 'var(--text)', lineHeight: 1.1 }}>{criticals.length}</div>
@@ -352,7 +352,7 @@ export default function Labs() {
         </div>
         {/* Abnormal */}
         <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, borderRadius: 14, borderTop: abnormals.length ? '3px solid var(--warning)' : undefined }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: abnormals.length ? 'var(--warning-light)' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: abnormals.length ? 'var(--warning-light)' : 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <TrendingUp size={22} color={abnormals.length ? 'var(--warning)' : 'var(--text3)'} />
           </div>
           <div style={{ fontSize: 28, fontWeight: 800, color: abnormals.length ? 'var(--warning)' : 'var(--text)', lineHeight: 1.1 }}>{abnormals.length}</div>

@@ -20,7 +20,8 @@ import { sendEmail, tplNewCase, tplEmergencyAlert, tplCaseApproved, tplTreatment
          tplDischargeGenerated, tplConsentSigned, tplConsentRevoked,
          tplCareGapDetected, tplPatientOutreach, tplSummaryEmail, tplNlpNoteProcessed, tplSdohAssessmentCompleted,
          tplChronicDiseaseUpdate, tplClinicalDecisionRun, tplAuditEvent,
-         tplPopulationHealthReport, tplNewUserWelcome } from './mailer.js'
+         tplPopulationHealthReport, tplNewUserWelcome,
+         tplIncomingCallRequest, tplVoiceCallMissed } from './mailer.js'
 
 const require = createRequire(import.meta.url)
 const { generateCasesReport } = require('./report.cjs')
@@ -114,6 +115,12 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS billing_claims (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, case_id TEXT, encounter_date TEXT, status TEXT NOT NULL DEFAULT 'draft', icd_codes TEXT, cpt_codes TEXT, hcpcs_codes TEXT, drg_code TEXT, drg_description TEXT, em_level TEXT, mdm_complexity TEXT, hcc_codes TEXT, total_charges REAL, confidence_scores TEXT, coding_queries TEXT, compliance_flags TEXT, fhir_claim TEXT, scrub_results TEXT, submitted_at TEXT, created_at TEXT NOT NULL)`,
     // feature 15 – NLP notes
     `CREATE TABLE IF NOT EXISTS nlp_notes (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, note_type TEXT NOT NULL DEFAULT 'soap', note_text TEXT NOT NULL, deidentified_text TEXT, status TEXT NOT NULL DEFAULT 'pending', entities TEXT, conditions TEXT, medications TEXT, procedures TEXT, allergies TEXT, vitals_extracted TEXT, lab_values_extracted TEXT, family_history TEXT, negations TEXT, temporals TEXT, relations TEXT, assertions TEXT, phenotype_flags TEXT, sentiment TEXT, acuity_score REAL, confidence_scores TEXT, fhir_resources TEXT, created_at TEXT NOT NULL, processed_at TEXT)`,
+    // feature 20 – Calls: doctor-to-doctor WebRTC voice calls (polling-based signaling)
+    `CREATE TABLE IF NOT EXISTS voice_calls (id TEXT PRIMARY KEY, caller_email TEXT NOT NULL, caller_name TEXT NOT NULL, callee_email TEXT NOT NULL, callee_name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'ringing', offer TEXT, answer TEXT, caller_candidates TEXT NOT NULL DEFAULT '[]', callee_candidates TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, accepted_at TEXT, ended_at TEXT, ended_reason TEXT)`,
+    // feature 20 – Calls: patient callback requests (patients have no login, so a doctor logs the
+    // request on the patient's behalf, it's routed/notified to a target doctor, who calls the
+    // patient's phone number on file and marks it resolved)
+    `CREATE TABLE IF NOT EXISTS call_requests (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, patient_name TEXT NOT NULL, patient_phone TEXT, owner_email TEXT NOT NULL, owner_name TEXT NOT NULL, target_doctor_email TEXT NOT NULL, target_doctor_name TEXT NOT NULL, reason TEXT, status TEXT NOT NULL DEFAULT 'pending', notes TEXT, created_at TEXT NOT NULL, responded_at TEXT, completed_at TEXT)`,
   ]
   for (const sql of stmts) {
     try { await db.execute({ sql, args: [] }) } catch (e) { console.warn('initDB stmt skipped:', e.message) }
@@ -661,6 +668,7 @@ app.get('/api/cases', auth, async (req, res) => {
     return {
       case_id:              row.case_id,
       created_at:           row.created_at,
+      patient_id:           patient?.patient_id || null,
       age:                  patient?.age,
       sex:                  patient?.sex,
       presenting_complaint: analysis?.presenting_complaint,
@@ -5130,6 +5138,182 @@ app.post('/api/chat/sessions/:id/messages', auth, async (req, res) => {
     const history = (await db.execute({ sql: 'SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC', args: [req.params.id] })).rows
     generateBotReply(req.params.id, message.trim(), history).catch(() => {})
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Calls — voice features: (1) live voice chat with the AI assistant, (2) real
+// doctor-to-doctor WebRTC calls signaled via polling (no socket infra exists in
+// this app, so offer/answer/ICE candidates are exchanged as DB rows, consistent
+// with the rest of the app's polling-based architecture), and (3) patient
+// callback requests — patients have no login/browser session, so a staff member
+// logs a request on the patient's behalf and it's routed to a target doctor who
+// places the call using the phone number on file.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Lightweight, non-admin-gated doctor directory for call-target pickers.
+app.get('/api/doctors', auth, async (req, res) => {
+  const doctors = (await db.execute({
+    sql: `SELECT id, email, name, role FROM users WHERE active = 1 AND email != ? ORDER BY name ASC`,
+    args: [req.apiKey],
+  })).rows
+  res.json({ doctors })
+})
+
+const CALL_AI_SYSTEM = `You are the Vianova Health AI Assistant, speaking live on a voice call with a clinician or patient inside the Vianova Health platform. Keep replies short, natural, and conversational — 1-3 sentences, like a real phone conversation, since your text will be read aloud by speech synthesis. Never use markdown, bullet points, or headings. Give clear, direct spoken guidance about platform features and general health/wellness questions.
+
+NEVER discuss or acknowledge: specific patient records, PHI, billing/claims data, or anything requiring you to "look up" real data — you cannot access the database. If asked for that, say you can't pull up records on this call and to check the relevant page instead. If the caller describes a medical emergency, tell them clearly to call 911 or go to the nearest emergency room immediately.`
+
+// Live voice call with the AI assistant — stateless per turn (the client keeps the
+// running transcript and resends it), reusing the same Groq model as the existing
+// support chatbot but tuned for short, speakable answers.
+app.post('/api/ai-call/message', auth, aiLimiter, async (req, res) => {
+  const { message, history = [] } = req.body
+  if (!message?.trim()) return res.status(400).json({ error: 'Message required' })
+  try {
+    const messages = [
+      { role: 'system', content: CALL_AI_SYSTEM },
+      ...history.slice(-10).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text || '').slice(0, 2000) })),
+      { role: 'user', content: message.trim().slice(0, 2000) },
+    ]
+    const aiRes = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      temperature: 0.6,
+      max_tokens: 200,
+    })
+    res.json({ reply: aiRes.choices[0].message.content.trim() })
+  } catch (e) {
+    logError('ai_call_failed', e.message, '/api/ai-call/message').catch(() => {})
+    res.status(500).json({ error: 'AI assistant is unavailable right now' })
+  }
+})
+
+// ── Doctor-to-doctor voice calls (WebRTC, polling signaling) ──────────────────
+app.post('/api/voice-calls', auth, async (req, res) => {
+  const { callee_email, offer } = req.body
+  if (!callee_email || !offer) return res.status(400).json({ error: 'callee_email and offer required' })
+  const callee = (await db.execute({ sql: 'SELECT name FROM users WHERE email = ? AND active = 1', args: [callee_email] })).rows[0]
+  if (!callee) return res.status(404).json({ error: 'Doctor not found' })
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  await db.execute({
+    sql: `INSERT INTO voice_calls (id, caller_email, caller_name, callee_email, callee_name, status, offer, created_at) VALUES (?,?,?,?,?,'ringing',?,?)`,
+    args: [id, req.apiKey, req.user?.name || req.apiKey, callee_email, callee.name, offer, now],
+  })
+  res.json({ id, status: 'ringing', created_at: now })
+})
+
+// Callee polls this for incoming rings addressed to them (last 45s only, to avoid stale rings)
+app.get('/api/voice-calls/incoming', auth, async (req, res) => {
+  const cutoff = new Date(Date.now() - 45000).toISOString()
+  const calls = (await db.execute({
+    sql: `SELECT id, caller_email, caller_name, status, created_at FROM voice_calls WHERE callee_email = ? AND status = 'ringing' AND created_at > ? ORDER BY created_at DESC`,
+    args: [req.apiKey, cutoff],
+  })).rows
+  res.json({ calls })
+})
+
+app.get('/api/voice-calls/:id', auth, async (req, res) => {
+  const call = (await db.execute({ sql: 'SELECT * FROM voice_calls WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!call) return res.status(404).json({ error: 'Call not found' })
+  if (call.caller_email !== req.apiKey && call.callee_email !== req.apiKey) return res.status(403).json({ error: 'Not authorized' })
+  res.json({ call })
+})
+
+app.post('/api/voice-calls/:id/accept', auth, async (req, res) => {
+  const { answer } = req.body
+  const call = (await db.execute({ sql: 'SELECT * FROM voice_calls WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!call) return res.status(404).json({ error: 'Call not found' })
+  if (call.callee_email !== req.apiKey) return res.status(403).json({ error: 'Not authorized' })
+  const now = new Date().toISOString()
+  await db.execute({ sql: `UPDATE voice_calls SET status = 'accepted', answer = ?, accepted_at = ? WHERE id = ?`, args: [answer || '', now, req.params.id] })
+  res.json({ ok: true })
+})
+
+app.post('/api/voice-calls/:id/decline', auth, async (req, res) => {
+  const call = (await db.execute({ sql: 'SELECT * FROM voice_calls WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!call) return res.status(404).json({ error: 'Call not found' })
+  if (call.callee_email !== req.apiKey) return res.status(403).json({ error: 'Not authorized' })
+  const now = new Date().toISOString()
+  await db.execute({ sql: `UPDATE voice_calls SET status = 'declined', ended_at = ?, ended_reason = 'declined' WHERE id = ?`, args: [now, req.params.id] })
+  notifyUsers([call.caller_email], tplVoiceCallMissed({ callerName: call.caller_name, calleeName: call.callee_name })).catch(() => {})
+  res.json({ ok: true })
+})
+
+app.post('/api/voice-calls/:id/candidate', auth, async (req, res) => {
+  const { candidate } = req.body
+  if (!candidate) return res.status(400).json({ error: 'candidate required' })
+  const call = (await db.execute({ sql: 'SELECT * FROM voice_calls WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!call) return res.status(404).json({ error: 'Call not found' })
+  const isCaller = call.caller_email === req.apiKey
+  const isCallee = call.callee_email === req.apiKey
+  if (!isCaller && !isCallee) return res.status(403).json({ error: 'Not authorized' })
+  const col = isCaller ? 'caller_candidates' : 'callee_candidates'
+  let list = []
+  try { list = JSON.parse(call[col] || '[]') } catch { list = [] }
+  list.push(candidate)
+  await db.execute({ sql: `UPDATE voice_calls SET ${col} = ? WHERE id = ?`, args: [JSON.stringify(list), req.params.id] })
+  res.json({ ok: true })
+})
+
+app.post('/api/voice-calls/:id/end', auth, async (req, res) => {
+  const call = (await db.execute({ sql: 'SELECT * FROM voice_calls WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!call) return res.status(404).json({ error: 'Call not found' })
+  if (call.caller_email !== req.apiKey && call.callee_email !== req.apiKey) return res.status(403).json({ error: 'Not authorized' })
+  if (call.status === 'ended' || call.status === 'declined') return res.json({ ok: true })
+  const now = new Date().toISOString()
+  const reason = call.status === 'ringing' ? 'missed' : 'ended'
+  await db.execute({ sql: `UPDATE voice_calls SET status = 'ended', ended_at = ?, ended_reason = ? WHERE id = ?`, args: [now, reason, req.params.id] })
+  if (reason === 'missed') notifyUsers([call.callee_email], tplVoiceCallMissed({ callerName: call.caller_name, calleeName: call.callee_name })).catch(() => {})
+  res.json({ ok: true })
+})
+
+// ── Patient callback requests ──────────────────────────────────────────────────
+app.post('/api/call-requests', auth, async (req, res) => {
+  const { patient_id, patient_name, patient_phone, target_doctor_email, reason } = req.body
+  if (!patient_id || !patient_name || !target_doctor_email) return res.status(400).json({ error: 'patient_id, patient_name and target_doctor_email required' })
+  const doctor = (await db.execute({ sql: 'SELECT name FROM users WHERE email = ? AND active = 1', args: [target_doctor_email] })).rows[0]
+  if (!doctor) return res.status(404).json({ error: 'Target doctor not found' })
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  await db.execute({
+    sql: `INSERT INTO call_requests (id, patient_id, patient_name, patient_phone, owner_email, owner_name, target_doctor_email, target_doctor_name, reason, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)`,
+    args: [id, patient_id, patient_name, sanitise(patient_phone, 40) || '', req.apiKey, req.user?.name || req.apiKey, target_doctor_email, doctor.name, sanitise(reason, 500) || '', now],
+  })
+  notifyUsers([target_doctor_email], tplIncomingCallRequest({ patientName: patient_name, requestedBy: req.user?.name || req.apiKey, reason, patientPhone: patient_phone })).catch(() => {})
+  res.json({ id, status: 'pending', created_at: now })
+})
+
+app.get('/api/call-requests', auth, async (req, res) => {
+  const rows = req.keyRole === 'superadmin'
+    ? (await db.execute({ sql: 'SELECT * FROM call_requests ORDER BY created_at DESC', args: [] })).rows
+    : (await db.execute({ sql: 'SELECT * FROM call_requests WHERE target_doctor_email = ? OR owner_email = ? ORDER BY created_at DESC', args: [req.apiKey, req.apiKey] })).rows
+  res.json({ requests: rows })
+})
+
+app.post('/api/call-requests/:id/accept', auth, async (req, res) => {
+  const cr = (await db.execute({ sql: 'SELECT * FROM call_requests WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!cr) return res.status(404).json({ error: 'Request not found' })
+  if (cr.target_doctor_email !== req.apiKey && req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Not authorized' })
+  await db.execute({ sql: `UPDATE call_requests SET status = 'accepted', responded_at = ? WHERE id = ?`, args: [new Date().toISOString(), req.params.id] })
+  res.json({ ok: true })
+})
+
+app.post('/api/call-requests/:id/decline', auth, async (req, res) => {
+  const cr = (await db.execute({ sql: 'SELECT * FROM call_requests WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!cr) return res.status(404).json({ error: 'Request not found' })
+  if (cr.target_doctor_email !== req.apiKey && req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Not authorized' })
+  await db.execute({ sql: `UPDATE call_requests SET status = 'declined', responded_at = ? WHERE id = ?`, args: [new Date().toISOString(), req.params.id] })
+  res.json({ ok: true })
+})
+
+app.post('/api/call-requests/:id/complete', auth, async (req, res) => {
+  const { notes } = req.body
+  const cr = (await db.execute({ sql: 'SELECT * FROM call_requests WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!cr) return res.status(404).json({ error: 'Request not found' })
+  if (cr.target_doctor_email !== req.apiKey && req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Not authorized' })
+  await db.execute({ sql: `UPDATE call_requests SET status = 'completed', completed_at = ?, notes = ? WHERE id = ?`, args: [new Date().toISOString(), sanitise(notes, 1000) || '', req.params.id] })
+  res.json({ ok: true })
 })
 
 // ── 404 for unknown API routes ────────────────────────────────────────────────

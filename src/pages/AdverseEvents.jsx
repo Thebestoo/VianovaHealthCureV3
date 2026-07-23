@@ -14,36 +14,36 @@ function Badge({ label, color, bg }) {
 
 function severityStyle(severity) {
   const map = {
-    high:             { color: '#b91c1c', bg: '#fee2e2', border: '#dc2626' },
+    high:             { color: 'var(--danger)', bg: 'var(--danger-light)', border: 'var(--danger)' },
     life_threatening: { color: '#9f1239', bg: '#fff1f2', border: '#e11d48' },
     'life-threatening': { color: '#9f1239', bg: '#fff1f2', border: '#e11d48' },
-    moderate:         { color: '#92400e', bg: '#fef3c7', border: '#d97706' },
-    low:              { color: '#047857', bg: '#d1fae5', border: '#10b981' },
-    mild:             { color: '#047857', bg: '#d1fae5', border: '#10b981' },
-    severe:           { color: '#b91c1c', bg: '#fee2e2', border: '#dc2626' },
+    moderate:         { color: 'var(--warning)', bg: 'var(--warning-light)', border: 'var(--warning)' },
+    low:              { color: 'var(--success)', bg: 'var(--success-light)', border: 'var(--success)' },
+    mild:             { color: 'var(--success)', bg: 'var(--success-light)', border: 'var(--success)' },
+    severe:           { color: 'var(--danger)', bg: 'var(--danger-light)', border: 'var(--danger)' },
   }
-  return map[severity] || { color: '#6b7280', bg: '#f3f4f6', border: '#9ca3af' }
+  return map[severity] || { color: 'var(--text2)', bg: 'var(--surface2)', border: 'var(--text3)' }
 }
 
 function statusStyle(status) {
-  if (status === 'open') return { color: '#1d4ed8', bg: '#eff6ff', label: 'Open' }
-  if (status === 'under_review') return { color: '#92400e', bg: '#fef3c7', label: 'Under Review' }
-  if (status === 'resolved' || status === 'closed') return { color: '#374151', bg: '#f3f4f6', label: 'Closed' }
-  if (status === 'monitoring') return { color: '#2563eb', bg: '#dbeafe', label: 'Monitoring' }
-  return { color: '#6b7280', bg: '#f3f4f6', label: status }
+  if (status === 'open') return { color: 'var(--primary-dark)', bg: 'var(--primary-light)', label: 'Open' }
+  if (status === 'under_review') return { color: 'var(--warning)', bg: 'var(--warning-light)', label: 'Under Review' }
+  if (status === 'resolved' || status === 'closed') return { color: 'var(--text)', bg: 'var(--surface2)', label: 'Closed' }
+  if (status === 'monitoring') return { color: 'var(--primary)', bg: 'var(--primary-light)', label: 'Monitoring' }
+  return { color: 'var(--text2)', bg: 'var(--surface2)', label: status }
 }
 
 function signalStrengthStyle(s) {
-  if (s === 'strong') return { color: '#b91c1c', bg: '#fee2e2' }
-  if (s === 'moderate') return { color: '#92400e', bg: '#fef3c7' }
-  return { color: '#6b7280', bg: '#f3f4f6' }
+  if (s === 'strong') return { color: 'var(--danger)', bg: 'var(--danger-light)' }
+  if (s === 'moderate') return { color: 'var(--warning)', bg: 'var(--warning-light)' }
+  return { color: 'var(--text2)', bg: 'var(--surface2)' }
 }
 
 function StatCard({ label, value, color, bg, border }) {
   return (
     <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, padding: '22px 24px', textAlign: 'center' }}>
       <div style={{ fontSize: 34, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
-      <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 600, marginTop: 5 }}>{label}</div>
+      <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600, marginTop: 5 }}>{label}</div>
     </div>
   )
 }
@@ -51,17 +51,17 @@ function StatCard({ label, value, color, bg, border }) {
 function Section({ title, children }) {
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>{title}</div>
       {children}
     </div>
   )
 }
 
 function FL({ children }) {
-  return <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>{children}</label>
+  return <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{children}</label>
 }
 
-const inputStyle = { width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }
+const inputStyle = { width: '100%', padding: '8px 10px', border: '1.5px solid var(--border-strong)', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }
 
 /* ─── EventCard ──────────────────────────────────────────────────────────── */
 function EventCard({ ev, apiKey, onRefresh }) {
@@ -113,47 +113,47 @@ function EventCard({ ev, apiKey, onRefresh }) {
   }
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', borderLeft: `4px solid ${sv.border}` }}>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', borderLeft: `4px solid ${sv.border}` }}>
       {toast && (
-        <div style={{ background: '#d1fae5', color: '#047857', padding: '6px 14px', fontSize: 12, fontWeight: 600 }}>{toast}</div>
+        <div style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '6px 14px', fontSize: 12, fontWeight: 600 }}>{toast}</div>
       )}
       <div style={{ padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}
         onClick={() => setOpen(o => !o)}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 3 }}>
-            <span style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>{ev.event_type?.replace(/_/g, ' ')}</span>
+            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{ev.event_type?.replace(/_/g, ' ')}</span>
             <Badge label={ev.severity} color={sv.color} bg={sv.bg} />
             <Badge label={st.label} color={st.color} bg={st.bg} />
             {ev.near_miss == 1 && <Badge label="Near Miss" color="#c2410c" bg="#fff7ed" />}
-            {ev.reported_to_fda == 1 && <Badge label="FDA Reported" color="#047857" bg="#d1fae5" />}
+            {ev.reported_to_fda == 1 && <Badge label="FDA Reported" color="var(--success)" bg="var(--success-light)" />}
             {ev.detection_method === 'automated_lab_scan' && <Badge label="Auto-Detected" color="#7c3aed" bg="#f5f3ff" />}
           </div>
-          <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {ev.patient_name && <span style={{ fontWeight: 600, color: '#374151' }}>{ev.patient_name}</span>}
+          <div style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {ev.patient_name && <span style={{ fontWeight: 600, color: 'var(--text)' }}>{ev.patient_name}</span>}
             {ev.suspected_medication && <span style={{ fontStyle: 'italic' }}>{ev.suspected_medication}{ev.suspected_medication_dose ? ` (${ev.suspected_medication_dose})` : ''}</span>}
             <span>{new Date(ev.detected_at || ev.created_at).toLocaleDateString()}</span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           <button onClick={e => { e.stopPropagation(); deleteEv() }} disabled={loading}
-            style={{ padding: '4px 8px', border: '1px solid #fecaca', borderRadius: 7, background: '#fff', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            style={{ padding: '4px 8px', border: '1px solid var(--danger-light)', borderRadius: 7, background: 'var(--surface)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             {loading ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={12} />}
           </button>
-          {open ? <ChevronUp size={15} color="#9ca3af" /> : <ChevronDown size={15} color="#9ca3af" />}
+          {open ? <ChevronUp size={15} color="var(--text3)" /> : <ChevronDown size={15} color="var(--text3)" />}
         </div>
       </div>
 
       {open && (
-        <div style={{ borderTop: '1px solid #f3f4f6', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ borderTop: '1px solid var(--surface2)', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Detection */}
           <Section title="Detection">
-            <div style={{ fontSize: 13, color: '#374151', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: 'var(--text)', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
               <span><strong>Method:</strong> {ev.detection_method?.replace(/_/g, ' ') || 'manual'}</span>
               <span><strong>Detected:</strong> {ev.detected_at ? new Date(ev.detected_at).toLocaleString() : '—'}</span>
             </div>
             {ev.lab_trigger && (
-              <div style={{ marginTop: 6, fontSize: 13, color: '#374151' }}>
+              <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text)' }}>
                 <strong>Lab Trigger:</strong> {ev.lab_trigger} = {ev.lab_value} (threshold: {ev.lab_threshold})
               </div>
             )}
@@ -161,19 +161,19 @@ function EventCard({ ev, apiKey, onRefresh }) {
 
           {/* Clinical Details */}
           <Section title="Clinical Details">
-            <div style={{ fontSize: 13, color: '#374151', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: 'var(--text)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', flexWrap: 'wrap' }}>
               {ev.suspected_medication && <span><strong>Suspected Med:</strong> {ev.suspected_medication}{ev.suspected_medication_dose ? ` — ${ev.suspected_medication_dose}` : ''}</span>}
               {ev.onset_date && <span><strong>Onset:</strong> {ev.onset_date}</span>}
               {ev.causality && <span><strong>Causality:</strong> {ev.causality}</span>}
               {ev.outcome && <span><strong>Outcome:</strong> {ev.outcome}</span>}
             </div>
-            {ev.description && <p style={{ margin: '8px 0 0', fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{ev.description}</p>}
-            {ev.actions_taken && <p style={{ margin: '6px 0 0', fontSize: 13, color: '#374151' }}><strong>Actions Taken:</strong> {ev.actions_taken}</p>}
+            {ev.description && <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{ev.description}</p>}
+            {ev.actions_taken && <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--text)' }}><strong>Actions Taken:</strong> {ev.actions_taken}</p>}
           </Section>
 
           {/* Root Cause */}
           <Section title="Root Cause">
-            <p style={{ margin: 0, fontSize: 13, color: ev.root_cause ? '#374151' : '#9ca3af', lineHeight: 1.6 }}>
+            <p style={{ margin: 0, fontSize: 13, color: ev.root_cause ? 'var(--text)' : 'var(--text3)', lineHeight: 1.6 }}>
               {ev.root_cause || '(pending analysis)'}
             </p>
           </Section>
@@ -184,7 +184,7 @@ function EventCard({ ev, apiKey, onRefresh }) {
               <div style={{ background: '#1e293b', borderRadius: 8, padding: '12px 14px', position: 'relative' }}>
                 <button onClick={() => copyText(JSON.stringify(fhir, null, 2), ev.id + '_fhir')}
                   style={{ position: 'absolute', top: 8, right: 8, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', border: '1px solid #334155', borderRadius: 6, background: '#334155', color: '#94a3b8', fontSize: 11, cursor: 'pointer' }}>
-                  {copied === ev.id + '_fhir' ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
+                  {copied === ev.id + '_fhir' ? <><Check size={11} color="var(--success)" /> Copied</> : <><Copy size={11} /> Copy</>}
                 </button>
                 <pre style={{ margin: 0, fontSize: 11, color: '#e2e8f0', overflowX: 'auto', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{JSON.stringify(fhir, null, 2)}</pre>
               </div>
@@ -194,45 +194,45 @@ function EventCard({ ev, apiKey, onRefresh }) {
           {/* MedWatch Draft */}
           {medwatch && (
             <Section title="MedWatch Draft">
-              <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px' }}>
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
                   <button onClick={() => copyText(JSON.stringify(medwatch, null, 2), ev.id + '_mw')}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#374151', fontSize: 11, cursor: 'pointer' }}>
-                    {copied === ev.id + '_mw' ? <><Check size={11} color="#059669" /> Copied</> : <><Copy size={11} /> Copy</>}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--text)', fontSize: 11, cursor: 'pointer' }}>
+                    {copied === ev.id + '_mw' ? <><Check size={11} color="var(--success)" /> Copied</> : <><Copy size={11} /> Copy</>}
                   </button>
                 </div>
                 {typeof medwatch === 'object' ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {Object.entries(medwatch).map(([k, v]) => (
                       <div key={k}>
-                        <span style={{ fontWeight: 700, fontSize: 12, color: '#374151', textTransform: 'capitalize' }}>{k.replace(/_/g, ' ')}: </span>
-                        <span style={{ fontSize: 12, color: '#6b7280' }}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                        <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--text)', textTransform: 'capitalize' }}>{k.replace(/_/g, ' ')}: </span>
+                        <span style={{ fontSize: 12, color: 'var(--text2)' }}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p style={{ margin: 0, fontSize: 12, color: '#374151', lineHeight: 1.6 }}>{medwatch}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>{medwatch}</p>
                 )}
               </div>
             </Section>
           )}
 
           {/* Actions Row */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 4, borderTop: '1px solid #f3f4f6' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 4, borderTop: '1px solid var(--surface2)' }}>
             {ev.status !== 'under_review' && ev.status !== 'resolved' && ev.status !== 'closed' && (
               <button onClick={() => setStatus('under_review')} disabled={loading}
-                style={{ padding: '5px 12px', border: '1px solid #fde68a', borderRadius: 7, background: '#fffbeb', color: '#92400e', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                style={{ padding: '5px 12px', border: '1px solid var(--warning-light)', borderRadius: 7, background: 'var(--warning-light)', color: 'var(--warning)', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
                 Mark Under Review
               </button>
             )}
             {ev.status !== 'closed' && ev.status !== 'resolved' && (
               <button onClick={() => setStatus('closed')} disabled={loading}
-                style={{ padding: '5px 12px', border: '1px solid #e5e7eb', borderRadius: 7, background: '#f9fafb', color: '#374151', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 7, background: 'var(--surface2)', color: 'var(--text)', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
                 Close Event
               </button>
             )}
             <button onClick={reportFDA} disabled={loading || ev.reported_to_fda == 1}
-              style={{ padding: '5px 12px', border: '1px solid #fecaca', borderRadius: 7, background: ev.reported_to_fda == 1 ? '#f3f4f6' : '#fef2f2', color: ev.reported_to_fda == 1 ? '#9ca3af' : '#dc2626', fontSize: 12, cursor: ev.reported_to_fda == 1 ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
+              style={{ padding: '5px 12px', border: '1px solid var(--danger-light)', borderRadius: 7, background: ev.reported_to_fda == 1 ? 'var(--surface2)' : 'var(--danger-light)', color: ev.reported_to_fda == 1 ? 'var(--text3)' : 'var(--danger)', fontSize: 12, cursor: ev.reported_to_fda == 1 ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
               {ev.reported_to_fda == 1 ? `Reported ${ev.reported_to_fda_at ? new Date(ev.reported_to_fda_at).toLocaleDateString() : ''}` : 'Report to FDA'}
             </button>
           </div>
@@ -395,7 +395,7 @@ export default function AdverseEvents() {
       </div>
 
       {toast && (
-        <div style={{ position: 'fixed', top: 20, right: 24, zIndex: 2000, background: '#111827', color: '#fff', padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: '0 4px 20px rgba(0,0,0,.3)' }}>
+        <div style={{ position: 'fixed', top: 20, right: 24, zIndex: 2000, background: 'var(--text)', color: 'var(--surface)', padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: '0 4px 20px rgba(0,0,0,.3)' }}>
           {toast}
         </div>
       )}
@@ -405,32 +405,32 @@ export default function AdverseEvents() {
         {/* subtitle */}
         <div style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,#dc2626,#ea580c)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <AlertOctagon size={22} color="#fff" />
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,var(--danger),#ea580c)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <AlertOctagon size={22} color="var(--surface)" />
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 20, color: '#111827' }}>Adverse Event Detection & Pharmacovigilance</div>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Automated ADE detection · FHIR AdverseEvent · MedWatch reporting · Signal analysis</div>
+              <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--text)' }}>Adverse Event Detection & Pharmacovigilance</div>
+              <div style={{ fontSize: 12, color: 'var(--text2)' }}>Automated ADE detection · FHIR AdverseEvent · MedWatch reporting · Signal analysis</div>
             </div>
           </div>
 
           {/* stats strip */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 20, marginBottom: 8 }}>
-            <StatCard label="Total Events" value={stats.total} color="#374151" bg="#f9fafb" border="#e5e7eb" />
-            <StatCard label="Open" value={stats.open} color="#1d4ed8" bg="#eff6ff" border="#bfdbfe" />
-            <StatCard label="Serious" value={stats.serious} color="#b91c1c" bg="#fee2e2" border="#fecaca" />
+            <StatCard label="Total Events" value={stats.total} color="var(--text)" bg="var(--surface2)" border="var(--border)" />
+            <StatCard label="Open" value={stats.open} color="var(--primary-dark)" bg="var(--primary-light)" border="var(--primary-light)" />
+            <StatCard label="Serious" value={stats.serious} color="var(--danger)" bg="var(--danger-light)" border="var(--danger-light)" />
             <StatCard label="Near Misses" value={stats.near_miss} color="#c2410c" bg="#fff7ed" border="#fed7aa" />
-            <StatCard label="FDA Reported" value={stats.fda_reported} color="#047857" bg="#d1fae5" border="#6ee7b7" />
+            <StatCard label="FDA Reported" value={stats.fda_reported} color="var(--success)" bg="var(--success-light)" border="#6ee7b7" />
             <StatCard label="Active Signals" value={stats.signals} color="#7c3aed" bg="#f5f3ff" border="#ddd6fe" />
           </div>
         </div>
 
         {/* scan bar */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <Activity size={16} color="#7c3aed" />
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Automated Lab Scan:</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Automated Lab Scan:</span>
           <select value={scanPatient} onChange={e => setScanPatient(e.target.value)}
-            style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', flex: 1, minWidth: 180 }}>
+            style={{ padding: '6px 10px', border: '1px solid var(--border-strong)', borderRadius: 7, fontSize: 13, outline: 'none', flex: 1, minWidth: 180 }}>
             <option value="">— Select patient —</option>
             {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
@@ -438,17 +438,17 @@ export default function AdverseEvents() {
             {scanning ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Scanning…</> : <><Zap size={13} /> Run ADE Scan</>}
           </button>
           {scanResult && (
-            <span style={{ fontSize: 12, color: scanResult.events_created?.length ? '#b91c1c' : '#047857', fontWeight: 600 }}>
+            <span style={{ fontSize: 12, color: scanResult.events_created?.length ? 'var(--danger)' : 'var(--success)', fontWeight: 600 }}>
               {scanResult.events_created?.length ? `${scanResult.events_created.length} signal(s) detected` : 'No new signals found'}
             </span>
           )}
         </div>
 
         {/* tabs */}
-        <div style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: '2px solid #f3f4f6' }}>
+        <div style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: '2px solid var(--surface2)' }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', border: 'none', borderBottom: tab === t.id ? '2px solid #dc2626' : '2px solid transparent', background: 'none', color: tab === t.id ? '#dc2626' : '#6b7280', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, cursor: 'pointer', marginBottom: -2 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', border: 'none', borderBottom: tab === t.id ? '2px solid var(--danger)' : '2px solid transparent', background: 'none', color: tab === t.id ? 'var(--danger)' : 'var(--text2)', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, cursor: 'pointer', marginBottom: -2 }}>
               {t.icon} {t.label}
             </button>
           ))}
@@ -458,12 +458,12 @@ export default function AdverseEvents() {
         {tab === 'events' && (
           loading ? (
             <div style={{ textAlign: 'center', padding: 60 }}>
-              <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#9ca3af', display: 'block', margin: '0 auto 10px' }} />
+              <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: 'var(--text3)', display: 'block', margin: '0 auto 10px' }} />
             </div>
           ) : events.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '72px 20px', color: '#9ca3af' }}>
+            <div style={{ textAlign: 'center', padding: '72px 20px', color: 'var(--text3)' }}>
               <Shield size={44} style={{ display: 'block', margin: '0 auto 14px', opacity: .3 }} />
-              <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>No adverse events reported</div>
+              <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No adverse events reported</div>
               <div style={{ fontSize: 13 }}>Click "Report Event" to log a new event, or run an automated scan.</div>
             </div>
           ) : (
@@ -476,9 +476,9 @@ export default function AdverseEvents() {
         {/* NEAR MISSES TAB */}
         {tab === 'near_miss' && (
           nearMissEvents.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '72px 20px', color: '#9ca3af' }}>
+            <div style={{ textAlign: 'center', padding: '72px 20px', color: 'var(--text3)' }}>
               <Shield size={44} style={{ display: 'block', margin: '0 auto 14px', opacity: .3 }} />
-              <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>No near-miss events</div>
+              <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No near-miss events</div>
               <div style={{ fontSize: 13 }}>Near-miss events are flagged when you report an event with the "Near Miss" checkbox.</div>
             </div>
           ) : (
@@ -498,21 +498,21 @@ export default function AdverseEvents() {
             </div>
             {signalsLoading ? (
               <div style={{ textAlign: 'center', padding: 40 }}>
-                <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', color: '#9ca3af' }} />
+                <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', color: 'var(--text3)' }} />
               </div>
             ) : signals.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
+              <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text3)' }}>
                 <BarChart2 size={44} style={{ display: 'block', margin: '0 auto 14px', opacity: .3 }} />
-                <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>No population signals yet</div>
+                <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No population signals yet</div>
                 <div style={{ fontSize: 13 }}>Run Population Analysis to detect disproportionality signals across your patient population.</div>
               </div>
             ) : (
-              <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
-                    <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                    <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                       {['Medication', 'Event Type', 'Cases', 'ROR', 'Signal Strength', 'First Seen', 'Last Seen', 'Status'].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 12 }}>{h}</th>
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: 'var(--text)', fontSize: 12 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -520,18 +520,18 @@ export default function AdverseEvents() {
                     {signals.map((s, i) => {
                       const ss = signalStrengthStyle(s.signal_strength)
                       return (
-                        <tr key={s.id || i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '10px 14px', fontWeight: 600, color: '#111827' }}>{s.medication}</td>
-                          <td style={{ padding: '10px 14px', color: '#374151' }}>{s.event_type?.replace(/_/g, ' ')}</td>
-                          <td style={{ padding: '10px 14px', color: '#374151', fontWeight: 700 }}>{s.case_count}</td>
-                          <td style={{ padding: '10px 14px', color: '#374151' }}>{s.ror ? s.ror.toFixed(2) : '—'}</td>
+                        <tr key={s.id || i} style={{ borderBottom: '1px solid var(--surface2)' }}>
+                          <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text)' }}>{s.medication}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{s.event_type?.replace(/_/g, ' ')}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text)', fontWeight: 700 }}>{s.case_count}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{s.ror ? s.ror.toFixed(2) : '—'}</td>
                           <td style={{ padding: '10px 14px' }}>
                             {s.signal_strength ? <Badge label={s.signal_strength} color={ss.color} bg={ss.bg} /> : '—'}
                           </td>
-                          <td style={{ padding: '10px 14px', color: '#6b7280' }}>{s.first_seen ? new Date(s.first_seen).toLocaleDateString() : '—'}</td>
-                          <td style={{ padding: '10px 14px', color: '#6b7280' }}>{s.last_seen ? new Date(s.last_seen).toLocaleDateString() : '—'}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{s.first_seen ? new Date(s.first_seen).toLocaleDateString() : '—'}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{s.last_seen ? new Date(s.last_seen).toLocaleDateString() : '—'}</td>
                           <td style={{ padding: '10px 14px' }}>
-                            <Badge label={s.status || 'active'} color={s.status === 'active' ? '#1d4ed8' : '#6b7280'} bg={s.status === 'active' ? '#eff6ff' : '#f3f4f6'} />
+                            <Badge label={s.status || 'active'} color={s.status === 'active' ? 'var(--primary-dark)' : 'var(--text2)'} bg={s.status === 'active' ? 'var(--primary-light)' : 'var(--surface2)'} />
                           </td>
                         </tr>
                       )
@@ -546,9 +546,9 @@ export default function AdverseEvents() {
         {/* MEDWATCH TAB */}
         {tab === 'medwatch' && (
           medwatchEvents.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '72px 20px', color: '#9ca3af' }}>
+            <div style={{ textAlign: 'center', padding: '72px 20px', color: 'var(--text3)' }}>
               <FileText size={44} style={{ display: 'block', margin: '0 auto 14px', opacity: .3 }} />
-              <div style={{ fontWeight: 600, fontSize: 15, color: '#374151', marginBottom: 6 }}>No MedWatch drafts yet</div>
+              <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No MedWatch drafts yet</div>
               <div style={{ fontSize: 13 }}>MedWatch drafts are generated automatically when you report an adverse event.</div>
             </div>
           ) : (
@@ -557,34 +557,34 @@ export default function AdverseEvents() {
                 let mw = null
                 try { mw = ev.medwatch_sections ? (typeof ev.medwatch_sections === 'string' ? JSON.parse(ev.medwatch_sections) : ev.medwatch_sections) : { narrative: ev.medwatch_draft } } catch { mw = { narrative: ev.medwatch_draft } }
                 return (
-                  <div key={ev.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px' }}>
+                  <div key={ev.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '18px 20px' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                          <span style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>Patient</span>
-                          <Badge label={ev.event_type?.replace(/_/g, ' ')} color="#1d4ed8" bg="#eff6ff" />
-                          {ev.reported_to_fda == 1 && <Badge label={`Reported to FDA ${ev.reported_to_fda_at ? new Date(ev.reported_to_fda_at).toLocaleDateString() : ''}`} color="#047857" bg="#d1fae5" />}
+                          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>Patient</span>
+                          <Badge label={ev.event_type?.replace(/_/g, ' ')} color="var(--primary-dark)" bg="var(--primary-light)" />
+                          {ev.reported_to_fda == 1 && <Badge label={`Reported to FDA ${ev.reported_to_fda_at ? new Date(ev.reported_to_fda_at).toLocaleDateString() : ''}`} color="var(--success)" bg="var(--success-light)" />}
                         </div>
-                        {ev.suspected_medication && <div style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>Suspect product: {ev.suspected_medication}</div>}
+                        {ev.suspected_medication && <div style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic' }}>Suspect product: {ev.suspected_medication}</div>}
                       </div>
                       <button onClick={async () => {
                         if (!window.confirm('Mark as reported to FDA MedWatch?')) return
                         const r = await fetch(`/api/adverse-events/${ev.id}/report-fda`, { method: 'POST', headers: { 'x-api-key': key } })
                         if (r.ok) { showToast('Reported to FDA'); refresh() }
                       }} disabled={ev.reported_to_fda == 1}
-                        style={{ padding: '6px 14px', border: '1px solid #fecaca', borderRadius: 8, background: ev.reported_to_fda == 1 ? '#f3f4f6' : '#fef2f2', color: ev.reported_to_fda == 1 ? '#9ca3af' : '#dc2626', fontSize: 12, cursor: ev.reported_to_fda == 1 ? 'not-allowed' : 'pointer', fontWeight: 600, flexShrink: 0 }}>
+                        style={{ padding: '6px 14px', border: '1px solid var(--danger-light)', borderRadius: 8, background: ev.reported_to_fda == 1 ? 'var(--surface2)' : 'var(--danger-light)', color: ev.reported_to_fda == 1 ? 'var(--text3)' : 'var(--danger)', fontSize: 12, cursor: ev.reported_to_fda == 1 ? 'not-allowed' : 'pointer', fontWeight: 600, flexShrink: 0 }}>
                         {ev.reported_to_fda == 1 ? 'Already Reported' : 'Report to FDA'}
                       </button>
                     </div>
-                    <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px' }}>
+                    <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
                       {mw && typeof mw === 'object' ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {mw.narrative && <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}><strong>Narrative:</strong> {mw.narrative}</p>}
-                          {mw.event_description && <p style={{ margin: 0, fontSize: 13, color: '#374151' }}><strong>Event:</strong> {mw.event_description}</p>}
-                          {mw.reporter_comments && <p style={{ margin: 0, fontSize: 13, color: '#374151' }}><strong>Comments:</strong> {mw.reporter_comments}</p>}
+                          {mw.narrative && <p style={{ margin: 0, fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}><strong>Narrative:</strong> {mw.narrative}</p>}
+                          {mw.event_description && <p style={{ margin: 0, fontSize: 13, color: 'var(--text)' }}><strong>Event:</strong> {mw.event_description}</p>}
+                          {mw.reporter_comments && <p style={{ margin: 0, fontSize: 13, color: 'var(--text)' }}><strong>Comments:</strong> {mw.reporter_comments}</p>}
                         </div>
                       ) : (
-                        <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{String(mw || '')}</p>
+                        <p style={{ margin: 0, fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{String(mw || '')}</p>
                       )}
                     </div>
                   </div>
@@ -599,10 +599,10 @@ export default function AdverseEvents() {
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '28px 16px', overflowY: 'auto' }}
           onClick={e => e.target === e.currentTarget && !saving && setShowModal(false)}>
-          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 600, boxShadow: '0 24px 64px rgba(0,0,0,.22)', marginBottom: 28 }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#111827' }}>Report Adverse Event</div>
-              <button onClick={() => { setShowModal(false); resetForm() }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}><X size={18} /></button>
+          <div style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 600, boxShadow: '0 24px 64px rgba(0,0,0,.22)', marginBottom: 28 }}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)' }}>Report Adverse Event</div>
+              <button onClick={() => { setShowModal(false); resetForm() }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 4 }}><X size={18} /></button>
             </div>
             <form onSubmit={handleSave} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
@@ -639,7 +639,7 @@ export default function AdverseEvents() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" id="near_miss" checked={form.near_miss} onChange={e => setForm(f => ({ ...f, near_miss: e.target.checked }))} />
-                <label htmlFor="near_miss" style={{ fontSize: 13, color: '#374151', cursor: 'pointer', fontWeight: 600 }}>Near Miss (no harm occurred, but potential for harm existed)</label>
+                <label htmlFor="near_miss" style={{ fontSize: 13, color: 'var(--text)', cursor: 'pointer', fontWeight: 600 }}>Near Miss (no harm occurred, but potential for harm existed)</label>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>

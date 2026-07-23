@@ -67,12 +67,12 @@ const DOMAIN_KEYS = Object.keys(DOMAIN_OPTIONS)
 const EMPTY_FORM = DOMAIN_KEYS.reduce((acc, k) => ({ ...acc, [k]: DOMAIN_OPTIONS[k][0].value }), { patient_id: '' })
 
 function domainDotColor(domain, value) {
-  if (!value) return '#e2e8f0'
+  if (!value) return 'var(--border)'
   const opts = DOMAIN_OPTIONS[domain] || []
   const opt = opts.find(o => o.value === value)
-  if (!opt) return '#e2e8f0'
+  if (!opt) return 'var(--border)'
   if (opt.ok) return 'var(--success)'
-  if (opt.value.includes('at_risk') || opt.value === 'mild' || opt.value === 'some_isolation' || opt.value === 'limited' || opt.value === 'concerned') return '#f59e0b'
+  if (opt.value.includes('at_risk') || opt.value === 'mild' || opt.value === 'some_isolation' || opt.value === 'limited' || opt.value === 'concerned') return 'var(--warning)'
   return 'var(--danger)'
 }
 
@@ -204,15 +204,15 @@ export default function SDOH() {
           <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', lineHeight: 1.1 }}>{assessments.length}</div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>Total Assessments</div>
         </div>
-        <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, borderRadius: 14, borderTop: totalActive ? '3px solid #f59e0b' : undefined }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, borderRadius: 14, borderTop: totalActive ? '3px solid var(--warning)' : undefined }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--warning-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <span style={{ fontSize: 20 }}>⚡</span>
           </div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: totalActive ? '#d97706' : 'var(--text)', lineHeight: 1.1 }}>{totalActive}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: totalActive ? 'var(--warning)' : 'var(--text)', lineHeight: 1.1 }}>{totalActive}</div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>Active</div>
         </div>
         <div className="card" style={{ padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, borderRadius: 14, borderTop: totalHighNeed ? '3px solid var(--danger)' : undefined }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: totalHighNeed ? 'var(--danger-light)' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: totalHighNeed ? 'var(--danger-light)' : 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <span style={{ fontSize: 20 }}>🔴</span>
           </div>
           <div style={{ fontSize: 28, fontWeight: 800, color: totalHighNeed ? 'var(--danger)' : 'var(--text)', lineHeight: 1.1 }}>{totalHighNeed}</div>
@@ -240,9 +240,9 @@ export default function SDOH() {
         </div>
 
         {apiError && (
-          <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10, fontSize: 13, color: '#b91c1c', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--danger-light)', border: '1px solid var(--danger)', borderRadius: 10, fontSize: 13, color: 'var(--danger)', display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ fontWeight: 700 }}>API Error:</span> {apiError}
-            <button onClick={loadAssessments} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 10px', fontSize: 12, cursor: 'pointer', color: '#b91c1c' }}>Retry</button>
+            <button onClick={loadAssessments} style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--danger)', borderRadius: 6, padding: '3px 10px', fontSize: 12, cursor: 'pointer', color: 'var(--danger)' }}>Retry</button>
           </div>
         )}
         {loading ? (
@@ -282,7 +282,7 @@ export default function SDOH() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{a.patient_name || 'Unknown Patient'}</span>
                           {isHighNeed && <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: 'var(--danger-light)', color: 'var(--danger)' }}>High Need</span>}
-                          <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: isResolved ? '#d1fae5' : '#fef3c7', color: isResolved ? '#059669' : '#d97706' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: isResolved ? 'var(--success-light)' : 'var(--warning-light)', color: isResolved ? 'var(--success)' : 'var(--warning)' }}>
                             {isResolved ? 'Resolved' : 'Active'}
                           </span>
                         </div>
@@ -310,7 +310,7 @@ export default function SDOH() {
                         const dotColor = domainDotColor(dk, a[dk])
                         return (
                           <div key={dk} title={`${DOMAIN_LABELS[dk]}: ${a[dk] || 'N/A'}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                            <div style={{ width: 12, height: 12, borderRadius: '50%', background: dotColor, border: '2px solid #fff', boxShadow: `0 0 0 1px ${dotColor}40` }} />
+                            <div style={{ width: 12, height: 12, borderRadius: '50%', background: dotColor, border: '2px solid var(--surface)', boxShadow: `0 0 0 1px ${dotColor}40` }} />
                             <span style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 500 }}>{DOMAIN_LABELS[dk].slice(0, 6)}</span>
                           </div>
                         )
@@ -321,7 +321,7 @@ export default function SDOH() {
                     {zCodes.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
                         {zCodes.map((z, i) => (
-                          <span key={i} style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: '#dbeafe', color: '#1d4ed8' }}>{z}</span>
+                          <span key={i} style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: 'var(--primary-light)', color: 'var(--primary-dark)' }}>{z}</span>
                         ))}
                       </div>
                     )}
@@ -366,7 +366,7 @@ export default function SDOH() {
                             {resources.map((res, i) => (
                               <div key={i} style={{ padding: '8px 12px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                                 {res.category && (
-                                  <span style={{ flexShrink: 0, padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: '#f0fdf4', color: '#166534' }}>{res.category}</span>
+                                  <span style={{ flexShrink: 0, padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: 'var(--success-light)', color: 'var(--success)' }}>{res.category}</span>
                                 )}
                                 <div>
                                   {res.name && <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{res.name}</div>}
@@ -426,7 +426,7 @@ export default function SDOH() {
               </div>
 
               {saveError && (
-                <div style={{ marginBottom: 14, padding: '10px 14px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#b91c1c' }}>
+                <div style={{ marginBottom: 14, padding: '10px 14px', background: 'var(--danger-light)', border: '1px solid var(--danger)', borderRadius: 8, fontSize: 13, color: 'var(--danger)' }}>
                   {saveError}
                 </div>
               )}

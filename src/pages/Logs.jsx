@@ -55,8 +55,8 @@ export default function Logs() {
         {/* ── Summary boxes ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, padding: '24px 32px 0' }}>
           <SummaryBox
-            icon={<Activity size={20} color="#0e7490" />}
-            iconBg="#e0f2fe"
+            icon={<Activity size={20} color="var(--primary)" />}
+            iconBg="var(--primary-light)"
             label="Case Updates"
             value={summary?.updates ?? '…'}
             locked={false}
@@ -65,8 +65,8 @@ export default function Logs() {
             cta="View →"
           />
           <SummaryBox
-            icon={<AlertCircle size={20} color="#dc2626" />}
-            iconBg="#fee2e2"
+            icon={<AlertCircle size={20} color="var(--danger)" />}
+            iconBg="var(--danger-light)"
             label={isSuperAdmin ? 'System Errors' : 'Case Errors'}
             value={summary?.errors ?? '…'}
             locked={false}
@@ -75,8 +75,8 @@ export default function Logs() {
             cta="View →"
           />
           <SummaryBox
-            icon={<FolderOpen size={20} color="#0e7490" />}
-            iconBg="#e0f2fe"
+            icon={<FolderOpen size={20} color="var(--primary)" />}
+            iconBg="var(--primary-light)"
             label="Log Cases"
             value={summary?.cases ?? '…'}
             locked={false}
@@ -138,8 +138,8 @@ function SummaryBox({ icon, iconBg, label, value, locked, active, onClick, cta }
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           backdropFilter: 'blur(2px)', zIndex: 2, gap: 6
         }}>
-          <Lock size={22} color="#94a3b8" />
-          <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Super Admin Only</span>
+          <Lock size={22} color="var(--text3)" />
+          <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>Super Admin Only</span>
         </div>
       )}
       <div className="stat-icon" style={{ background: iconBg }}>{icon}</div>
@@ -198,7 +198,7 @@ function Stat({ label, value, color }) {
 function LockedSection() {
   return (
     <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-      <Lock size={36} color="#cbd5e1" style={{ margin: '0 auto 14px' }} />
+      <Lock size={36} color="var(--border-strong)" style={{ margin: '0 auto 14px' }} />
       <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)' }}>Super Admin Access Only</div>
       <div style={{ color: 'var(--text2)', fontSize: 13, marginTop: 6 }}>
         This section requires a Super Admin account.

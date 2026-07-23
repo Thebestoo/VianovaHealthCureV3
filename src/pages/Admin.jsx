@@ -27,7 +27,7 @@ function UserAvatar({ name, src }) {
   return (
     <div style={{
       width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-      background: avatarColor(name), color: '#fff', fontWeight: 700, fontSize: 13,
+      background: avatarColor(name), color: 'var(--surface)', fontWeight: 700, fontSize: 13,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       {initials(name)}
@@ -152,7 +152,7 @@ export default function Admin() {
   const roleBadge = (role) => {
     const s = role === 'superadmin'
       ? { background: '#f3e8ff', color: '#7c3aed' }
-      : { background: '#dbeafe', color: '#1d4ed8' }
+      : { background: 'var(--primary-light)', color: 'var(--primary)' }
     const label = role === 'superadmin' ? 'Super Admin' : 'Doctor'
     return (
       <span style={{ ...s, display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600 }}>
@@ -165,12 +165,12 @@ export default function Admin() {
     const status = u.status || 'active'
     const isActive = u.active === 1 || u.active === true
     if (!isActive) {
-      return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#f3f4f6', color: '#9ca3af' }}>Inactive</span>
+      return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: 'var(--surface2)', color: 'var(--text3)' }}>Inactive</span>
     }
     if (status === 'pending') {
-      return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#fef3c7', color: '#d97706' }}>Pending</span>
+      return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: 'var(--warning-light)', color: 'var(--warning)' }}>Pending</span>
     }
-    return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#d1fae5', color: '#059669' }}>Active</span>
+    return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: 'var(--success-light)', color: 'var(--success)' }}>Active</span>
   }
 
   const pendingUsers = users.filter(u => (u.status === 'pending') && (u.active === 1 || u.active === true))
@@ -209,27 +209,27 @@ export default function Admin() {
         {/* Stats row */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, marginBottom: 28 }}>
           {[
-            { label: 'Total Users', value: totalUsers, icon: Users, bg: '#eff6ff', color: '#1d4ed8' },
-            { label: 'Active', value: activeCount, icon: CheckCircle, bg: '#ecfdf5', color: '#059669' },
-            { label: 'Pending Approval', value: pendingUsers.length, icon: ShieldCheck, bg: '#fffbeb', color: '#d97706' },
+            { label: 'Total Users', value: totalUsers, icon: Users, bg: 'var(--primary-light)', color: 'var(--primary)' },
+            { label: 'Active', value: activeCount, icon: CheckCircle, bg: 'var(--success-light)', color: 'var(--success)' },
+            { label: 'Pending Approval', value: pendingUsers.length, icon: ShieldCheck, bg: 'var(--warning-light)', color: 'var(--warning)' },
             { label: 'Super Admins', value: adminCount, icon: UserPlus, bg: '#f3e8ff', color: '#7c3aed' },
           ].map((s, idx) => (
             <div key={s.label} className="stat-card animate-fade-up" style={{
-              flex: '1 1 190px', minWidth: 170, background: '#fff', border: '1px solid var(--border)',
+              flex: '1 1 190px', minWidth: 170, background: 'var(--surface)', border: '1px solid var(--border)',
               display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8,
               animationDelay: `${idx * 0.06}s`,
             }}>
               <div className="stat-icon" style={{ width: 40, height: 40, borderRadius: 12, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <s.icon size={19} color={s.color} />
               </div>
-              <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1, color: '#111827' }}>{s.value}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>{s.label}</div>
+              <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1, color: 'var(--text)' }}>{s.value}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>{s.label}</div>
             </div>
           ))}
         </div>
 
         {/* Info banner */}
-        <div style={{ marginBottom: 20, padding: '12px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, fontSize: 13, color: '#1e40af' }}>
+        <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--primary-light)', border: '1px solid var(--primary-light)', borderRadius: 10, fontSize: 13, color: 'var(--primary-dark)' }}>
           <Mail size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'text-bottom' }} />
           <strong>Notification Email:</strong> If a user's login email is a custom domain without mail hosting (e.g. <em>name@vianova.ai</em>), set a <strong>Notification Email</strong> — case alerts will be sent there instead.
         </div>
@@ -237,13 +237,13 @@ export default function Admin() {
         {/* Search + role filter */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 20 }}>
           <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: 340 }}>
-            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
             <input
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Search users by name or email…"
-              style={{ width: '100%', padding: '9px 12px 9px 36px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '9px 12px 9px 36px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
             />
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -257,9 +257,9 @@ export default function Admin() {
                 onClick={() => setRoleFilter(f.key)}
                 style={{
                   padding: '7px 14px', borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  border: roleFilter === f.key ? '1.5px solid #0ea5e9' : '1px solid #e5e7eb',
-                  background: roleFilter === f.key ? '#e0f2fe' : '#fff',
-                  color: roleFilter === f.key ? '#0369a1' : '#6b7280',
+                  border: roleFilter === f.key ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                  background: roleFilter === f.key ? 'var(--primary-light)' : 'var(--surface)',
+                  color: roleFilter === f.key ? 'var(--primary-dark)' : 'var(--text2)',
                   transition: 'all .15s ease',
                 }}>
                 {f.label}
@@ -271,10 +271,10 @@ export default function Admin() {
         {loading ? (
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             {[0, 1, 2, 3, 4].map(i => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderBottom: i < 4 ? '1px solid #f3f4f6' : 'none' }}>
-                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#f1f5f9', animation: 'shimmer 1.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
-                <div style={{ height: 12, width: `${140 + (i % 3) * 40}px`, borderRadius: 6, background: '#f1f5f9', animation: 'shimmer 1.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
-                <div style={{ height: 12, width: 90, borderRadius: 6, background: '#f1f5f9', marginLeft: 'auto', animation: 'shimmer 1.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderBottom: i < 4 ? '1px solid var(--border)' : 'none' }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--surface2)', animation: 'shimmer 1.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
+                <div style={{ height: 12, width: `${140 + (i % 3) * 40}px`, borderRadius: 6, background: 'var(--surface2)', animation: 'shimmer 1.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
+                <div style={{ height: 12, width: 90, borderRadius: 6, background: 'var(--surface2)', marginLeft: 'auto', animation: 'shimmer 1.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
               </div>
             ))}
           </div>
@@ -283,43 +283,43 @@ export default function Admin() {
             {/* Pending Approval section */}
             {pendingUsers.length > 0 && (
               <div className="animate-fade-up" style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#d97706', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--warning)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <ShieldCheck size={16} />
                   Pending Approval ({pendingUsers.length})
                 </div>
-                <div className="card hoverable" style={{ padding: 0, overflow: 'hidden', border: '1.5px solid #fde68a' }}>
+                <div className="card hoverable" style={{ padding: 0, overflow: 'hidden', border: '1.5px solid var(--warning-light)' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
-                      <tr style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                      <tr style={{ background: 'var(--warning-light)', borderBottom: '1px solid var(--warning-light)' }}>
                         {['Name', 'Email', 'Role', 'Actions'].map(h => (
-                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#92400e', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--warning)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {pendingUsers.map((u, i) => (
-                        <tr key={u.id} style={{ borderBottom: i < pendingUsers.length - 1 ? '1px solid #fef3c7' : 'none' }}>
-                          <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>
+                        <tr key={u.id} style={{ borderBottom: i < pendingUsers.length - 1 ? '1px solid var(--warning-light)' : 'none' }}>
+                          <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               <UserAvatar name={u.name} src={u.avatar} />
                               {u.name}
                             </div>
                           </td>
-                          <td style={{ padding: '12px 14px', color: '#374151' }}>{u.email}</td>
+                          <td style={{ padding: '12px 14px', color: 'var(--text)' }}>{u.email}</td>
                           <td style={{ padding: '12px 14px' }}>{roleBadge(u.role)}</td>
                           <td style={{ padding: '12px 14px' }}>
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button
                                 onClick={() => handleApprove(u)}
                                 disabled={approvingId === u.id}
-                                style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: '#059669', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                                style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: 'var(--success)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
                                 {approvingId === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={13} />}
                                 Approve
                               </button>
                               <button
                                 onClick={() => setConfirmDelete(u)}
                                 disabled={deleting === u.id}
-                                style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: '#dc2626', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                                style={{ padding: '5px 12px', border: 'none', borderRadius: 6, background: 'var(--danger)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
                                 {deleting === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <XCircle size={13} />}
                                 Remove
                               </button>
@@ -337,25 +337,25 @@ export default function Admin() {
             <div className="card hoverable animate-fade-up" style={{ padding: 0, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                  <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                     {['Name', 'Login Email', 'Notification Email', 'Role', 'Password', 'Status', 'Actions'].map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredActiveUsers.length === 0 && (
-                    <tr><td colSpan={7} style={{ padding: '32px 14px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No users match your search or filter.</td></tr>
+                    <tr><td colSpan={7} style={{ padding: '32px 14px', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>No users match your search or filter.</td></tr>
                   )}
                   {filteredActiveUsers.map((u, i) => (
-                    <tr key={u.id} className="followup-row" style={{ borderBottom: i < filteredActiveUsers.length - 1 ? '1px solid #f3f4f6' : 'none', transition: 'background .15s ease' }}>
-                      <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>
+                    <tr key={u.id} className="followup-row" style={{ borderBottom: i < filteredActiveUsers.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background .15s ease' }}>
+                      <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <UserAvatar name={u.name} src={u.avatar} />
                           {u.name}
                         </div>
                       </td>
-                      <td style={{ padding: '12px 14px', color: '#374151' }}>{u.email}</td>
+                      <td style={{ padding: '12px 14px', color: 'var(--text)' }}>{u.email}</td>
 
                       {/* Notification email — inline editable */}
                       <td style={{ padding: '10px 14px', minWidth: 200 }}>
@@ -366,29 +366,29 @@ export default function Admin() {
                               value={notifyVal}
                               onChange={e => setNotifyVal(e.target.value)}
                               placeholder="real@gmail.com"
-                              style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #0ea5e9', borderRadius: 6, fontSize: 12, outline: 'none' }}
+                              style={{ flex: 1, padding: '5px 8px', border: '1.5px solid var(--primary)', borderRadius: 6, fontSize: 12, outline: 'none' }}
                               onKeyDown={e => { if (e.key === 'Enter') saveNotifyEmail(u.id); if (e.key === 'Escape') setEditNotify(null) }}
                               autoFocus
                             />
                             <button onClick={() => saveNotifyEmail(u.id)} disabled={savingNotify === u.id}
-                              style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: '#0ea5e9', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
+                              style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: 'var(--primary)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
                               {savingNotify === u.id ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={11} />}
                             </button>
                             <button onClick={() => setEditNotify(null)}
-                              style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: '#f3f4f6', cursor: 'pointer' }}>
-                              <X size={11} color="#6b7280" />
+                              style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: 'var(--surface2)', cursor: 'pointer' }}>
+                              <X size={11} color="var(--text2)" />
                             </button>
                           </div>
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             {u.notify_email ? (
-                              <span style={{ fontSize: 12, color: '#059669', fontWeight: 500 }}>{u.notify_email}</span>
+                              <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 500 }}>{u.notify_email}</span>
                             ) : (
-                              <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>same as login</span>
+                              <span style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>same as login</span>
                             )}
                             <button onClick={() => { setEditNotify(u.id); setNotifyVal(u.notify_email || '') }}
                               title="Edit notification email"
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#9ca3af', display: 'flex' }}>
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text3)', display: 'flex' }}>
                               <Edit3 size={12} />
                             </button>
                           </div>
@@ -406,17 +406,17 @@ export default function Admin() {
                               value={passwordVal}
                               onChange={e => setPasswordVal(e.target.value)}
                               placeholder="New password"
-                              style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #6366f1', borderRadius: 6, fontSize: 12, outline: 'none' }}
+                              style={{ flex: 1, padding: '5px 8px', border: '1.5px solid var(--primary)', borderRadius: 6, fontSize: 12, outline: 'none' }}
                               onKeyDown={e => { if (e.key === 'Enter') savePassword(u.id); if (e.key === 'Escape') { setEditPassword(null); setPasswordVal('') } }}
                               autoFocus
                             />
                             <button onClick={() => savePassword(u.id)} disabled={savingPassword === u.id || !passwordVal.trim()}
-                              style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: '#6366f1', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
+                              style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: 'var(--primary)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
                               {savingPassword === u.id ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={11} />}
                             </button>
                             <button onClick={() => { setEditPassword(null); setPasswordVal('') }}
-                              style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: '#f3f4f6', cursor: 'pointer' }}>
-                              <X size={11} color="#6b7280" />
+                              style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: 'var(--surface2)', cursor: 'pointer' }}>
+                              <X size={11} color="var(--text2)" />
                             </button>
                           </div>
                         ) : (
@@ -425,8 +425,8 @@ export default function Admin() {
                             title={u.has_password ? 'Change password' : 'Set password'}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center', gap: 5, borderRadius: 6 }}
                           >
-                            <Lock size={14} color={u.has_password ? '#059669' : '#dc2626'} />
-                            <span style={{ fontSize: 12, color: u.has_password ? '#059669' : '#dc2626', fontWeight: 500 }}>
+                            <Lock size={14} color={u.has_password ? 'var(--success)' : 'var(--danger)'} />
+                            <span style={{ fontSize: 12, color: u.has_password ? 'var(--success)' : 'var(--danger)', fontWeight: 500 }}>
                               {u.has_password ? 'Set' : 'Not set'}
                             </span>
                           </button>
@@ -438,15 +438,15 @@ export default function Admin() {
                       <td style={{ padding: '12px 14px' }}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <button onClick={() => toggleActive(u)} disabled={toggling === u.id} title={u.active ? 'Deactivate' : 'Activate'}
-                            style={{ padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#374151' }}>
+                            style={{ padding: '5px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text)' }}>
                             {toggling === u.id
                               ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
-                              : u.active ? <ToggleRight size={14} color="#059669" /> : <ToggleLeft size={14} color="#9ca3af" />}
+                              : u.active ? <ToggleRight size={14} color="var(--success)" /> : <ToggleLeft size={14} color="var(--text3)" />}
                             {u.active ? 'Deactivate' : 'Activate'}
                           </button>
                           {u.role !== 'superadmin' && (
                             <button onClick={() => setConfirmDelete(u)} disabled={deleting === u.id}
-                              style={{ padding: '5px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: '#dc2626' }}>
+                              style={{ padding: '5px 10px', border: '1px solid var(--danger-light)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--danger)' }}>
                               {deleting === u.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={12} />}
                               Delete
                             </button>
@@ -466,47 +466,47 @@ export default function Admin() {
       {showModal && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
           onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="animate-fade-up" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <UserPlus size={17} color="#1d4ed8" />
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UserPlus size={17} color="var(--primary)" />
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>Add User</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Add User</div>
               </div>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#9ca3af' }}><X size={18} /></button>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}><X size={18} /></button>
             </div>
             <form onSubmit={handleCreate} noValidate style={{ padding: '20px 24px' }}>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Full Name *</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text)', marginBottom: 5 }}>Full Name *</label>
                 <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="Jane Smith" style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                  placeholder="Jane Smith" style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Login Email *</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text)', marginBottom: 5 }}>Login Email *</label>
                 <input type="text" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   placeholder="jane@vianova.ai"
-                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>This is the email they type to sign in.</div>
+                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>This is the email they type to sign in.</div>
               </div>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>
-                  Notification Email <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text)', marginBottom: 5 }}>
+                  Notification Email <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(optional)</span>
                 </label>
                 <input type="text" value={form.notify_email || ''} onChange={e => setForm(f => ({ ...f, notify_email: e.target.value }))}
                   placeholder="jane@gmail.com"
-                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Alerts go here. Leave blank to use login email.</div>
+                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>Alerts go here. Leave blank to use login email.</div>
               </div>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Password *</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text)', marginBottom: 5 }}>Password *</label>
                 <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                   placeholder="Set initial password"
-                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>The user will need this to sign in. You can change it later.</div>
+                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>The user will need this to sign in. You can change it later.</div>
               </div>
               <div style={{ marginBottom: 18 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Role</label>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text)', marginBottom: 5 }}>Role</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {[
                     { value: 'doctor', label: 'Doctor' },
@@ -518,9 +518,9 @@ export default function Admin() {
                       onClick={() => setForm(f => ({ ...f, role: r.value }))}
                       style={{
                         flex: 1, padding: '9px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                        border: form.role === r.value ? '1.5px solid #0ea5e9' : '1.5px solid #d1d5db',
-                        background: form.role === r.value ? '#e0f2fe' : '#fff',
-                        color: form.role === r.value ? '#0369a1' : '#374151',
+                        border: form.role === r.value ? '1.5px solid var(--primary)' : '1.5px solid var(--border)',
+                        background: form.role === r.value ? 'var(--primary-light)' : 'var(--surface)',
+                        color: form.role === r.value ? 'var(--primary-dark)' : 'var(--text)',
                         transition: 'all .15s ease',
                       }}>
                       {r.label}
@@ -529,7 +529,7 @@ export default function Admin() {
                 </div>
               </div>
               {error && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#dc2626', marginBottom: 14 }}>{error}</div>
+                <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger-light)', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: 'var(--danger)', marginBottom: 14 }}>{error}</div>
               )}
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowModal(false)} className="btn btn-secondary btn-sm">Cancel</button>
@@ -546,14 +546,14 @@ export default function Admin() {
       {confirmDelete && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 16 }}
           onClick={e => e.target === e.currentTarget && setConfirmDelete(null)}>
-          <div className="animate-fade-up" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 380, boxShadow: '0 24px 64px rgba(0,0,0,.24)', padding: '24px 24px 20px' }}>
+          <div className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 380, boxShadow: '0 24px 64px rgba(0,0,0,.24)', padding: '24px 24px 20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 12, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Trash2 size={19} color="#dc2626" />
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--danger-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Trash2 size={19} color="var(--danger)" />
               </div>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Delete {confirmDelete.name}?</div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>This will revoke their sessions immediately.</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Delete {confirmDelete.name}?</div>
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>This will revoke their sessions immediately.</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
@@ -562,7 +562,7 @@ export default function Admin() {
                 type="button"
                 onClick={() => handleDelete(confirmDelete)}
                 disabled={deleting === confirmDelete.id}
-                style={{ padding: '7px 16px', border: 'none', borderRadius: 7, background: '#dc2626', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                style={{ padding: '7px 16px', border: 'none', borderRadius: 7, background: 'var(--danger)', color: 'var(--surface)', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {deleting === confirmDelete.id ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={13} />}
                 Delete
               </button>

@@ -6,7 +6,7 @@ import {
   HeartPulse, ShieldCheck, Stethoscope, LogOut, Wifi, WifiOff,
   Users, LogIn, Menu, X, CalendarDays, AlertOctagon, Users2,
   Receipt, Settings, MessageSquare, Radio,
-  Search, Phone, Bell, Package, ChevronDown
+  Search, Phone, Bell, Package, ChevronDown, ClipboardList, FileSearch
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import FloatingChat from './FloatingChat.jsx'
@@ -31,19 +31,18 @@ const NAV_GROUPS = [
       {
         label: 'Patients', icon: Users, path: '/patients',
         children: [
-          { label: 'My Patients',   path: '/patients' },
-          { label: 'My Call List',  path: '/patients' },
-          { label: 'All Patients',  path: '/patients' },
-          { label: 'My Caseload',   path: '/patients' },
-          { label: 'All Cases',     path: '/cases'    },
+          { label: 'All Patients', path: '/patients'                },
+          { label: 'My Patients',  path: '/patients?view=mine'       },
+          { label: 'My Call List', path: '/patients?view=call-list'  },
+          { label: 'My Caseload',  path: '/patients?view=caseload'   },
         ],
       },
-      { label: 'Chats',        icon: MessageSquare, path: '/channels'    },
-      { label: 'Call Activity',icon: Phone,         path: '/nlp-notes'   },
-      { label: 'Alerts',       icon: Bell,          path: '/adverse-events' },
-      {
-        label: 'Appointments', icon: CalendarDays, path: '/appointments',
-      },
+      { label: 'Cases',         icon: ClipboardList, path: '/cases'          },
+      { label: 'Chats',         icon: MessageSquare, path: '/channels'       },
+      { label: 'Calls',         icon: Phone,         path: '/calls'          },
+      { label: 'Clinical Notes',icon: FileSearch,    path: '/nlp-notes'      },
+      { label: 'Alerts',        icon: Bell,          path: '/adverse-events' },
+      { label: 'Appointments',  icon: CalendarDays,  path: '/appointments'   },
       {
         label: 'Onboarding', icon: PlusCircle, path: '/cases/new',
         children: [
@@ -51,7 +50,7 @@ const NAV_GROUPS = [
           { label: 'Consent',  path: '/consent'    },
         ],
       },
-      { label: 'Claims',    icon: Receipt,   path: '/billing' },
+      { label: 'Billing & Coding', icon: Receipt, path: '/billing' },
       {
         label: 'Reports', icon: BarChart2, path: '/logs',
         children: [
@@ -61,7 +60,7 @@ const NAV_GROUPS = [
           { label: 'Care Gaps',         path: '/care-gaps'        },
         ],
       },
-      { label: 'Inventory', icon: Package, path: '/labs' },
+      { label: 'Lab Results', icon: Package, path: '/labs' },
       {
         label: 'RPM Monitoring', icon: Radio, path: '/rpm',
         children: [
@@ -78,7 +77,7 @@ const NAV_GROUPS = [
           { label: 'SDOH',               path: '/sdoh'               },
         ],
       },
-      { label: 'Emergency Protocol', icon: AlertOctagon, path: '/discharge' },
+      { label: 'Discharge Planning', icon: AlertOctagon, path: '/discharge' },
     ],
   },
 ]
@@ -97,7 +96,7 @@ const BOTTOM_NAV = [
 
 export default function Layout({ children }) {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const { key, role, label, email, avatar, stats, disconnect, setAvatar } = useKey()
   const [menuOpen,     setMenuOpen]     = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -195,8 +194,14 @@ export default function Layout({ children }) {
     setMenuOpen(false)
   }
 
-  const isActive = (path) =>
-    pathname === path || (path !== '/dashboard' && pathname.startsWith(path))
+  // Most nav paths are plain pathnames, but a few (Patients sub-views) carry a
+  // query string that selects a filtered view of the same route — those need an
+  // exact pathname+search match so only the one active view lights up.
+  const isActive = (path) => {
+    if (path.includes('?')) return pathname + search === path
+    if (pathname === path) return !search
+    return path !== '/dashboard' && pathname.startsWith(path)
+  }
 
   function toggleNavExpand(path) {
     setExpandedNav(prev => {
@@ -428,7 +433,7 @@ export default function Layout({ children }) {
             }} />
           </div>
           <div className="global-topbar-right">
-            <button className="icon-btn" title="Call activity" onClick={() => navigate('/appointments')}><Phone size={16} /></button>
+            <button className="icon-btn" title="Calls" onClick={() => navigate('/calls')}><Phone size={16} /></button>
             <button className="icon-btn" title="Team" onClick={() => navigate('/patients')}><Users2 size={16} /></button>
             <div className="global-topbar-divider" />
             <button className="global-avatar" onClick={() => isConnected ? setSettingsOpen(true) : navigate('/login')} title={isConnected ? 'Profile' : 'Sign in'}>
