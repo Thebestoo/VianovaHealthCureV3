@@ -2090,6 +2090,76 @@ Respond with JSON only: {"minutes": number, "notes": "string", "plan_update": "1
   }
 })
 
+// AI-drafted care plan — gathers the patient's clinical picture (conditions,
+// medications, allergies, recent vitals, labs, open care gaps, check-in barriers)
+// and proposes goals/tasks/care_team for clinician review. Never written to the
+// DB automatically — the clinician must edit and explicitly save.
+app.post('/api/ccm/patients/:pid/plan/ai-draft', auth, aiLimiter, async (req, res) => {
+  const patient = (await db.execute({ sql: 'SELECT * FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+  let vitalsRows = []
+  try { vitalsRows = (await db.execute({ sql: 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 3', args: [req.params.pid] })).rows } catch {}
+
+  let labRows = []
+  try { labRows = (await db.execute({ sql: 'SELECT test_name, value, unit, interpretation FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 5', args: [req.params.pid] })).rows } catch {}
+
+  let gapRows = []
+  try { gapRows = (await db.execute({ sql: "SELECT gap_type, description, priority FROM care_gaps WHERE patient_id = ? AND status = 'open' LIMIT 5", args: [req.params.pid] })).rows } catch {}
+
+  let barrierRows = []
+  try { barrierRows = (await db.execute({ sql: 'SELECT barriers, created_at FROM ccm_checkins WHERE patient_id = ? AND barriers IS NOT NULL ORDER BY created_at DESC LIMIT 3', args: [req.params.pid] })).rows } catch {}
+
+  let conds = []; let meds = []; let allgs = []
+  try { conds = JSON.parse(patient.conditions || '[]') } catch { conds = patient.conditions ? [patient.conditions] : [] }
+  try { meds = JSON.parse(patient.medications || '[]') } catch { meds = patient.medications ? [patient.medications] : [] }
+  try { allgs = JSON.parse(patient.allergies || '[]') } catch { allgs = patient.allergies ? [patient.allergies] : [] }
+
+  const vitalsStr = vitalsRows.length
+    ? vitalsRows.map(v => `- ${v.recorded_at?.slice(0, 10)}: HR ${v.heart_rate ?? '—'}, SpO2 ${v.spo2 ?? '—'}, BP ${v.systolic_bp ?? '—'}/${v.diastolic_bp ?? '—'}, Temp ${v.temperature ?? '—'}, RR ${v.resp_rate ?? '—'}`).join('\n')
+    : 'no recent readings on record'
+  const labsStr = labRows.length ? labRows.map(l => `- ${l.test_name}: ${l.value}${l.unit || ''} (${l.interpretation || 'n/a'})`).join('\n') : 'no recent labs on record'
+  const gapsStr = gapRows.length ? gapRows.map(g => `- [${g.priority}] ${g.gap_type}: ${g.description}`).join('\n') : 'none open'
+  const barriersStr = barrierRows.length ? barrierRows.map(b => `- ${b.created_at?.slice(0, 10)}: ${b.barriers}`).join('\n') : 'none reported recently'
+
+  const prompt = `You are a clinical decision support assistant drafting a Chronic Care Management (CCM) care plan for a care manager to review and edit. This is a DRAFT ONLY — it will not be saved automatically.
+Patient: ${patient.name}
+Primary condition: ${patient.condition || 'not specified'}
+Conditions: ${conds.join(', ') || 'none recorded'}
+Medications: ${meds.join(', ') || 'none recorded'}
+Allergies: ${allgs.join(', ') || 'none recorded'}
+Recent vitals/readings (most recent first):
+${vitalsStr}
+Recent lab results:
+${labsStr}
+Open care gaps:
+${gapsStr}
+Recent check-in barriers reported by patient:
+${barriersStr}
+
+Draft a care plan tailored to this patient's actual clinical picture above (not a generic template). Respond with JSON only in this exact shape:
+{"goals": [{"description": "string", "target": "string", "due": "YYYY-MM-DD or empty string", "status": "not-started"}], "tasks": [{"text": "string", "done": false, "frequency": "string e.g. daily/weekly/monthly/as needed", "due": "YYYY-MM-DD or empty string"}], "care_team": [{"name": "string role placeholder like 'Care Manager' if no name known", "role": "string"}]}
+Provide 2-4 goals and 4-8 tasks addressing the open care gaps and recent barriers where relevant.`
+
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.3, max_tokens: 900,
+    })
+    const parsed = JSON.parse(chat.choices[0].message.content)
+    res.json({
+      status: 'draft',
+      goals: Array.isArray(parsed.goals) ? parsed.goals : [],
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+      care_team: Array.isArray(parsed.care_team) ? parsed.care_team : [],
+    })
+  } catch (e) {
+    res.status(500).json({ error: 'AI draft failed', detail: e.message })
+  }
+})
+
 // Disenroll — removes the patient, care plan and check-in history from CCM.
 app.delete('/api/ccm/patients/:pid', auth, async (req, res) => {
   const existing = (await db.execute({ sql: 'SELECT id FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]

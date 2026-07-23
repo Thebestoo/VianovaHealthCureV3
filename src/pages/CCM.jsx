@@ -109,6 +109,7 @@ export default function CCM() {
   const [showHistory, setShowHistory] = useState(false)
   const [planHistory, setPlanHistory] = useState([])
   const [historyExpanded, setHistoryExpanded] = useState({})
+  const [aiDrafting, setAiDrafting] = useState(false)
 
   useEffect(() => { if (key) loadPatients() }, [key])
   useEffect(() => { if (key && showAddPt) loadRoster() }, [key, showAddPt])
@@ -288,6 +289,26 @@ export default function CCM() {
       setSelected(null)
       loadPatients()
     } finally { setDisenrolling(false) }
+  }
+
+  // Drafts goals/tasks/care_team from the patient's clinical picture (conditions,
+  // vitals, labs, care gaps, check-in barriers) for the clinician to review and edit —
+  // never persisted until the clinician explicitly saves the plan.
+  async function aiDraftPlan() {
+    if (!selected || aiDrafting) return
+    setAiDrafting(true)
+    try {
+      const r = await fetch(`/api/ccm/patients/${selected.id}/plan/ai-draft`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({}),
+      })
+      const d = await r.json()
+      if (d.tasks) setPlanTasks(d.tasks)
+      if (d.goals) setPlanGoals(d.goals)
+      if (d.care_team) setCareTeam(d.care_team)
+      setShowPlanEdit(true)
+    } catch {} finally { setAiDrafting(false) }
   }
 
   function applyTemplate(tpl) {
@@ -497,6 +518,10 @@ export default function CCM() {
                     <button onClick={() => { setShowHistory(h => !h); if (!showHistory) loadPlanHistory(selected.id) }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#374151' }}>
                       <Clock size={12} /> History
                     </button>
+                    <button onClick={aiDraftPlan} disabled={aiDrafting}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#faf9ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '7px 13px', cursor: aiDrafting ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 600, color: '#7c3aed', opacity: aiDrafting ? .6 : 1 }}>
+                      <Wand2 size={12} /> {aiDrafting ? 'Drafting…' : 'AI Draft Care Plan'}
+                    </button>
                     <button onClick={() => setShowPlanEdit(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#374151' }}>
                       <Edit3 size={12} /> Edit Plan
                     </button>
@@ -555,7 +580,12 @@ export default function CCM() {
                           {t.done
                             ? <CheckCircle2 size={17} color="#22c55e" style={{ flexShrink: 0, marginTop: 1 }} />
                             : <Circle size={17} color="#d1d5db" style={{ flexShrink: 0, marginTop: 1 }} />}
-                          <span style={{ fontSize: 13.5, color: t.done ? '#16a34a' : '#374151', textDecoration: t.done ? 'line-through' : 'none' }}>{t.text}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontSize: 13.5, color: t.done ? '#16a34a' : '#374151', textDecoration: t.done ? 'line-through' : 'none' }}>{t.text}</span>
+                            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                              {t.frequency || 'as needed'}{t.due ? ` · due ${t.due}` : ''}
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -795,17 +825,27 @@ export default function CCM() {
             </div>
             <div style={{ marginBottom: 18 }}>
               {planTasks.map((t, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                  <input value={t.text} onChange={e => setPlanTasks(tasks => tasks.map((tk, j) => j === i ? { ...tk, text: e.target.value } : tk))}
-                    className="ccm-input"
-                    style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13 }} />
-                  <button type="button" onClick={() => setPlanTasks(tasks => tasks.filter((_, j) => j !== i))}
-                    style={{ background: '#fef2f2', border: 'none', borderRadius: 7, width: 30, height: 30, cursor: 'pointer', color: '#ef4444', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <X size={14} />
-                  </button>
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: 8, border: '1px solid #f3f4f6', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input placeholder="Task" value={t.text} onChange={e => setPlanTasks(tasks => tasks.map((tk, j) => j === i ? { ...tk, text: e.target.value } : tk))}
+                      className="ccm-input"
+                      style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13 }} />
+                    <button type="button" onClick={() => setPlanTasks(tasks => tasks.filter((_, j) => j !== i))}
+                      style={{ background: '#fef2f2', border: 'none', borderRadius: 7, width: 30, height: 30, cursor: 'pointer', color: '#ef4444', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input placeholder="Frequency (e.g. daily)" value={t.frequency || ''}
+                      onChange={e => setPlanTasks(tasks => tasks.map((tk, j) => j === i ? { ...tk, frequency: e.target.value } : tk))}
+                      className="ccm-input" style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }} />
+                    <input type="date" value={t.due || ''}
+                      onChange={e => setPlanTasks(tasks => tasks.map((tk, j) => j === i ? { ...tk, due: e.target.value } : tk))}
+                      className="ccm-input" style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }} />
+                  </div>
                 </div>
               ))}
-              <button type="button" onClick={() => setPlanTasks(tasks => [...tasks, { text: '', done: false }])}
+              <button type="button" onClick={() => setPlanTasks(tasks => [...tasks, { text: '', done: false, frequency: 'as needed', due: null }])}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#faf9ff', border: '1.5px dashed #ddd6fe', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#7c3aed', width: '100%', fontWeight: 600 }}>
                 <Plus size={13} /> Add task
               </button>
