@@ -2,12 +2,11 @@ import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
-  LayoutDashboard, FolderOpen, PlusCircle, BarChart2,
+  LayoutDashboard, PlusCircle, BarChart2,
   HeartPulse, ShieldCheck, Stethoscope, LogOut, Wifi, WifiOff,
-  Users, LogIn, Menu, X, AlertCircle, FlaskConical, CalendarDays,
-  ClipboardList, ShieldAlert, AlertOctagon, Users2, FileText,
-  Lightbulb, Home, Activity, GitMerge, ClipboardCheck,
-  Receipt, Settings, MessageSquare, HeartHandshake, Radio
+  Users, LogIn, Menu, X, CalendarDays, AlertOctagon, Users2,
+  Receipt, Settings, MessageSquare, Radio,
+  Search, Phone, Bell, Package, ChevronDown
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import FloatingChat from './FloatingChat.jsx'
@@ -22,67 +21,78 @@ function writeSeenAssigned(set) {
   localStorage.setItem(LS_SEEN_ASSIGNED, JSON.stringify([...set]))
 }
 
+// Nav structure mirrors the reference dashboard's sidebar (flat items, a few with
+// expandable sub-items) — every existing page keeps its own route/content unchanged,
+// this only reorganizes how they're reached from the sidebar.
 const NAV_GROUPS = [
   {
     items: [
       { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-      { label: 'Patients',  icon: Users,           path: '/patients'  },
-      { label: 'All Cases', icon: FolderOpen,      path: '/cases'     },
-      { label: 'New Case',  icon: PlusCircle,      path: '/cases/new' },
-      { label: 'Channels',  icon: MessageSquare,   path: '/channels'  },
-    ],
-  },
-  {
-    title: 'Clinical Workflow',
-    items: [
-      { label: 'Care Gaps',      icon: AlertCircle,  path: '/care-gaps'    },
-      { label: 'Lab Results',    icon: FlaskConical, path: '/labs'         },
-      { label: 'Appointments',   icon: CalendarDays, path: '/appointments' },
-      { label: 'Discharge',      icon: ClipboardList,path: '/discharge'    },
-      { label: 'Consent',        icon: ShieldAlert,  path: '/consent'      },
-      { label: 'Adverse Events', icon: AlertOctagon, path: '/adverse-events' },
-    ],
-  },
-  {
-    title: 'Intelligence',
-    items: [
-      { label: 'Population Health',  icon: Users2,       path: '/population-health'  },
-      { label: 'NLP Notes',          icon: FileText,     path: '/nlp-notes'          },
-      { label: 'Clinical Decisions', icon: Lightbulb,    path: '/clinical-decisions' },
-      { label: 'SDOH',               icon: Home,         path: '/sdoh'               },
-      { label: 'Chronic Disease',    icon: Activity,     path: '/chronic-disease'    },
-    ],
-  },
-  {
-    title: 'Operations',
-    items: [
-      { label: 'Interoperability',  icon: GitMerge,      path: '/interoperability'  },
-      { label: 'Audit & Compliance',icon: ClipboardCheck,path: '/audit-compliance'  },
-      { label: 'Billing & Coding',  icon: Receipt,       path: '/billing'           },
-      { label: 'Logs & Analytics',  icon: BarChart2,     path: '/logs'              },
-    ],
-  },
-  {
-    title: 'Beta',
-    items: [
-      { label: 'CCM Enrollment', icon: HeartHandshake, path: '/ccm' },
-      { label: 'RPM Enrollment', icon: Radio,           path: '/rpm' },
+      {
+        label: 'Patients', icon: Users, path: '/patients',
+        children: [
+          { label: 'My Patients',   path: '/patients' },
+          { label: 'My Call List',  path: '/patients' },
+          { label: 'All Patients',  path: '/patients' },
+          { label: 'My Caseload',   path: '/patients' },
+          { label: 'All Cases',     path: '/cases'    },
+        ],
+      },
+      { label: 'Chats',        icon: MessageSquare, path: '/channels'    },
+      { label: 'Call Activity',icon: Phone,         path: '/nlp-notes'   },
+      { label: 'Alerts',       icon: Bell,          path: '/adverse-events' },
+      {
+        label: 'Appointments', icon: CalendarDays, path: '/appointments',
+      },
+      {
+        label: 'Onboarding', icon: PlusCircle, path: '/cases/new',
+        children: [
+          { label: 'New Case', path: '/cases/new' },
+          { label: 'Consent',  path: '/consent'    },
+        ],
+      },
+      { label: 'Claims',    icon: Receipt,   path: '/billing' },
+      {
+        label: 'Reports', icon: BarChart2, path: '/logs',
+        children: [
+          { label: 'Logs & Analytics',  path: '/logs'             },
+          { label: 'Audit & Compliance',path: '/audit-compliance' },
+          { label: 'Interoperability',  path: '/interoperability' },
+          { label: 'Care Gaps',         path: '/care-gaps'        },
+        ],
+      },
+      { label: 'Inventory', icon: Package, path: '/labs' },
+      {
+        label: 'RPM Monitoring', icon: Radio, path: '/rpm',
+        children: [
+          { label: 'RPM Enrollment', path: '/rpm' },
+          { label: 'CCM Enrollment', path: '/ccm' },
+        ],
+      },
+      {
+        label: 'RPM Team Performance', icon: Users2, path: '/population-health',
+        children: [
+          { label: 'Population Health',  path: '/population-health'  },
+          { label: 'Chronic Disease',    path: '/chronic-disease'    },
+          { label: 'Clinical Decisions', path: '/clinical-decisions' },
+          { label: 'SDOH',               path: '/sdoh'               },
+        ],
+      },
+      { label: 'Emergency Protocol', icon: AlertOctagon, path: '/discharge' },
     ],
   },
 ]
 
 const NAV_ALL   = NAV_GROUPS
-const NAV_ADMIN = NAV_GROUPS.map(g =>
-  g.title === 'Operations' ? { ...g, items: [...g.items, { label: 'Admin', icon: ShieldCheck, path: '/admin' }] } : g
-)
+const NAV_ADMIN = NAV_GROUPS.map(g => ({ ...g, items: [...g.items, { label: 'Admin', icon: ShieldCheck, path: '/admin' }] }))
 
 // Bottom tab bar shows only the most important 5 items on mobile
 const BOTTOM_NAV = [
   { label: 'Home',     icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Patients', icon: Users,           path: '/patients' },
-  { label: 'Cases',    icon: FolderOpen,      path: '/cases' },
-  { label: 'New',      icon: PlusCircle,      path: '/cases/new' },
-  { label: 'Logs',     icon: BarChart2,       path: '/logs' },
+  { label: 'Chats',    icon: MessageSquare,   path: '/channels' },
+  { label: 'Appts',    icon: CalendarDays,    path: '/appointments' },
+  { label: 'Reports',  icon: BarChart2,       path: '/logs' },
 ]
 
 export default function Layout({ children }) {
@@ -91,6 +101,7 @@ export default function Layout({ children }) {
   const { key, role, label, email, avatar, stats, disconnect, setAvatar } = useKey()
   const [menuOpen,     setMenuOpen]     = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [expandedNav,  setExpandedNav]  = useState(() => new Set())
   const fileRef = useRef(null)
   const seenAssignedRef = useRef(null)
 
@@ -187,39 +198,52 @@ export default function Layout({ children }) {
   const isActive = (path) =>
     pathname === path || (path !== '/dashboard' && pathname.startsWith(path))
 
+  function toggleNavExpand(path) {
+    setExpandedNav(prev => {
+      const next = new Set(prev)
+      next.has(path) ? next.delete(path) : next.add(path)
+      return next
+    })
+  }
+
   return (
     <div className="layout">
       {/* ── Desktop sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-            <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 26, width: 'auto' }} />
-            <div className="tagline" style={{ textAlign: 'center' }}>Cure Analyzer System</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#0e7490,#059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <HeartPulse size={16} color="#fff" />
+            </div>
+            <div>
+              <div className="brand" style={{ lineHeight: 1.1 }}>VIANOVA</div>
+              <div className="tagline">Cure Analyzer System</div>
+            </div>
           </div>
         </div>
 
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,.1)' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
           {isConnected ? (
-            <div style={{ background: 'rgba(255,255,255,.1)', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 12px', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Wifi size={13} color="#4ade80" />
-                  <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>Connected</span>
+                  <Wifi size={13} color="var(--success)" />
+                  <span style={{ fontSize: 11, color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>Connected</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <button onClick={() => setSettingsOpen(true)} title="Profile Settings"
-                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', padding: 2 }}>
+                    style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: 2 }}>
                     <Settings size={13} />
                   </button>
                   <button onClick={handleDisconnect} title="Sign Out"
-                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', padding: 2 }}>
+                    style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: 2 }}>
                     <LogOut size={13} />
                   </button>
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 {/* Avatar — photo if set, otherwise icon */}
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: isSuperAdmin ? 'rgba(14,116,144,.7)' : 'rgba(5,150,105,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', cursor: 'pointer' }}
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: isSuperAdmin ? 'var(--primary)' : 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', cursor: 'pointer' }}
                   onClick={() => setSettingsOpen(true)} title="Change photo">
                   {avatar
                     ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -227,8 +251,8 @@ export default function Layout({ children }) {
                   }
                 </div>
                 <div>
-                  <div style={{ color: '#fff', fontWeight: 600, fontSize: 13, lineHeight: 1.2 }}>{label}</div>
-                  <div style={{ color: 'rgba(255,255,255,.5)', fontSize: 11 }}>{isSuperAdmin ? 'Super Admin' : 'Doctor'}</div>
+                  <div style={{ color: 'var(--text)', fontWeight: 600, fontSize: 13, lineHeight: 1.2 }}>{label}</div>
+                  <div style={{ color: 'var(--text3)', fontSize: 11 }}>{isSuperAdmin ? 'Super Admin' : 'Doctor'}</div>
                 </div>
               </div>
               {stats && (
@@ -239,22 +263,22 @@ export default function Layout({ children }) {
                     { label: 'Approved',  value: stats.approved  },
                     { label: 'Emergency', value: stats.emergency },
                   ].map(s => (
-                    <div key={s.label} style={{ background: 'rgba(0,0,0,.15)', borderRadius: 7, padding: '6px 8px', textAlign: 'center' }}>
-                      <div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>{s.value}</div>
-                      <div style={{ color: 'rgba(255,255,255,.45)', fontSize: 10 }}>{s.label}</div>
+                    <div key={s.label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 8px', textAlign: 'center' }}>
+                      <div style={{ color: 'var(--text)', fontWeight: 700, fontSize: 15 }}>{s.value}</div>
+                      <div style={{ color: 'var(--text3)', fontSize: 10 }}>{s.label}</div>
                     </div>
                   ))}
                 </div>
               )}
             </div>
           ) : (
-            <div style={{ background: 'rgba(255,255,255,.06)', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 12px', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <WifiOff size={14} color="rgba(255,255,255,.35)" />
-                <div style={{ color: 'rgba(255,255,255,.5)', fontSize: 12, fontWeight: 500 }}>Not signed in</div>
+                <WifiOff size={14} color="var(--text3)" />
+                <div style={{ color: 'var(--text3)', fontSize: 12, fontWeight: 500 }}>Not signed in</div>
               </div>
               <button onClick={() => navigate('/login')}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 7, background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.2)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 7, background: 'var(--primary)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <LogIn size={13} /> Sign In
               </button>
             </div>
@@ -268,27 +292,45 @@ export default function Layout({ children }) {
                 <div style={{
                   padding: '14px 16px 6px',
                   fontSize: 10, fontWeight: 700,
-                  color: 'rgba(255,255,255,.3)',
+                  color: 'var(--text3)',
                   textTransform: 'uppercase',
                   letterSpacing: '.1em',
-                  ...(gi > 0 && { borderTop: '1px solid rgba(255,255,255,.08)', marginTop: 4, paddingTop: 16 }),
+                  ...(gi > 0 && { borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 16 }),
                 }}>
                   {group.title}
                 </div>
               )}
-              {group.items.map(({ label: lbl, icon: Icon, path }) => (
-                <button key={path} className={`nav-item ${isActive(path) ? 'active' : ''}`} onClick={() => navigate(path)}>
-                  {isActive(path) && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: '#fff', borderRadius: '0 3px 3px 0', opacity: .9 }} />}
-                  <Icon size={16} />{lbl}
-                </button>
-              ))}
+              {group.items.map(({ label: lbl, icon: Icon, path, children }) => {
+                const childActive = children?.some(c => isActive(c.path))
+                const active = isActive(path) || childActive
+                const open = children && (expandedNav.has(path) || childActive)
+                return (
+                  <div key={path}>
+                    <button className={`nav-item ${active ? 'active' : ''}`}
+                      onClick={() => children ? toggleNavExpand(path) : navigate(path)}>
+                      {active && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: 'var(--primary)', borderRadius: '0 3px 3px 0', opacity: .9 }} />}
+                      <Icon size={16} />{lbl}
+                      {children && <ChevronDown size={14} style={{ marginLeft: 'auto', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }} />}
+                    </button>
+                    {open && (
+                      <div style={{ margin: '2px 0 4px 30px', borderLeft: '1px solid var(--border)', paddingLeft: 10 }}>
+                        {children.map(c => (
+                          <button key={c.label} className={`nav-item nav-item-sub ${isActive(c.path) ? 'active' : ''}`} onClick={() => navigate(c.path)}>
+                            {c.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ))}
         </nav>
 
         <div className="sidebar-footer">
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
-            <ShieldCheck size={13} color="rgba(255,255,255,.45)" />
+            <ShieldCheck size={13} color="var(--text3)" />
             <p>AI draft — physician review required</p>
           </div>
           <p>v2.0 · llama-3.3-70b</p>
@@ -348,11 +390,26 @@ export default function Layout({ children }) {
                     {group.title}
                   </div>
                 )}
-                {group.items.map(({ label: lbl, icon: Icon, path }) => (
-                  <button key={path} className={`nav-item-mobile ${isActive(path) ? 'active' : ''}`} onClick={() => navTo(path)}>
-                    <Icon size={18} />{lbl}
-                  </button>
-                ))}
+                {group.items.map(({ label: lbl, icon: Icon, path, children }) => {
+                  const childActive = children?.some(c => isActive(c.path))
+                  const active = isActive(path) || childActive
+                  const open = children && (expandedNav.has(path) || childActive)
+                  return (
+                    <div key={path}>
+                      <button className={`nav-item-mobile ${active ? 'active' : ''}`}
+                        onClick={() => children ? toggleNavExpand(path) : navTo(path)}>
+                        <Icon size={18} />{lbl}
+                        {children && <ChevronDown size={15} style={{ marginLeft: 'auto', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />}
+                      </button>
+                      {open && children.map(c => (
+                        <button key={c.label} className={`nav-item-mobile nav-item-sub ${isActive(c.path) ? 'active' : ''}`}
+                          style={{ paddingLeft: 40 }} onClick={() => navTo(c.path)}>
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })}
               </div>
             ))}
           </nav>
@@ -361,6 +418,30 @@ export default function Layout({ children }) {
 
       {/* ── Main content ── */}
       <main className="main-content">
+        <div className="global-topbar">
+          <div className="global-search">
+            <Search size={15} color="var(--text3)" />
+            <input placeholder="Search patients, cases, appointments…" onKeyDown={e => {
+              if (e.key !== 'Enter') return
+              const q = e.currentTarget.value.trim()
+              if (q) navigate(`/patients?q=${encodeURIComponent(q)}`)
+            }} />
+          </div>
+          <div className="global-topbar-right">
+            <button className="icon-btn" title="Call activity" onClick={() => navigate('/appointments')}><Phone size={16} /></button>
+            <button className="icon-btn" title="Team" onClick={() => navigate('/patients')}><Users2 size={16} /></button>
+            <div className="global-topbar-divider" />
+            <button className="global-avatar" onClick={() => isConnected ? setSettingsOpen(true) : navigate('/login')} title={isConnected ? 'Profile' : 'Sign in'}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: isSuperAdmin ? 'var(--primary)' : 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                {avatar
+                  ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : (isSuperAdmin ? <ShieldCheck size={14} color="#fff" /> : <Stethoscope size={14} color="#fff" />)
+                }
+              </div>
+              {isConnected && <span className="global-avatar-name">{label}</span>}
+            </button>
+          </div>
+        </div>
         {children}
       </main>
 
@@ -378,45 +459,47 @@ export default function Layout({ children }) {
 
       {/* ── Profile Settings Modal ── */}
       {settingsOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(15,23,42,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={e => e.target === e.currentTarget && setSettingsOpen(false)}>
-          <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: 340, boxShadow: '0 24px 64px rgba(0,0,0,.25)', animation: 'modalIn .2s ease' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
-              <div style={{ fontWeight: 700, fontSize: 17, color: '#0f172a' }}>Profile Settings</div>
-              <button onClick={() => setSettingsOpen(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <X size={15} color="#64748b" />
+          <div className="card" style={{ padding: 0, width: 340, boxShadow: '0 24px 64px rgba(0,0,0,.2)', animation: 'modalIn .2s ease', border: 'none' }}>
+            <div className="card-header">
+              <span className="card-title">Profile Settings</span>
+              <button onClick={() => setSettingsOpen(false)} className="icon-btn" style={{ borderRadius: '50%', border: 'none', background: 'var(--surface2)' }}>
+                <X size={15} />
               </button>
             </div>
 
-            {/* Avatar preview + upload */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginBottom: 24 }}>
-              <div style={{ position: 'relative' }}>
-                <div style={{ width: 90, height: 90, borderRadius: '50%', background: isSuperAdmin ? '#0e7490' : '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '3px solid #e2e8f0', boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
-                  {avatar
-                    ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <span style={{ fontSize: 36, fontWeight: 800, color: '#fff' }}>{(label || '?').charAt(0).toUpperCase()}</span>
-                  }
+            <div className="card-body">
+              {/* Avatar preview + upload */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginBottom: 22 }}>
+                <div style={{ position: 'relative' }}>
+                  <div style={{ width: 90, height: 90, borderRadius: '50%', background: isSuperAdmin ? 'var(--primary)' : 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '3px solid var(--border)', boxShadow: '0 4px 16px rgba(0,0,0,.1)' }}>
+                    {avatar
+                      ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span style={{ fontSize: 36, fontWeight: 800, color: '#fff' }}>{(label || '?').charAt(0).toUpperCase()}</span>
+                    }
+                  </div>
+                  <button onClick={() => fileRef.current?.click()} style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: '50%', background: 'var(--primary)', border: '2px solid #fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  </button>
                 </div>
-                <button onClick={() => fileRef.current?.click()} style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: '50%', background: '#1d6ef5', border: '2px solid #fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                </button>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)' }}>{label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', textTransform: 'capitalize' }}>{role?.replace('superadmin', 'Super Admin')}</div>
+                </div>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontWeight: 600, fontSize: 15, color: '#0f172a' }}>{label}</div>
-                <div style={{ fontSize: 12, color: '#64748b', textTransform: 'capitalize' }}>{role?.replace('superadmin', 'Super Admin')}</div>
-              </div>
-            </div>
 
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
 
-            <button onClick={() => fileRef.current?.click()} style={{ width: '100%', padding: '11px 0', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 10 }}>
-              Upload Photo
-            </button>
-            {avatar && (
-              <button onClick={() => { setAvatar(''); setSettingsOpen(false) }} style={{ width: '100%', padding: '10px 0', borderRadius: 12, background: '#fff', border: '1.5px solid #e2e8f0', color: '#ef4444', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-                Remove Photo
+              <button onClick={() => fileRef.current?.click()} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
+                Upload Photo
               </button>
-            )}
+              {avatar && (
+                <button onClick={() => { setAvatar(''); setSettingsOpen(false) }} className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', color: 'var(--danger)' }}>
+                  Remove Photo
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
