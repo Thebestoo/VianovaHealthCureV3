@@ -93,6 +93,7 @@ export default function CCM() {
   const [newPt, setNewPt]           = useState({ condition: 'Diabetes Type 2', insurance: '', care_manager: '' })
   const [checkinForm, setCheckinForm] = useState({ minutes: '', notes: '', barriers: '', plan_update: '' })
   const [planTasks, setPlanTasks]   = useState([])
+  const [planGoals, setPlanGoals]   = useState([])
   const [planTemplate, setPlanTemplate] = useState('Diabetes Type 2')
   const [saving, setSaving]         = useState(false)
   const [expanded, setExpanded]     = useState({})
@@ -143,6 +144,7 @@ export default function CCM() {
       const d = await r.json()
       setPlan(d.plan || null)
       setPlanTasks(d.plan?.tasks ? JSON.parse(d.plan.tasks) : [])
+      try { setPlanGoals(d.plan?.goals ? JSON.parse(d.plan.goals) : []) } catch { setPlanGoals([]) }
     } catch {}
   }
 
@@ -242,7 +244,7 @@ export default function CCM() {
       await fetch(`/api/ccm/patients/${selected.id}/plan`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify({ tasks: JSON.stringify(planTasks) })
+        body: JSON.stringify({ tasks: JSON.stringify(planTasks), goals: JSON.stringify(planGoals) })
       })
       setShowPlanEdit(false)
       loadPlan(selected.id)
@@ -490,6 +492,30 @@ export default function CCM() {
                     </div>
                   </>
                 )}
+
+                {planGoals.length > 0 && (
+                  <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid #f3f4f6' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.03em' }}>Goals</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {planGoals.map((g, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 9, background: '#fafafa' }}>
+                          <span style={{
+                            fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 99, flexShrink: 0,
+                            color: g.status === 'met' ? '#16a34a' : g.status === 'in-progress' ? '#b45309' : '#6b7280',
+                            background: g.status === 'met' ? '#f0fdf4' : g.status === 'in-progress' ? '#fffbeb' : '#f1f5f9',
+                          }}>
+                            {g.status === 'met' ? 'Met' : g.status === 'in-progress' ? 'In progress' : 'Not started'}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>{g.description}</div>
+                            {g.target && <div style={{ fontSize: 11.5, color: '#9ca3af' }}>Target: {g.target}</div>}
+                          </div>
+                          {g.due && <span style={{ fontSize: 11, color: '#8b5cf6', fontWeight: 600, flexShrink: 0 }}>Due {g.due}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Check-in history */}
@@ -706,6 +732,43 @@ export default function CCM() {
                 <Plus size={13} /> Add task
               </button>
             </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 6 }}>Goals</label>
+              {planGoals.map((g, i) => (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: 10, border: '1px solid #e5e7eb', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input placeholder="Description" value={g.description || ''}
+                      onChange={e => setPlanGoals(gs => gs.map((gg, j) => j === i ? { ...gg, description: e.target.value } : gg))}
+                      className="ccm-input" style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13 }} />
+                    <button type="button" onClick={() => setPlanGoals(gs => gs.filter((_, j) => j !== i))}
+                      style={{ background: '#fef2f2', border: 'none', borderRadius: 7, width: 30, height: 30, cursor: 'pointer', color: '#ef4444', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input placeholder="Target" value={g.target || ''}
+                      onChange={e => setPlanGoals(gs => gs.map((gg, j) => j === i ? { ...gg, target: e.target.value } : gg))}
+                      className="ccm-input" style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13 }} />
+                    <input type="date" value={g.due || ''}
+                      onChange={e => setPlanGoals(gs => gs.map((gg, j) => j === i ? { ...gg, due: e.target.value } : gg))}
+                      className="ccm-input" style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13 }} />
+                    <select value={g.status || 'not-started'}
+                      onChange={e => setPlanGoals(gs => gs.map((gg, j) => j === i ? { ...gg, status: e.target.value } : gg))}
+                      className="ccm-input" style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13 }}>
+                      <option value="not-started">Not started</option>
+                      <option value="in-progress">In progress</option>
+                      <option value="met">Met</option>
+                    </select>
+                  </div>
+                </div>
+              ))}
+              <button type="button" onClick={() => setPlanGoals(gs => [...gs, { description: '', target: '', due: '', status: 'not-started' }])}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#faf9ff', border: '1.5px dashed #ddd6fe', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#7c3aed', width: '100%', fontWeight: 600 }}>
+                <Plus size={13} /> Add goal
+              </button>
+            </div>
+
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button type="button" onClick={() => setShowPlanEdit(false)} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
               <button type="submit" disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', border: 'none', borderRadius: 9, background: 'linear-gradient(135deg,#8b5cf6,#a855f7)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, boxShadow: '0 8px 18px -6px rgba(139,92,246,.55)' }}>
