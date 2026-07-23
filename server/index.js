@@ -2012,14 +2012,14 @@ app.get('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
 })
 
 app.post('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
-  const { tasks, goals } = req.body
+  const { tasks, goals, care_team } = req.body
   const now = new Date().toISOString()
   // Check if exists
   const existing = (await db.execute({ sql: 'SELECT id FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
   if (existing) {
-    await db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, goals = ?, updated_at = ? WHERE patient_id = ?', args: [tasks || '[]', goals || '[]', now, req.params.pid] })
+    await db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, goals = ?, care_team = ?, updated_at = ? WHERE patient_id = ?', args: [tasks || '[]', goals || '[]', care_team || '[]', now, req.params.pid] })
   } else {
-    await db.execute({ sql: 'INSERT INTO ccm_care_plans (patient_id, owner_key, tasks, goals, updated_at) VALUES (?,?,?,?,?)', args: [req.params.pid, req.apiKey, tasks || '[]', goals || '[]', now] })
+    await db.execute({ sql: 'INSERT INTO ccm_care_plans (patient_id, owner_key, tasks, goals, care_team, updated_at) VALUES (?,?,?,?,?,?)', args: [req.params.pid, req.apiKey, tasks || '[]', goals || '[]', care_team || '[]', now] })
   }
   res.json({ ok: true })
 })

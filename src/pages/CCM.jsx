@@ -94,6 +94,7 @@ export default function CCM() {
   const [checkinForm, setCheckinForm] = useState({ minutes: '', notes: '', barriers: '', plan_update: '' })
   const [planTasks, setPlanTasks]   = useState([])
   const [planGoals, setPlanGoals]   = useState([])
+  const [careTeam, setCareTeam]     = useState([])
   const [planTemplate, setPlanTemplate] = useState('Diabetes Type 2')
   const [saving, setSaving]         = useState(false)
   const [expanded, setExpanded]     = useState({})
@@ -145,6 +146,7 @@ export default function CCM() {
       setPlan(d.plan || null)
       setPlanTasks(d.plan?.tasks ? JSON.parse(d.plan.tasks) : [])
       try { setPlanGoals(d.plan?.goals ? JSON.parse(d.plan.goals) : []) } catch { setPlanGoals([]) }
+      try { setCareTeam(d.plan?.care_team ? JSON.parse(d.plan.care_team) : []) } catch { setCareTeam([]) }
     } catch {}
   }
 
@@ -244,7 +246,7 @@ export default function CCM() {
       await fetch(`/api/ccm/patients/${selected.id}/plan`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify({ tasks: JSON.stringify(planTasks), goals: JSON.stringify(planGoals) })
+        body: JSON.stringify({ tasks: JSON.stringify(planTasks), goals: JSON.stringify(planGoals), care_team: JSON.stringify(careTeam) })
       })
       setShowPlanEdit(false)
       loadPlan(selected.id)
@@ -412,6 +414,15 @@ export default function CCM() {
                         {selected.phone && <span><Phone size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} />{selected.phone}</span>}
                         <span style={{ background: '#f5f3ff', color: '#7c3aed', padding: '1px 8px', borderRadius: 99, fontWeight: 600 }}>{selected.condition}</span>
                       </div>
+                      {careTeam.length > 0 && (
+                        <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {careTeam.map((m, i) => (
+                            <span key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 99, padding: '2px 9px' }}>
+                              <strong style={{ color: '#374151' }}>{m.name}</strong>{m.role ? ` · ${m.role}` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -766,6 +777,28 @@ export default function CCM() {
               <button type="button" onClick={() => setPlanGoals(gs => [...gs, { description: '', target: '', due: '', status: 'not-started' }])}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#faf9ff', border: '1.5px dashed #ddd6fe', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#7c3aed', width: '100%', fontWeight: 600 }}>
                 <Plus size={13} /> Add goal
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 6 }}>Care Team</label>
+              {careTeam.map((m, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <input placeholder="Name" value={m.name || ''}
+                    onChange={e => setCareTeam(ct => ct.map((cm, j) => j === i ? { ...cm, name: e.target.value } : cm))}
+                    className="ccm-input" style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13 }} />
+                  <input placeholder="Role" value={m.role || ''}
+                    onChange={e => setCareTeam(ct => ct.map((cm, j) => j === i ? { ...cm, role: e.target.value } : cm))}
+                    className="ccm-input" style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 11px', fontSize: 13 }} />
+                  <button type="button" onClick={() => setCareTeam(ct => ct.filter((_, j) => j !== i))}
+                    style={{ background: '#fef2f2', border: 'none', borderRadius: 7, width: 30, height: 30, cursor: 'pointer', color: '#ef4444', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setCareTeam(ct => [...ct, { name: '', role: '' }])}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#faf9ff', border: '1.5px dashed #ddd6fe', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#7c3aed', width: '100%', fontWeight: 600 }}>
+                <Plus size={13} /> Add team member
               </button>
             </div>
 
