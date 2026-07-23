@@ -186,6 +186,17 @@ async function initDB() {
     `ALTER TABLE channel_messages ADD COLUMN resolved INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE channel_messages ADD COLUMN resolved_by TEXT`,
     `ALTER TABLE channel_messages ADD COLUMN resolved_at TEXT`,
+    // CCM — structured clinical data copied read-only from gen_patients at enroll time
+    `ALTER TABLE ccm_patients ADD COLUMN conditions TEXT`,
+    `ALTER TABLE ccm_patients ADD COLUMN medications TEXT`,
+    `ALTER TABLE ccm_patients ADD COLUMN allergies TEXT`,
+    // CCM — consent capture
+    `ALTER TABLE ccm_patients ADD COLUMN consent_date TEXT`,
+    `ALTER TABLE ccm_patients ADD COLUMN consent_method TEXT`,
+    // CCM — care plan goals, care team, status
+    `ALTER TABLE ccm_care_plans ADD COLUMN goals TEXT`,
+    `ALTER TABLE ccm_care_plans ADD COLUMN care_team TEXT`,
+    `ALTER TABLE ccm_care_plans ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -1985,12 +1996,12 @@ app.get('/api/ccm/patients', auth, async (req, res) => {
 })
 
 app.post('/api/ccm/patients', auth, async (req, res) => {
-  const { name, dob, phone, condition, insurance, care_manager } = req.body
+  const { name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method } = req.body
   if (!name) return res.status(400).json({ error: 'name required' })
   const id = randomUUID()
   await db.execute({
-    sql: `INSERT INTO ccm_patients (id, owner_email, name, dob, phone, condition, insurance, care_manager, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-    args: [id, req.apiKey, name, dob || null, phone || null, condition || null, insurance || null, care_manager || null, new Date().toISOString()]
+    sql: `INSERT INTO ccm_patients (id, owner_email, name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [id, req.apiKey, name, dob || null, phone || null, condition || null, insurance || null, care_manager || null, conditions || null, medications || null, allergies || null, consent_date || null, consent_method || null, new Date().toISOString()]
   })
   res.json({ id })
 })

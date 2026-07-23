@@ -176,6 +176,9 @@ export default function CCM() {
           name: pickedPatient.name,
           dob: pickedPatient.dob,
           phone: pickedPatient.phone,
+          conditions: pickedPatient.conditions,
+          medications: pickedPatient.medications,
+          allergies: pickedPatient.allergies,
           ...newPt,
         })
       })
