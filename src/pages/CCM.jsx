@@ -40,7 +40,9 @@ export default function CCM() {
   const [roster, setRoster]         = useState([])
   const [rosterSearch, setRosterSearch] = useState('')
   const [pickedPatient, setPickedPatient] = useState(null)
-  const [newPt, setNewPt]           = useState({ condition: '', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
+  const [newPt, setNewPt]           = useState({ conditions: [], conditionInput: '', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
+  const [enrolling, setEnrolling]   = useState(false)
+  const [enrollError, setEnrollError] = useState('')
   const [checkinForm, setCheckinForm] = useState({ minutes: '', notes: '', barriers: '', plan_update: '' })
   const [planTasks, setPlanTasks]   = useState([])
   const [planGoals, setPlanGoals]   = useState([])
@@ -132,29 +134,60 @@ export default function CCM() {
     } catch {}
   }
 
+  function resetEnrollForm() {
+    setShowAddPt(false)
+    setPickedPatient(null)
+    setRosterSearch('')
+    setEnrollError('')
+    setNewPt({ conditions: [], conditionInput: '', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
+  }
+
+  function addCondition(raw) {
+    const value = raw.trim()
+    if (!value) return
+    setNewPt(p => (p.conditions.some(c => c.toLowerCase() === value.toLowerCase()) ? p : { ...p, conditions: [...p.conditions, value], conditionInput: '' }))
+  }
+
+  function removeCondition(idx) {
+    setNewPt(p => ({ ...p, conditions: p.conditions.filter((_, i) => i !== idx) }))
+  }
+
   async function savePatient(e) {
     e.preventDefault()
-    if (!pickedPatient) return
+    if (!pickedPatient || enrolling) return
+    if (newPt.conditions.length === 0) { setEnrollError('Add at least one chronic condition.'); return }
+    if (!newPt.consent_date || !newPt.consent_method) { setEnrollError('Consent date and method are required.'); return }
+    setEnrolling(true)
+    setEnrollError('')
     try {
-      await fetch('/api/ccm/patients', {
+      const r = await fetch('/api/ccm/patients', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
         body: JSON.stringify({
           name: pickedPatient.name,
           dob: pickedPatient.dob,
           phone: pickedPatient.phone,
-          conditions: pickedPatient.conditions,
+          condition: newPt.conditions.join(', '),
+          conditions: newPt.conditions.join(', '),
           medications: pickedPatient.medications,
           allergies: pickedPatient.allergies,
-          ...newPt,
+          insurance: newPt.insurance,
+          care_manager: newPt.care_manager,
+          consent_date: newPt.consent_date,
+          consent_method: newPt.consent_method,
         })
       })
-      setShowAddPt(false)
-      setPickedPatient(null)
-      setRosterSearch('')
-      setNewPt({ condition: 'Diabetes Type 2', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        throw new Error(d.error || `Enrollment failed (${r.status})`)
+      }
+      resetEnrollForm()
       loadPatients()
-    } catch {}
+    } catch (err) {
+      setEnrollError(err.message || 'Something went wrong enrolling this patient. Please try again.')
+    } finally {
+      setEnrolling(false)
+    }
   }
 
   async function saveCheckin(e) {
@@ -628,8 +661,8 @@ export default function CCM() {
                       .map(p => (
                         <button key={p.id} type="button" onClick={() => {
                           setPickedPatient(p)
-                          const firstCondition = (p.conditions || '').split(',').map(c => c.trim()).filter(Boolean)[0]
-                          if (firstCondition) setNewPt(np => ({ ...np, condition: firstCondition }))
+                          const conditions = (p.conditions || '').split(',').map(c => c.trim()).filter(Boolean)
+                          setNewPt(np => ({ ...np, conditions }))
                         }}
                           style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
                           onMouseEnter={e => e.currentTarget.style.background = '#faf9ff'}
@@ -674,14 +707,33 @@ export default function CCM() {
                 style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Primary Condition</label>
-              <input type="text" required value={newPt.condition}
-                onChange={e => setNewPt(p => ({ ...p, condition: e.target.value }))}
-                className="ccm-input"
-                placeholder="Pulled from patient record — edit if needed"
-                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13, boxSizing: 'border-box' }} />
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+                Chronic Conditions <span style={{ color: '#9ca3af', fontWeight: 400 }}>(add as many as apply — CCM requires 2+)</span>
+              </label>
+              {newPt.conditions.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {newPt.conditions.map((c, i) => (
+                    <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f5f3ff', color: '#7c3aed', borderRadius: 99, padding: '4px 6px 4px 11px', fontSize: 12, fontWeight: 600 }}>
+                      {c}
+                      <button type="button" onClick={() => removeCondition(i)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7c3aed', display: 'flex', alignItems: 'center', padding: 2 }}>
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input type="text" value={newPt.conditionInput}
+                  onChange={e => setNewPt(p => ({ ...p, conditionInput: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCondition(newPt.conditionInput) } }}
+                  className="ccm-input" placeholder="e.g. Diabetes Type 2 — press Enter to add"
+                  style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13, boxSizing: 'border-box' }} />
+                <button type="button" onClick={() => addCondition(newPt.conditionInput)}
+                  style={{ padding: '0 14px', border: '1px solid #ddd6fe', borderRadius: 8, background: '#faf9ff', color: '#7c3aed', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Add</button>
+              </div>
               {pickedPatient?.conditions && (
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>From record: {pickedPatient.conditions}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>From patient record: {pickedPatient.conditions}</div>
               )}
             </div>
             <div style={{ marginBottom: 20, background: '#faf9ff', border: '1px solid #ede9fe', borderRadius: 10, padding: '12px 14px' }}>
@@ -706,9 +758,21 @@ export default function CCM() {
                 </div>
               </div>
             </div>
+            {enrollError && (
+              <div style={{ marginBottom: 14, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, padding: '9px 13px', color: '#b91c1c', fontSize: 12.5, fontWeight: 600 }}>
+                {enrollError}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => { setShowAddPt(false); setPickedPatient(null); setRosterSearch('') }} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
-              <button type="submit" disabled={!pickedPatient || !newPt.consent_date || !newPt.consent_method} style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: (pickedPatient && newPt.consent_date && newPt.consent_method) ? 'linear-gradient(135deg,#8b5cf6,#a855f7)' : '#d1d5db', color: '#fff', fontWeight: 700, cursor: (pickedPatient && newPt.consent_date && newPt.consent_method) ? 'pointer' : 'default', fontSize: 13, boxShadow: (pickedPatient && newPt.consent_date && newPt.consent_method) ? '0 8px 18px -6px rgba(139,92,246,.55)' : 'none' }}>Enroll</button>
+              <button type="button" onClick={resetEnrollForm} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
+              {(() => {
+                const ready = pickedPatient && newPt.conditions.length > 0 && newPt.consent_date && newPt.consent_method && !enrolling
+                return (
+                  <button type="submit" disabled={!ready} style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: ready ? 'linear-gradient(135deg,#8b5cf6,#a855f7)' : '#d1d5db', color: '#fff', fontWeight: 700, cursor: ready ? 'pointer' : 'default', fontSize: 13, boxShadow: ready ? '0 8px 18px -6px rgba(139,92,246,.55)' : 'none' }}>
+                    {enrolling ? 'Enrolling…' : 'Enroll'}
+                  </button>
+                )
+              })()}
             </div>
           </form>
         </div>
