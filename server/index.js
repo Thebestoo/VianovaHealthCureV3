@@ -2013,7 +2013,9 @@ app.get('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
 })
 
 app.post('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
-  const { tasks, goals, care_team } = req.body
+  const { tasks, goals, care_team, status } = req.body
+  const ALLOWED_STATUSES = ['draft', 'active', 'completed']
+  const planStatus = ALLOWED_STATUSES.includes(status) ? status : 'active'
   const now = new Date().toISOString()
   // Check if exists
   const existing = (await db.execute({ sql: 'SELECT * FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
@@ -2023,9 +2025,9 @@ app.post('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
       sql: 'INSERT INTO ccm_care_plan_versions (patient_id, tasks, goals, care_team, saved_at, saved_by) VALUES (?,?,?,?,?,?)',
       args: [req.params.pid, existing.tasks || '[]', existing.goals || '[]', existing.care_team || '[]', existing.updated_at || now, req.apiKey]
     })
-    await db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, goals = ?, care_team = ?, updated_at = ? WHERE patient_id = ?', args: [tasks || '[]', goals || '[]', care_team || '[]', now, req.params.pid] })
+    await db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, goals = ?, care_team = ?, status = ?, updated_at = ? WHERE patient_id = ?', args: [tasks || '[]', goals || '[]', care_team || '[]', planStatus, now, req.params.pid] })
   } else {
-    await db.execute({ sql: 'INSERT INTO ccm_care_plans (patient_id, owner_key, tasks, goals, care_team, updated_at) VALUES (?,?,?,?,?,?)', args: [req.params.pid, req.apiKey, tasks || '[]', goals || '[]', care_team || '[]', now] })
+    await db.execute({ sql: 'INSERT INTO ccm_care_plans (patient_id, owner_key, tasks, goals, care_team, status, updated_at) VALUES (?,?,?,?,?,?,?)', args: [req.params.pid, req.apiKey, tasks || '[]', goals || '[]', care_team || '[]', planStatus, now] })
   }
   res.json({ ok: true })
 })

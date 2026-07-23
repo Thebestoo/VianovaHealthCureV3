@@ -65,6 +65,8 @@ const NOTE_TEMPLATES = [
 
 const STATUS_COLOR = { active: '#10b981', inactive: '#94a3b8', discharged: '#ef4444' }
 const STATUS_BG    = { active: '#ecfdf5', inactive: '#f1f5f9', discharged: '#fef2f2' }
+const PLAN_STATUS_COLOR = { draft: '#b45309', active: '#16a34a', completed: '#6366f1' }
+const PLAN_STATUS_BG    = { draft: '#fffbeb', active: '#f0fdf4', completed: '#eef2ff' }
 const ACCENT = '#8b5cf6'
 
 function formatTimer(seconds) {
@@ -95,6 +97,7 @@ export default function CCM() {
   const [planTasks, setPlanTasks]   = useState([])
   const [planGoals, setPlanGoals]   = useState([])
   const [careTeam, setCareTeam]     = useState([])
+  const [planStatus, setPlanStatus] = useState('active')
   const [planTemplate, setPlanTemplate] = useState('Diabetes Type 2')
   const [saving, setSaving]         = useState(false)
   const [expanded, setExpanded]     = useState({})
@@ -150,6 +153,7 @@ export default function CCM() {
       setPlanTasks(d.plan?.tasks ? JSON.parse(d.plan.tasks) : [])
       try { setPlanGoals(d.plan?.goals ? JSON.parse(d.plan.goals) : []) } catch { setPlanGoals([]) }
       try { setCareTeam(d.plan?.care_team ? JSON.parse(d.plan.care_team) : []) } catch { setCareTeam([]) }
+      setPlanStatus(d.plan?.status || 'active')
     } catch {}
   }
 
@@ -257,7 +261,7 @@ export default function CCM() {
       await fetch(`/api/ccm/patients/${selected.id}/plan`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify({ tasks: JSON.stringify(planTasks), goals: JSON.stringify(planGoals), care_team: JSON.stringify(careTeam) })
+        body: JSON.stringify({ tasks: JSON.stringify(planTasks), goals: JSON.stringify(planGoals), care_team: JSON.stringify(careTeam), status: planStatus })
       })
       setShowPlanEdit(false)
       loadPlan(selected.id)
@@ -485,6 +489,9 @@ export default function CCM() {
                     </div>
                     Care Plan
                     {totalTasks > 0 && <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 500 }}>({doneTasks}/{totalTasks} completed)</span>}
+                    <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', padding: '2px 9px', borderRadius: 99, color: PLAN_STATUS_COLOR[planStatus] || '#6b7280', background: PLAN_STATUS_BG[planStatus] || '#f1f5f9' }}>
+                      {planStatus}
+                    </span>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => { setShowHistory(h => !h); if (!showHistory) loadPlanHistory(selected.id) }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#374151' }}>
@@ -765,7 +772,16 @@ export default function CCM() {
       {showPlanEdit && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,10,30,.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, animation: 'ccmFade .18s ease' }}>
           <form onSubmit={savePlan} style={{ background: '#fff', borderRadius: 18, padding: '30px 32px', width: 560, maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 30px 80px -20px rgba(0,0,0,.4)', animation: 'ccmIn .22s cubic-bezier(.16,1,.3,1)' }}>
-            <h2 style={{ margin: '0 0 16px', fontSize: 19, fontWeight: 800, color: '#111827' }}>Edit Care Plan</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: '#111827' }}>Edit Care Plan</h2>
+              <select value={planStatus} onChange={e => setPlanStatus(e.target.value)}
+                className="ccm-input"
+                style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '6px 10px', fontSize: 12.5, fontWeight: 600, color: PLAN_STATUS_COLOR[planStatus] }}>
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
             <div style={{ marginBottom: 18 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 6 }}>Load Template</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
