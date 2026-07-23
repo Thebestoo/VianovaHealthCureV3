@@ -850,7 +850,8 @@ export default function CCM() {
                 ))}
               </div>
             </div>
-            <div style={{ marginBottom: 18 }}>
+            <div style={{ marginBottom: 18, paddingTop: 16, borderTop: '1px solid #f3f4f6' }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 6 }}>Tasks</label>
               {planTasks.map((t, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: 8, border: '1px solid #f3f4f6', borderRadius: 8 }}>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -878,7 +879,7 @@ export default function CCM() {
               </button>
             </div>
 
-            <div style={{ marginBottom: 18 }}>
+            <div style={{ marginBottom: 18, paddingTop: 16, borderTop: '1px solid #f3f4f6' }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 6 }}>Goals</label>
               {planGoals.map((g, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: 10, border: '1px solid #e5e7eb', borderRadius: 8 }}>
@@ -914,7 +915,7 @@ export default function CCM() {
               </button>
             </div>
 
-            <div style={{ marginBottom: 18 }}>
+            <div style={{ marginBottom: 18, paddingTop: 16, borderTop: '1px solid #f3f4f6' }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 6 }}>Care Team</label>
               {careTeam.map((m, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
@@ -936,7 +937,7 @@ export default function CCM() {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 16, borderTop: '1px solid #f3f4f6' }}>
               <button type="button" onClick={() => setShowPlanEdit(false)} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
               <button type="submit" disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', border: 'none', borderRadius: 9, background: 'linear-gradient(135deg,#8b5cf6,#a855f7)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13, boxShadow: '0 8px 18px -6px rgba(139,92,246,.55)' }}>
                 <Save size={13} /> {saving ? 'Saving…' : 'Save Plan'}
