@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   LayoutDashboard, PlusCircle, BarChart2,
-  HeartPulse, ShieldCheck, Stethoscope, LogOut, Wifi, WifiOff,
+  ShieldCheck, Stethoscope, LogOut,
   Users, LogIn, Menu, X, CalendarDays, AlertOctagon, Users2,
   Receipt, Settings, MessageSquare, Radio,
   Search, Phone, Bell, Package, ChevronDown, ClipboardList, FileSearch
@@ -97,9 +97,10 @@ const BOTTOM_NAV = [
 export default function Layout({ children }) {
   const navigate = useNavigate()
   const { pathname, search } = useLocation()
-  const { key, role, label, email, avatar, stats, disconnect, setAvatar } = useKey()
+  const { key, role, label, email, avatar, disconnect, setAvatar } = useKey()
   const [menuOpen,     setMenuOpen]     = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [expandedNav,  setExpandedNav]  = useState(() => new Set())
   const fileRef = useRef(null)
   const seenAssignedRef = useRef(null)
@@ -107,13 +108,13 @@ export default function Layout({ children }) {
   // Let ESC close whichever overlay is open (profile modal, mobile drawer) —
   // mobile users especially have no click-outside affordance while scrolled.
   useEffect(() => {
-    if (!settingsOpen && !menuOpen) return
+    if (!settingsOpen && !menuOpen && !profileMenuOpen) return
     function onKeyDown(e) {
-      if (e.key === 'Escape') { setSettingsOpen(false); setMenuOpen(false) }
+      if (e.key === 'Escape') { setSettingsOpen(false); setMenuOpen(false); setProfileMenuOpen(false) }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [settingsOpen, menuOpen])
+  }, [settingsOpen, menuOpen, profileMenuOpen])
 
   // Poll for cases newly assigned to this doctor and toast a link to open them.
   useEffect(() => {
@@ -216,78 +217,8 @@ export default function Layout({ children }) {
       {/* ── Desktop sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#0e7490,#059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <HeartPulse size={16} color="#fff" />
-            </div>
-            <div>
-              <div className="brand" style={{ lineHeight: 1.1 }}>VIANOVA</div>
-              <div className="tagline">Cure Analyzer System</div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-          {isConnected ? (
-            <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 12px', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Wifi size={13} color="var(--success)" />
-                  <span style={{ fontSize: 11, color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>Connected</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <button onClick={() => setSettingsOpen(true)} title="Profile Settings"
-                    style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: 2 }}>
-                    <Settings size={13} />
-                  </button>
-                  <button onClick={handleDisconnect} title="Sign Out"
-                    style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: 2 }}>
-                    <LogOut size={13} />
-                  </button>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                {/* Avatar — photo if set, otherwise icon */}
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: isSuperAdmin ? 'var(--primary)' : 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden', cursor: 'pointer' }}
-                  onClick={() => setSettingsOpen(true)} title="Change photo">
-                  {avatar
-                    ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : (isSuperAdmin ? <ShieldCheck size={14} color="#fff" /> : <Stethoscope size={14} color="#fff" />)
-                  }
-                </div>
-                <div>
-                  <div style={{ color: 'var(--text)', fontWeight: 600, fontSize: 13, lineHeight: 1.2 }}>{label}</div>
-                  <div style={{ color: 'var(--text3)', fontSize: 11 }}>{isSuperAdmin ? 'Super Admin' : 'Doctor'}</div>
-                </div>
-              </div>
-              {stats && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 10 }}>
-                  {[
-                    { label: 'Cases',     value: stats.total     },
-                    { label: 'Pending',   value: stats.pending   },
-                    { label: 'Approved',  value: stats.approved  },
-                    { label: 'Emergency', value: stats.emergency },
-                  ].map(s => (
-                    <div key={s.label} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 8px', textAlign: 'center' }}>
-                      <div style={{ color: 'var(--text)', fontWeight: 700, fontSize: 15 }}>{s.value}</div>
-                      <div style={{ color: 'var(--text3)', fontSize: 10 }}>{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 12px', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <WifiOff size={14} color="var(--text3)" />
-                <div style={{ color: 'var(--text3)', fontSize: 12, fontWeight: 500 }}>Not signed in</div>
-              </div>
-              <button onClick={() => navigate('/login')}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 7, background: 'var(--primary)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <LogIn size={13} /> Sign In
-              </button>
-            </div>
-          )}
+          <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 24, width: 'auto', display: 'block' }} />
+          <div className="tagline" style={{ marginTop: 6 }}>Cure Analyzer System</div>
         </div>
 
         <nav className="sidebar-nav">
@@ -344,10 +275,7 @@ export default function Layout({ children }) {
 
       {/* ── Mobile top header ── */}
       <header className="mobile-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <HeartPulse size={20} color="var(--primary)" />
-          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>Vianova Health</span>
-        </div>
+        <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 20, width: 'auto', display: 'block' }} />
         <button className="mobile-menu-btn" onClick={() => setMenuOpen(o => !o)}>
           {menuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
@@ -436,15 +364,56 @@ export default function Layout({ children }) {
             <button className="icon-btn" title="Calls" onClick={() => navigate('/calls')}><Phone size={16} /></button>
             <button className="icon-btn" title="Team" onClick={() => navigate('/patients')}><Users2 size={16} /></button>
             <div className="global-topbar-divider" />
-            <button className="global-avatar" onClick={() => isConnected ? setSettingsOpen(true) : navigate('/login')} title={isConnected ? 'Profile' : 'Sign in'}>
-              <div style={{ width: 30, height: 30, borderRadius: '50%', background: isSuperAdmin ? 'var(--primary)' : 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                {avatar
-                  ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : (isSuperAdmin ? <ShieldCheck size={14} color="#fff" /> : <Stethoscope size={14} color="#fff" />)
-                }
-              </div>
-              {isConnected && <span className="global-avatar-name">{label}</span>}
-            </button>
+            <div style={{ position: 'relative' }}>
+              <button className="global-avatar" onClick={() => isConnected ? setProfileMenuOpen(o => !o) : navigate('/login')} title={isConnected ? 'Account' : 'Sign in'}>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', background: isSuperAdmin ? 'var(--primary)' : 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                  {avatar
+                    ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : (isSuperAdmin ? <ShieldCheck size={14} color="#fff" /> : <Stethoscope size={14} color="#fff" />)
+                  }
+                </div>
+                {isConnected ? (
+                  <>
+                    <span className="global-avatar-name">{label}</span>
+                    <ChevronDown size={14} color="var(--text3)" style={{ transform: profileMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+                  </>
+                ) : (
+                  <span className="global-avatar-name">Sign In</span>
+                )}
+              </button>
+
+              {profileMenuOpen && isConnected && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setProfileMenuOpen(false)} />
+                  <div className="card animate-fade-in" style={{ position: 'absolute', top: 'calc(100% + 10px)', right: 0, width: 250, padding: 0, zIndex: 1000, boxShadow: '0 16px 40px rgba(0,0,0,.16)' }}>
+                    <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: '50%', background: isSuperAdmin ? 'var(--primary)' : 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                        {avatar
+                          ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : (isSuperAdmin ? <ShieldCheck size={16} color="#fff" /> : <Stethoscope size={16} color="#fff" />)
+                        }
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '6px' }}>
+                      <button onClick={() => { setProfileMenuOpen(false); setSettingsOpen(true) }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, color: 'var(--text)', textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                        <Settings size={14} color="var(--text2)" /> Account Settings
+                      </button>
+                      <button onClick={() => { setProfileMenuOpen(false); handleDisconnect() }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, color: 'var(--danger)', textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--danger-light)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                        <LogOut size={14} /> Sign Out
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
         {children}
