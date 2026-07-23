@@ -11,8 +11,8 @@ const NOTE_TEMPLATES = [
   { label: 'Lab/vitals follow-up', notes: 'Reviewed recent lab results / vitals with patient and discussed next steps.' },
 ]
 
-const STATUS_COLOR = { active: '#10b981', inactive: '#94a3b8', discharged: '#ef4444' }
-const STATUS_BG    = { active: '#ecfdf5', inactive: '#f1f5f9', discharged: '#fef2f2' }
+const STATUS_COLOR = { active: '#10b981', inactive: '#94a3b8', discharged: '#ef4444', disenrolled: '#ef4444' }
+const STATUS_BG    = { active: '#ecfdf5', inactive: '#f1f5f9', discharged: '#fef2f2', disenrolled: '#fef2f2' }
 const PLAN_STATUS_COLOR = { draft: '#b45309', active: '#16a34a', completed: '#6366f1' }
 const PLAN_STATUS_BG    = { draft: '#fffbeb', active: '#f0fdf4', completed: '#eef2ff' }
 const ACCENT = '#8b5cf6'

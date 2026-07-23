@@ -194,6 +194,8 @@ async function initDB() {
     // CCM — consent capture
     `ALTER TABLE ccm_patients ADD COLUMN consent_date TEXT`,
     `ALTER TABLE ccm_patients ADD COLUMN consent_method TEXT`,
+    // CCM — disenrollment as an auditable status change instead of a hard delete
+    `ALTER TABLE ccm_patients ADD COLUMN disenrolled_at TEXT`,
     // CCM — care plan goals, care team, status
     `ALTER TABLE ccm_care_plans ADD COLUMN goals TEXT`,
     `ALTER TABLE ccm_care_plans ADD COLUMN care_team TEXT`,
@@ -1991,103 +1993,138 @@ app.delete('/api/rpm/patients/:pid', auth, async (req, res) => {
 })
 
 // ── CCM routes ─────────────────────────────────────────────────────────────────
+// Every :pid route below must confirm the patient belongs to the caller before
+// touching plan/checkin data — without this, guessing another owner's patient id
+// would expose or let you overwrite their care plan.
+async function loadOwnedCcmPatient(pid, ownerEmail) {
+  return (await db.execute({ sql: 'SELECT * FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [pid, ownerEmail] })).rows[0] || null
+}
+
 app.get('/api/ccm/patients', auth, async (req, res) => {
-  const rows = (await db.execute({ sql: 'SELECT * FROM ccm_patients WHERE owner_email = ? ORDER BY name', args: [req.apiKey] })).rows
-  res.json({ patients: rows })
+  try {
+    const rows = (await db.execute({ sql: "SELECT * FROM ccm_patients WHERE owner_email = ? AND status != 'disenrolled' ORDER BY name", args: [req.apiKey] })).rows
+    res.json({ patients: rows })
+  } catch (e) { res.status(500).json({ error: 'Failed to load patients', detail: e.message }) }
 })
 
 app.post('/api/ccm/patients', auth, async (req, res) => {
-  const { name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method } = req.body
-  if (!name) return res.status(400).json({ error: 'name required' })
-  const id = randomUUID()
-  await db.execute({
-    sql: `INSERT INTO ccm_patients (id, owner_email, name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    args: [id, req.apiKey, name, dob || null, phone || null, condition || null, insurance || null, care_manager || null, conditions || null, medications || null, allergies || null, consent_date || null, consent_method || null, new Date().toISOString()]
-  })
-  res.json({ id })
+  try {
+    const { name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method } = req.body
+    if (!name) return res.status(400).json({ error: 'name required' })
+    const id = randomUUID()
+    await db.execute({
+      sql: `INSERT INTO ccm_patients (id, owner_email, name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [id, req.apiKey, name, dob || null, phone || null, condition || null, insurance || null, care_manager || null, conditions || null, medications || null, allergies || null, consent_date || null, consent_method || null, new Date().toISOString()]
+    })
+    res.json({ id })
+  } catch (e) { res.status(500).json({ error: 'Failed to enroll patient', detail: e.message }) }
 })
 
 app.get('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
-  const plan = (await db.execute({ sql: 'SELECT * FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
-  res.json({ plan: plan || null })
+  try {
+    if (!(await loadOwnedCcmPatient(req.params.pid, req.apiKey))) return res.status(404).json({ error: 'Patient not found' })
+    const plan = (await db.execute({ sql: 'SELECT * FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
+    res.json({ plan: plan || null })
+  } catch (e) { res.status(500).json({ error: 'Failed to load care plan', detail: e.message }) }
 })
 
 app.post('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
-  const { tasks, goals, care_team, status } = req.body
-  const ALLOWED_STATUSES = ['draft', 'active', 'completed']
-  const planStatus = ALLOWED_STATUSES.includes(status) ? status : 'active'
-  const now = new Date().toISOString()
-  // Check if exists
-  const existing = (await db.execute({ sql: 'SELECT * FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
-  if (existing) {
-    // snapshot the previous state before overwriting it
-    await db.execute({
-      sql: 'INSERT INTO ccm_care_plan_versions (patient_id, tasks, goals, care_team, saved_at, saved_by) VALUES (?,?,?,?,?,?)',
-      args: [req.params.pid, existing.tasks || '[]', existing.goals || '[]', existing.care_team || '[]', existing.updated_at || now, req.apiKey]
-    })
-    await db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, goals = ?, care_team = ?, status = ?, updated_at = ? WHERE patient_id = ?', args: [tasks || '[]', goals || '[]', care_team || '[]', planStatus, now, req.params.pid] })
-  } else {
-    await db.execute({ sql: 'INSERT INTO ccm_care_plans (patient_id, owner_key, tasks, goals, care_team, status, updated_at) VALUES (?,?,?,?,?,?,?)', args: [req.params.pid, req.apiKey, tasks || '[]', goals || '[]', care_team || '[]', planStatus, now] })
-  }
-  res.json({ ok: true })
+  try {
+    if (!(await loadOwnedCcmPatient(req.params.pid, req.apiKey))) return res.status(404).json({ error: 'Patient not found' })
+    const { tasks, goals, care_team, status } = req.body
+    const ALLOWED_STATUSES = ['draft', 'active', 'completed']
+    const now = new Date().toISOString()
+    const existing = (await db.execute({ sql: 'SELECT * FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
+    // Only fields actually sent in this request are changed — e.g. toggling a single
+    // task must not blank out goals/care_team/status that weren't part of this save.
+    const nextTasks = tasks !== undefined ? tasks : (existing?.tasks ?? '[]')
+    const nextGoals = goals !== undefined ? goals : (existing?.goals ?? '[]')
+    const nextCareTeam = care_team !== undefined ? care_team : (existing?.care_team ?? '[]')
+    const nextStatus = status !== undefined ? (ALLOWED_STATUSES.includes(status) ? status : existing?.status || 'active') : (existing?.status || 'active')
+    if (existing) {
+      // snapshot the previous state before overwriting it
+      await db.execute({
+        sql: 'INSERT INTO ccm_care_plan_versions (patient_id, tasks, goals, care_team, saved_at, saved_by) VALUES (?,?,?,?,?,?)',
+        args: [req.params.pid, existing.tasks || '[]', existing.goals || '[]', existing.care_team || '[]', existing.updated_at || now, req.apiKey]
+      })
+      await db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, goals = ?, care_team = ?, status = ?, updated_at = ? WHERE patient_id = ?', args: [nextTasks, nextGoals, nextCareTeam, nextStatus, now, req.params.pid] })
+    } else {
+      await db.execute({ sql: 'INSERT INTO ccm_care_plans (patient_id, owner_key, tasks, goals, care_team, status, updated_at) VALUES (?,?,?,?,?,?,?)', args: [req.params.pid, req.apiKey, nextTasks, nextGoals, nextCareTeam, nextStatus, now] })
+    }
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: 'Failed to save care plan', detail: e.message }) }
 })
 
 app.get('/api/ccm/patients/:pid/plan/history', auth, async (req, res) => {
-  const rows = (await db.execute({ sql: 'SELECT * FROM ccm_care_plan_versions WHERE patient_id = ? ORDER BY saved_at DESC', args: [req.params.pid] })).rows
-  res.json({ versions: rows })
+  try {
+    if (!(await loadOwnedCcmPatient(req.params.pid, req.apiKey))) return res.status(404).json({ error: 'Patient not found' })
+    const rows = (await db.execute({ sql: 'SELECT * FROM ccm_care_plan_versions WHERE patient_id = ? ORDER BY saved_at DESC', args: [req.params.pid] })).rows
+    res.json({ versions: rows })
+  } catch (e) { res.status(500).json({ error: 'Failed to load plan history', detail: e.message }) }
 })
 
 app.get('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
-  const rows = (await db.execute({ sql: 'SELECT * FROM ccm_checkins WHERE patient_id = ? ORDER BY created_at DESC', args: [req.params.pid] })).rows
-  res.json({ checkins: rows })
+  try {
+    if (!(await loadOwnedCcmPatient(req.params.pid, req.apiKey))) return res.status(404).json({ error: 'Patient not found' })
+    const rows = (await db.execute({ sql: 'SELECT * FROM ccm_checkins WHERE patient_id = ? ORDER BY created_at DESC', args: [req.params.pid] })).rows
+    res.json({ checkins: rows })
+  } catch (e) { res.status(500).json({ error: 'Failed to load check-ins', detail: e.message }) }
 })
 
 app.post('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
-  const { minutes, notes, barriers, plan_update } = req.body
-  await db.execute({
-    sql: `INSERT INTO ccm_checkins (patient_id, owner_key, minutes, notes, barriers, plan_update, created_at) VALUES (?,?,?,?,?,?,?)`,
-    args: [req.params.pid, req.apiKey, minutes || 0, notes || null, barriers || null, plan_update || null, new Date().toISOString()]
-  })
-  res.json({ ok: true })
+  try {
+    if (!(await loadOwnedCcmPatient(req.params.pid, req.apiKey))) return res.status(404).json({ error: 'Patient not found' })
+    const { minutes, notes, barriers, plan_update } = req.body
+    await db.execute({
+      sql: `INSERT INTO ccm_checkins (patient_id, owner_key, minutes, notes, barriers, plan_update, created_at) VALUES (?,?,?,?,?,?,?)`,
+      args: [req.params.pid, req.apiKey, minutes || 0, notes || null, barriers || null, plan_update || null, new Date().toISOString()]
+    })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: 'Failed to save check-in', detail: e.message }) }
 })
 
 // AI-assisted check-in — drafts a clinically-reasonable note + minute estimate
 // from the patient's condition and care plan so staff aren't starting from a blank form.
 app.post('/api/ccm/patients/:pid/checkins/ai-suggest', auth, aiLimiter, async (req, res) => {
-  const patient = (await db.execute({ sql: 'SELECT * FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
-  if (!patient) return res.status(404).json({ error: 'Patient not found' })
-  const [planRow, pastCheckins] = await Promise.all([
-    db.execute({ sql: 'SELECT tasks FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] }).then(r => r.rows[0]),
-    db.execute({ sql: 'SELECT minutes, notes, barriers, created_at FROM ccm_checkins WHERE patient_id = ? ORDER BY created_at DESC LIMIT 3', args: [req.params.pid] }).then(r => r.rows),
-  ])
-  let tasks = []
-  try { tasks = planRow?.tasks ? JSON.parse(planRow.tasks) : [] } catch {}
-  const openTasks = tasks.filter(t => !t.done).map(t => t.text || t.label || t).slice(0, 5)
-  const history = pastCheckins.map(c => `- ${c.created_at?.slice(0, 10)}: ${c.minutes || 0}min — ${c.notes || 'no notes'}${c.barriers ? ` (barrier: ${c.barriers})` : ''}`).join('\n')
+  try {
+    const patient = await loadOwnedCcmPatient(req.params.pid, req.apiKey)
+    if (!patient) return res.status(404).json({ error: 'Patient not found' })
+    const [planRow, pastCheckins] = await Promise.all([
+      db.execute({ sql: 'SELECT tasks FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] }).then(r => r.rows[0]),
+      db.execute({ sql: 'SELECT minutes, notes, barriers, created_at FROM ccm_checkins WHERE patient_id = ? ORDER BY created_at DESC LIMIT 3', args: [req.params.pid] }).then(r => r.rows),
+    ])
+    let tasks = []
+    try { tasks = planRow?.tasks ? JSON.parse(planRow.tasks) : [] } catch {}
+    let meds = []
+    try { meds = JSON.parse(patient.medications || '[]') } catch { meds = patient.medications ? [patient.medications] : [] }
+    const openTasks = tasks.filter(t => !t.done).map(t => t.text || t.label || t).slice(0, 5)
+    const history = pastCheckins.map(c => `- ${c.created_at?.slice(0, 10)}: ${c.minutes || 0}min — ${c.notes || 'no notes'}${c.barriers ? ` (barrier: ${c.barriers})` : ''}`).join('\n')
 
-  const prompt = `You are drafting a Chronic Care Management (CCM) monthly check-in call note for a care manager.
+    const prompt = `You are drafting a Chronic Care Management (CCM) monthly check-in call note for a care manager.
 Patient: ${patient.name}
 Condition: ${patient.condition || 'not specified'}
+Current medications (for adherence/reconciliation review): ${meds.join(', ') || 'none recorded'}
 Care manager: ${patient.care_manager || 'not assigned'}
 Open care plan tasks: ${openTasks.join('; ') || 'none'}
 Previous check-ins (most recent first):
 ${history || 'none on record — this is the first check-in'}
 
-Write a concise, professional check-in note (2-3 sentences) documenting a routine telephone check-in with ${patient.name}, covering symptom review, medication adherence, and progress on the open tasks above. If there are previous check-ins, reference continuity (e.g. follow-up on a prior barrier) rather than repeating the same note verbatim. Suggest a realistic minutes value for a CCM call (typically 10-20).
+Write a concise, professional check-in note (2-3 sentences) documenting a routine telephone check-in with ${patient.name}, covering symptom review, medication adherence/reconciliation, and progress on the open tasks above. If there are previous check-ins, reference continuity (e.g. follow-up on a prior barrier) rather than repeating the same note verbatim. Suggest a realistic minutes value for a CCM call (typically 10-20).
 Respond with JSON only: {"minutes": number, "notes": "string", "plan_update": "1 short sentence or empty string"}`
 
-  try {
-    const chat = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.4, max_tokens: 220,
-    })
-    const m = chat.choices[0].message.content.match(/\{[\s\S]*\}/)
-    const parsed = m ? JSON.parse(m[0]) : null
-    res.json(parsed || { minutes: 15, notes: 'Routine telephone check-in completed with patient.', plan_update: '' })
-  } catch (e) {
-    res.json({ minutes: 15, notes: 'Routine telephone check-in completed with patient.', plan_update: '' })
-  }
+    try {
+      const chat = await client.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.4, max_tokens: 220,
+      })
+      const m = chat.choices[0].message.content.match(/\{[\s\S]*\}/)
+      const parsed = m ? JSON.parse(m[0]) : null
+      res.json(parsed || { minutes: 15, notes: 'Routine telephone check-in completed with patient.', plan_update: '' })
+    } catch {
+      res.json({ minutes: 15, notes: 'Routine telephone check-in completed with patient.', plan_update: '' })
+    }
+  } catch (e) { res.status(500).json({ error: 'Failed to draft check-in suggestion', detail: e.message }) }
 })
 
 // AI-drafted care plan — gathers the patient's clinical picture (conditions,
@@ -2095,7 +2132,7 @@ Respond with JSON only: {"minutes": number, "notes": "string", "plan_update": "1
 // and proposes goals/tasks/care_team for clinician review. Never written to the
 // DB automatically — the clinician must edit and explicitly save.
 app.post('/api/ccm/patients/:pid/plan/ai-draft', auth, aiLimiter, async (req, res) => {
-  const patient = (await db.execute({ sql: 'SELECT * FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
+  const patient = await loadOwnedCcmPatient(req.params.pid, req.apiKey)
   if (!patient) return res.status(404).json({ error: 'Patient not found' })
 
   let vitalsRows = []
@@ -2160,14 +2197,19 @@ Provide 2-4 goals and 4-8 tasks addressing the open care gaps and recent barrier
   }
 })
 
-// Disenroll — removes the patient, care plan and check-in history from CCM.
+// Disenroll — CMS audits can request proof CCM services were actually rendered,
+// so this marks the patient disenrolled (hidden from the active roster) rather
+// than hard-deleting the plan/check-in history that documents past care.
 app.delete('/api/ccm/patients/:pid', auth, async (req, res) => {
-  const existing = (await db.execute({ sql: 'SELECT id FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })).rows[0]
-  if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
-  await db.execute({ sql: 'DELETE FROM ccm_checkins WHERE patient_id = ?', args: [req.params.pid] })
-  await db.execute({ sql: 'DELETE FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })
-  await db.execute({ sql: 'DELETE FROM ccm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })
-  res.json({ ok: true })
+  try {
+    const existing = await loadOwnedCcmPatient(req.params.pid, req.apiKey)
+    if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
+    await db.execute({
+      sql: "UPDATE ccm_patients SET status = 'disenrolled', disenrolled_at = ? WHERE id = ? AND owner_email = ?",
+      args: [new Date().toISOString(), req.params.pid, req.apiKey]
+    })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: 'Failed to disenroll patient', detail: e.message }) }
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
