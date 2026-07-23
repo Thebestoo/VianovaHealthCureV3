@@ -3,58 +3,6 @@ import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
 
-const CARE_PLAN_TEMPLATES = {
-  'Diabetes Type 2': [
-    'Monitor blood glucose daily (fasting & post-meal)',
-    'HbA1c check every 3 months',
-    'Foot examination monthly',
-    'Eye exam annually',
-    'Blood pressure monitoring weekly',
-    'Kidney function labs (eGFR, urine microalbumin) every 6 months',
-    'Medication adherence review',
-    'Dietary counseling — low-carb, low-sugar diet',
-    'Physical activity: 150 min/week moderate exercise',
-    'Smoking cessation support (if applicable)',
-  ],
-  'Hypertension': [
-    'Daily blood pressure log (morning & evening)',
-    'Low-sodium diet counseling (< 2g/day)',
-    'Medication adherence — do not miss doses',
-    'Limit alcohol to ≤ 1 drink/day',
-    'Regular aerobic exercise 30 min/day',
-    'Stress management techniques',
-    'Annual kidney function panel',
-    'Annual lipid panel',
-    'BMI & weight tracking monthly',
-    'Ophthalmology referral (hypertensive retinopathy)',
-  ],
-  'COPD': [
-    'Inhaler technique check at each visit',
-    'Pulmonary function test (spirometry) annually',
-    'Oxygen saturation monitoring (SpO2 target ≥ 92%)',
-    'Flu vaccine annually; pneumococcal vaccine per guidelines',
-    'Smoking cessation — highest priority',
-    'Pulmonary rehabilitation referral',
-    'Nutritional assessment (COPD can cause weight loss)',
-    'Exacerbation action plan in writing',
-    'Activity pacing — energy conservation strategies',
-    '6-minute walk test every 3 months',
-  ],
-  'Heart Failure': [
-    'Daily weight monitoring (alert if +2 kg in 2 days)',
-    'Fluid restriction: 1.5–2 L/day',
-    'Low-sodium diet (< 2g/day)',
-    'BNP/NT-proBNP labs every 3–6 months',
-    'Echocardiogram annually',
-    'Medication adherence (ACE/ARB, beta-blocker, diuretic)',
-    'Daily pedal edema assessment',
-    'Symptom diary — dyspnea, fatigue, orthopnea',
-    'ICD/pacemaker check if applicable',
-    'Cardiac rehab referral',
-  ],
-  'Custom': [],
-}
-
 const QUICK_MINUTES = [5, 10, 15, 20, 30]
 const NOTE_TEMPLATES = [
   { label: 'Medication review', notes: 'Reviewed current medications and adherence with patient. No new side effects reported.' },
@@ -92,13 +40,12 @@ export default function CCM() {
   const [roster, setRoster]         = useState([])
   const [rosterSearch, setRosterSearch] = useState('')
   const [pickedPatient, setPickedPatient] = useState(null)
-  const [newPt, setNewPt]           = useState({ condition: 'Diabetes Type 2', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
+  const [newPt, setNewPt]           = useState({ condition: '', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
   const [checkinForm, setCheckinForm] = useState({ minutes: '', notes: '', barriers: '', plan_update: '' })
   const [planTasks, setPlanTasks]   = useState([])
   const [planGoals, setPlanGoals]   = useState([])
   const [careTeam, setCareTeam]     = useState([])
   const [planStatus, setPlanStatus] = useState('active')
-  const [planTemplate, setPlanTemplate] = useState('Diabetes Type 2')
   const [saving, setSaving]         = useState(false)
   const [expanded, setExpanded]     = useState({})
   const [showDisenroll, setShowDisenroll] = useState(false)
@@ -309,12 +256,6 @@ export default function CCM() {
       if (d.care_team) setCareTeam(d.care_team)
       setShowPlanEdit(true)
     } catch {} finally { setAiDrafting(false) }
-  }
-
-  function applyTemplate(tpl) {
-    setPlanTemplate(tpl)
-    const tasks = (CARE_PLAN_TEMPLATES[tpl] || []).map(t => ({ text: t, done: false }))
-    setPlanTasks(tasks)
   }
 
   const now = new Date()
@@ -685,7 +626,11 @@ export default function CCM() {
                       .filter(p => p.name?.toLowerCase().includes(rosterSearch.toLowerCase()) && !patients.some(cp => cp.name === p.name && cp.dob === p.dob))
                       .slice(0, 30)
                       .map(p => (
-                        <button key={p.id} type="button" onClick={() => setPickedPatient(p)}
+                        <button key={p.id} type="button" onClick={() => {
+                          setPickedPatient(p)
+                          const firstCondition = (p.conditions || '').split(',').map(c => c.trim()).filter(Boolean)[0]
+                          if (firstCondition) setNewPt(np => ({ ...np, condition: firstCondition }))
+                        }}
                           style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
                           onMouseEnter={e => e.currentTarget.style.background = '#faf9ff'}
                           onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
@@ -730,11 +675,14 @@ export default function CCM() {
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Primary Condition</label>
-              <select value={newPt.condition} onChange={e => setNewPt(p => ({ ...p, condition: e.target.value }))}
+              <input type="text" required value={newPt.condition}
+                onChange={e => setNewPt(p => ({ ...p, condition: e.target.value }))}
                 className="ccm-input"
-                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13 }}>
-                {Object.keys(CARE_PLAN_TEMPLATES).map(t => <option key={t}>{t}</option>)}
-              </select>
+                placeholder="Pulled from patient record — edit if needed"
+                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 11px', fontSize: 13, boxSizing: 'border-box' }} />
+              {pickedPatient?.conditions && (
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>From record: {pickedPatient.conditions}</div>
+              )}
             </div>
             <div style={{ marginBottom: 20, background: '#faf9ff', border: '1px solid #ede9fe', borderRadius: 10, padding: '12px 14px' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 10 }}>CCM Consent (required)</div>
@@ -838,17 +786,6 @@ export default function CCM() {
                 <option value="active">Active</option>
                 <option value="completed">Completed</option>
               </select>
-            </div>
-            <div style={{ marginBottom: 18 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 6 }}>Load Template</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {Object.keys(CARE_PLAN_TEMPLATES).map(t => (
-                  <button key={t} type="button" onClick={() => applyTemplate(t)}
-                    style={{ padding: '6px 13px', borderRadius: 99, border: `1px solid ${planTemplate === t ? '#8b5cf6' : '#d1d5db'}`, background: planTemplate === t ? 'linear-gradient(135deg,#8b5cf6,#a855f7)' : '#fff', color: planTemplate === t ? '#fff' : '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s' }}>
-                    {t}
-                  </button>
-                ))}
-              </div>
             </div>
             <div style={{ marginBottom: 18, paddingTop: 16, borderTop: '1px solid #f3f4f6' }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 6 }}>Tasks</label>
