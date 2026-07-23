@@ -103,6 +103,9 @@ export default function CCM() {
   const [timerRunning, setTimerRunning] = useState(false)
   const [timerSeconds, setTimerSeconds] = useState(0)
   const [aiSuggesting, setAiSuggesting] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [planHistory, setPlanHistory] = useState([])
+  const [historyExpanded, setHistoryExpanded] = useState({})
 
   useEffect(() => { if (key) loadPatients() }, [key])
   useEffect(() => { if (key && showAddPt) loadRoster() }, [key, showAddPt])
@@ -147,6 +150,14 @@ export default function CCM() {
       setPlanTasks(d.plan?.tasks ? JSON.parse(d.plan.tasks) : [])
       try { setPlanGoals(d.plan?.goals ? JSON.parse(d.plan.goals) : []) } catch { setPlanGoals([]) }
       try { setCareTeam(d.plan?.care_team ? JSON.parse(d.plan.care_team) : []) } catch { setCareTeam([]) }
+    } catch {}
+  }
+
+  async function loadPlanHistory(pid) {
+    try {
+      const r = await fetch(`/api/ccm/patients/${pid}/plan/history`, { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setPlanHistory(d.versions || [])
     } catch {}
   }
 
@@ -250,6 +261,7 @@ export default function CCM() {
       })
       setShowPlanEdit(false)
       loadPlan(selected.id)
+      if (showHistory) loadPlanHistory(selected.id)
     } finally { setSaving(false) }
   }
 
@@ -474,10 +486,49 @@ export default function CCM() {
                     Care Plan
                     {totalTasks > 0 && <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 500 }}>({doneTasks}/{totalTasks} completed)</span>}
                   </div>
-                  <button onClick={() => setShowPlanEdit(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#374151' }}>
-                    <Edit3 size={12} /> Edit Plan
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => { setShowHistory(h => !h); if (!showHistory) loadPlanHistory(selected.id) }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#374151' }}>
+                      <Clock size={12} /> History
+                    </button>
+                    <button onClick={() => setShowPlanEdit(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 13px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#374151' }}>
+                      <Edit3 size={12} /> Edit Plan
+                    </button>
+                  </div>
                 </div>
+
+                {showHistory && (
+                  <div style={{ marginBottom: 18, border: '1px solid #f3f4f6', borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 14px', background: '#fafafa', fontSize: 12, fontWeight: 700, color: '#6b7280' }}>
+                      Plan Version History {planHistory.length > 0 && `(${planHistory.length})`}
+                    </div>
+                    {planHistory.length === 0 ? (
+                      <div style={{ padding: '16px', textAlign: 'center', color: '#9ca3af', fontSize: 12.5 }}>No prior versions saved yet.</div>
+                    ) : (
+                      planHistory.map(v => {
+                        let vt = []; let vg = []; let vc = []
+                        try { vt = JSON.parse(v.tasks || '[]') } catch {}
+                        try { vg = JSON.parse(v.goals || '[]') } catch {}
+                        try { vc = JSON.parse(v.care_team || '[]') } catch {}
+                        return (
+                          <div key={v.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                            <button onClick={() => setHistoryExpanded(ex => ({ ...ex, [v.id]: !ex[v.id] }))}
+                              style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: 12.5, color: '#374151' }}>{new Date(v.saved_at).toLocaleString()}</span>
+                              {historyExpanded[v.id] ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </button>
+                            {historyExpanded[v.id] && (
+                              <div style={{ padding: '0 14px 14px', fontSize: 12.5, color: '#4b5563' }}>
+                                <div><strong>Tasks:</strong> {vt.length ? vt.map(t => t.text).join('; ') : 'none'}</div>
+                                <div><strong>Goals:</strong> {vg.length ? vg.map(g => g.description).join('; ') : 'none'}</div>
+                                <div><strong>Care team:</strong> {vc.length ? vc.map(m => `${m.name} (${m.role})`).join('; ') : 'none'}</div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
 
                 {planTasks.length === 0 ? (
                   <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: '26px 0' }}>

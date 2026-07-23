@@ -78,6 +78,7 @@ async function initDB() {
     `CREATE TABLE IF NOT EXISTS ccm_patients (id TEXT PRIMARY KEY, owner_email TEXT NOT NULL, name TEXT NOT NULL, dob TEXT, conditions TEXT, created_at TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS ccm_care_plans (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id TEXT NOT NULL, template TEXT NOT NULL, tasks TEXT NOT NULL, goals TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS ccm_checkins (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id TEXT NOT NULL, minutes INTEGER NOT NULL, notes TEXT, checkin_date TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS ccm_care_plan_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id TEXT NOT NULL, tasks TEXT, goals TEXT, care_team TEXT, saved_at TEXT NOT NULL, saved_by TEXT)`,
     // feature 5 – care gaps
     `CREATE TABLE IF NOT EXISTS care_gaps (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, owner_email TEXT NOT NULL, gap_type TEXT NOT NULL, description TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'medium', status TEXT NOT NULL DEFAULT 'open', suppression_reason TEXT, due_date TEXT, outreach_message TEXT, created_at TEXT NOT NULL, closed_at TEXT)`,
     // feature 8 – lab results
@@ -2015,13 +2016,23 @@ app.post('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
   const { tasks, goals, care_team } = req.body
   const now = new Date().toISOString()
   // Check if exists
-  const existing = (await db.execute({ sql: 'SELECT id FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
+  const existing = (await db.execute({ sql: 'SELECT * FROM ccm_care_plans WHERE patient_id = ?', args: [req.params.pid] })).rows[0]
   if (existing) {
+    // snapshot the previous state before overwriting it
+    await db.execute({
+      sql: 'INSERT INTO ccm_care_plan_versions (patient_id, tasks, goals, care_team, saved_at, saved_by) VALUES (?,?,?,?,?,?)',
+      args: [req.params.pid, existing.tasks || '[]', existing.goals || '[]', existing.care_team || '[]', existing.updated_at || now, req.apiKey]
+    })
     await db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, goals = ?, care_team = ?, updated_at = ? WHERE patient_id = ?', args: [tasks || '[]', goals || '[]', care_team || '[]', now, req.params.pid] })
   } else {
     await db.execute({ sql: 'INSERT INTO ccm_care_plans (patient_id, owner_key, tasks, goals, care_team, updated_at) VALUES (?,?,?,?,?,?)', args: [req.params.pid, req.apiKey, tasks || '[]', goals || '[]', care_team || '[]', now] })
   }
   res.json({ ok: true })
+})
+
+app.get('/api/ccm/patients/:pid/plan/history', auth, async (req, res) => {
+  const rows = (await db.execute({ sql: 'SELECT * FROM ccm_care_plan_versions WHERE patient_id = ? ORDER BY saved_at DESC', args: [req.params.pid] })).rows
+  res.json({ versions: rows })
 })
 
 app.get('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
