@@ -140,6 +140,16 @@ function AnimatedNumber({ value }) {
   return display
 }
 
+function ChartTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', boxShadow: 'var(--shadow-md)' }}>
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{payload[0].value} case{payload[0].value === 1 ? '' : 's'}</div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const { key } = useKey()
@@ -167,6 +177,8 @@ export default function Dashboard() {
   }
 
   const series = buildRangeSeries(rangedCases, range)
+  const seriesTotal = series.reduce((s, b) => s + b.count, 0)
+  const seriesPeak = series.reduce((m, b) => Math.max(m, b.count), 0)
   const breakdown = buildConditionBreakdown(rangedCases)
   const hasChartData = rangedCases.length > 0
   const statusBreakdown = [
@@ -278,27 +290,40 @@ export default function Dashboard() {
             <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <TrendingUp size={15} /> Cases Over Time
             </span>
-            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{rangeOption.chartLabel}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              {hasChartData && (
+                <span style={{ fontSize: 11.5, color: 'var(--text2)' }}>
+                  Peak <b style={{ color: 'var(--text)' }}>{seriesPeak}</b> · Total <b style={{ color: 'var(--text)' }}>{seriesTotal}</b>
+                </span>
+              )}
+              <span style={{ fontSize: 11, color: 'var(--text3)' }}>{rangeOption.chartLabel}</span>
+            </div>
           </div>
-          <div className="card-body" style={{ height: 240 }}>
+          <div className="card-body" style={{ height: 260 }}>
             {!hasChartData ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text3)', fontSize: 13 }}>
                 No data yet.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={series} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={series} margin={{ top: 16, right: 12, left: -20, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorCases" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#0284c7" stopOpacity={0.5} />
-                      <stop offset="100%" stopColor="#0284c7" stopOpacity={0} />
+                    <linearGradient id="casesFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#0e7490" stopOpacity={0.32} />
+                      <stop offset="100%" stopColor="#0e7490" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="casesStroke" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#0e7490" />
+                      <stop offset="100%" stopColor="#059669" />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: '#64748b' }} interval={range === 'monthly' ? 3 : 0} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} />
-                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                  <Area type="monotone" dataKey="count" stroke="#0284c7" strokeWidth={2.5} fill="url(#colorCases)" isAnimationActive animationDuration={900} animationEasing="ease-out" />
+                  <CartesianGrid vertical={false} strokeDasharray="4 6" stroke="var(--border)" />
+                  <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} interval={range === 'monthly' ? 3 : 0} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} width={26} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '3 3' }} />
+                  <Area type="monotone" dataKey="count" stroke="url(#casesStroke)" strokeWidth={2.75} fill="url(#casesFill)"
+                    activeDot={{ r: 5, fill: '#fff', stroke: '#0e7490', strokeWidth: 2.5 }}
+                    isAnimationActive animationDuration={900} animationEasing="ease-out" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
