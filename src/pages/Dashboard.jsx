@@ -32,28 +32,85 @@ function categorize(complaint) {
   return 'General'
 }
 
-function startOfWeek(d) {
+function startOfHour(d) {
   const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  const day = x.getDay()
-  x.setDate(x.getDate() - day)
+  x.setMinutes(0, 0, 0)
   return x
 }
 
-function buildWeeklySeries(cases) {
-  const weeks = []
-  const now = startOfWeek(new Date())
-  for (let i = 7; i >= 0; i--) {
-    const w = new Date(now)
-    w.setDate(w.getDate() - i * 7)
-    weeks.push({ start: w, label: w.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), count: 0 })
+function startOfDay(d) {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+function startOfMonth(d) {
+  const x = startOfDay(d)
+  x.setDate(1)
+  return x
+}
+
+// Builds `count` buckets stepping backward from now by `stepMs`-ish units (via
+// `advance`), so daily/weekly/monthly/lifetime views all share one shape of series.
+function buildSeries(cases, { count, floor, advance, format }) {
+  const buckets = []
+  const now = floor(new Date())
+  for (let i = count - 1; i >= 0; i--) {
+    const start = advance(new Date(now), -i)
+    buckets.push({ start, label: format(start), count: 0 })
   }
   cases.forEach(c => {
-    const w = startOfWeek(new Date(c.created_at))
-    const slot = weeks.find(x => x.start.getTime() === w.getTime())
+    const start = floor(new Date(c.created_at))
+    const slot = buckets.find(b => b.start.getTime() === start.getTime())
     if (slot) slot.count++
   })
-  return weeks.map(w => ({ week: w.label, count: w.count }))
+  return buckets.map(b => ({ bucket: b.label, count: b.count }))
+}
+
+const RANGE_OPTIONS = [
+  { key: 'daily',    label: 'Daily',    chartLabel: 'Last 24 hours', suffix: 'today' },
+  { key: 'weekly',   label: 'Weekly',   chartLabel: 'Last 7 days',   suffix: 'last 7 days' },
+  { key: 'monthly',  label: 'Monthly',  chartLabel: 'Last 30 days',  suffix: 'last 30 days' },
+  { key: 'lifetime', label: 'Lifetime', chartLabel: 'Last 12 months', suffix: 'all time' },
+]
+
+function filterByRange(cases, range) {
+  if (range === 'lifetime') return cases
+  const now = new Date()
+  const cutoff = new Date(now)
+  if (range === 'daily') return cases.filter(c => new Date(c.created_at) >= startOfDay(now))
+  if (range === 'weekly') cutoff.setDate(cutoff.getDate() - 7)
+  if (range === 'monthly') cutoff.setDate(cutoff.getDate() - 30)
+  return cases.filter(c => new Date(c.created_at) >= cutoff)
+}
+
+function buildRangeSeries(cases, range) {
+  if (range === 'daily') {
+    return buildSeries(cases, {
+      count: 24, floor: startOfHour,
+      advance: (d, i) => { d.setHours(d.getHours() + i); return d },
+      format: d => d.toLocaleTimeString('en-US', { hour: 'numeric' }),
+    })
+  }
+  if (range === 'weekly') {
+    return buildSeries(cases, {
+      count: 7, floor: startOfDay,
+      advance: (d, i) => { d.setDate(d.getDate() + i); return d },
+      format: d => d.toLocaleDateString('en-US', { weekday: 'short' }),
+    })
+  }
+  if (range === 'monthly') {
+    return buildSeries(cases, {
+      count: 30, floor: startOfDay,
+      advance: (d, i) => { d.setDate(d.getDate() + i); return d },
+      format: d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    })
+  }
+  return buildSeries(cases, {
+    count: 12, floor: startOfMonth,
+    advance: (d, i) => { d.setMonth(d.getMonth() + i); return d },
+    format: d => d.toLocaleDateString('en-US', { month: 'short' }),
+  })
 }
 
 function buildConditionBreakdown(cases) {
@@ -88,6 +145,8 @@ export default function Dashboard() {
   const { key } = useKey()
   const [cases, setCases] = useState([])
   const [loading, setLoading] = useState(true)
+  const [range, setRange] = useState('lifetime')
+  const [rangeMenuOpen, setRangeMenuOpen] = useState(false)
 
   useEffect(() => {
     if (!key) { setLoading(false); return }
@@ -97,20 +156,23 @@ export default function Dashboard() {
       .catch(() => setLoading(false))
   }, [key])
 
+  const rangeOption = RANGE_OPTIONS.find(r => r.key === range)
+  const rangedCases = filterByRange(cases, range)
+
   const stats = {
-    total: cases.length,
-    urgent: cases.filter(c => c.requires_urgent_review || c.emergency_detected).length,
-    pending: cases.filter(c => !c.approved).length,
-    approved: cases.filter(c => c.approved).length,
+    total: rangedCases.length,
+    urgent: rangedCases.filter(c => c.requires_urgent_review || c.emergency_detected).length,
+    pending: rangedCases.filter(c => !c.approved).length,
+    approved: rangedCases.filter(c => c.approved).length,
   }
 
-  const weekly = buildWeeklySeries(cases)
-  const breakdown = buildConditionBreakdown(cases)
-  const hasChartData = cases.length > 0
+  const series = buildRangeSeries(rangedCases, range)
+  const breakdown = buildConditionBreakdown(rangedCases)
+  const hasChartData = rangedCases.length > 0
   const statusBreakdown = [
     { name: 'Approved', label: 'Approved', value: stats.approved, color: 'var(--success)', showPct: true },
-    { name: 'Urgent',   label: 'Urgent',   value: cases.filter(c => (c.requires_urgent_review || c.emergency_detected) && !c.approved).length, color: 'var(--danger)', showPct: true },
-    { name: 'Pending',  label: 'Pending',  value: cases.filter(c => !c.approved && !(c.requires_urgent_review || c.emergency_detected)).length, color: 'var(--warning)', showPct: true },
+    { name: 'Urgent',   label: 'Urgent',   value: rangedCases.filter(c => (c.requires_urgent_review || c.emergency_detected) && !c.approved).length, color: 'var(--danger)', showPct: true },
+    { name: 'Pending',  label: 'Pending',  value: rangedCases.filter(c => !c.approved && !(c.requires_urgent_review || c.emergency_detected)).length, color: 'var(--warning)', showPct: true },
   ].filter(x => x.value > 0)
   const conditionOverview = breakdown.map(b => ({ name: b.name, label: b.name, value: b.count, color: CATEGORY_COLORS[b.name], showPct: true }))
 
@@ -119,9 +181,28 @@ export default function Dashboard() {
       <div className="topbar">
         <span className="topbar-title">Dashboard</span>
         <div className="topbar-right">
-          <button className="dropdown-pill">
-            Lifetime <ChevronDown size={13} />
-          </button>
+          <div style={{ position: 'relative' }}>
+            <button className="dropdown-pill" onClick={() => setRangeMenuOpen(o => !o)}>
+              {rangeOption.label} <ChevronDown size={13} style={{ transform: rangeMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+            </button>
+            {rangeMenuOpen && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setRangeMenuOpen(false)} />
+                <div className="card" style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 150, padding: 6, zIndex: 1000, boxShadow: '0 16px 40px rgba(0,0,0,.16)' }}>
+                  {RANGE_OPTIONS.map(opt => (
+                    <button key={opt.key} onClick={() => { setRange(opt.key); setRangeMenuOpen(false) }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px',
+                        background: opt.key === range ? 'var(--primary-light)' : 'none', border: 'none', borderRadius: 7, cursor: 'pointer',
+                        fontSize: 13, fontWeight: opt.key === range ? 600 : 500, color: opt.key === range ? 'var(--primary-dark)' : 'var(--text)',
+                      }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button className="btn btn-primary btn-sm" onClick={() => navigate('/cases/new')}>
             <PlusCircle size={14} /> New Case
           </button>
@@ -164,7 +245,7 @@ export default function Dashboard() {
           <div className="card hoverable animate-fade-up">
             <div className="overview-card-header">
               <div className="overview-card-title">Total Cases Overview</div>
-              <div className="overview-card-subtitle">By review status · all time</div>
+              <div className="overview-card-subtitle">By review status · {rangeOption.suffix}</div>
             </div>
             {!hasChartData || statusBreakdown.length === 0 ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 180, color: 'var(--text3)', fontSize: 13 }}>
@@ -178,7 +259,7 @@ export default function Dashboard() {
           <div className="card hoverable animate-fade-up" style={{ animationDelay: '.06s' }}>
             <div className="overview-card-header">
               <div className="overview-card-title">Condition Breakdown</div>
-              <div className="overview-card-subtitle">By complaint category</div>
+              <div className="overview-card-subtitle">By complaint category · {rangeOption.suffix}</div>
             </div>
             {!hasChartData || conditionOverview.length === 0 ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 180, color: 'var(--text3)', fontSize: 13 }}>
@@ -197,7 +278,7 @@ export default function Dashboard() {
             <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <TrendingUp size={15} /> Cases Over Time
             </span>
-            <span style={{ fontSize: 11, color: 'var(--text3)' }}>Last 8 weeks</span>
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{rangeOption.chartLabel}</span>
           </div>
           <div className="card-body" style={{ height: 240 }}>
             {!hasChartData ? (
@@ -206,7 +287,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={weekly} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={series} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorCases" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#0284c7" stopOpacity={0.5} />
@@ -214,7 +295,7 @@ export default function Dashboard() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: '#64748b' }} interval={range === 'monthly' ? 3 : 0} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} />
                   <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                   <Area type="monotone" dataKey="count" stroke="#0284c7" strokeWidth={2.5} fill="url(#colorCases)" isAnimationActive animationDuration={900} animationEasing="ease-out" />
