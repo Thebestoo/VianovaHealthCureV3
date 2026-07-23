@@ -92,7 +92,7 @@ export default function CCM() {
   const [roster, setRoster]         = useState([])
   const [rosterSearch, setRosterSearch] = useState('')
   const [pickedPatient, setPickedPatient] = useState(null)
-  const [newPt, setNewPt]           = useState({ condition: 'Diabetes Type 2', insurance: '', care_manager: '' })
+  const [newPt, setNewPt]           = useState({ condition: 'Diabetes Type 2', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
   const [checkinForm, setCheckinForm] = useState({ minutes: '', notes: '', barriers: '', plan_update: '' })
   const [planTasks, setPlanTasks]   = useState([])
   const [planGoals, setPlanGoals]   = useState([])
@@ -205,7 +205,7 @@ export default function CCM() {
       setShowAddPt(false)
       setPickedPatient(null)
       setRosterSearch('')
-      setNewPt({ condition: 'Diabetes Type 2', insurance: '', care_manager: '' })
+      setNewPt({ condition: 'Diabetes Type 2', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
       loadPatients()
     } catch {}
   }
@@ -450,6 +450,11 @@ export default function CCM() {
                         {selected.dob && <span><User size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} />DOB: {selected.dob}</span>}
                         {selected.phone && <span><Phone size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} />{selected.phone}</span>}
                         <span style={{ background: '#f5f3ff', color: '#7c3aed', padding: '1px 8px', borderRadius: 99, fontWeight: 600 }}>{selected.condition}</span>
+                        {selected.consent_date && (
+                          <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                            ✓ Consent {selected.consent_date}{selected.consent_method ? ` (${selected.consent_method})` : ''}
+                          </span>
+                        )}
                       </div>
                       {careTeam.length > 0 && (
                         <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -731,9 +736,31 @@ export default function CCM() {
                 {Object.keys(CARE_PLAN_TEMPLATES).map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
+            <div style={{ marginBottom: 20, background: '#faf9ff', border: '1px solid #ede9fe', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 10 }}>CCM Consent (required)</div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Consent Date *</label>
+                  <input type="date" required value={newPt.consent_date}
+                    onChange={e => setNewPt(p => ({ ...p, consent_date: e.target.value }))}
+                    className="ccm-input"
+                    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Consent Method *</label>
+                  <select required value={newPt.consent_method} onChange={e => setNewPt(p => ({ ...p, consent_method: e.target.value }))}
+                    className="ccm-input"
+                    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 10px', fontSize: 13 }}>
+                    <option value="verbal">Verbal</option>
+                    <option value="written">Written</option>
+                    <option value="portal">Portal</option>
+                  </select>
+                </div>
+              </div>
+            </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button type="button" onClick={() => { setShowAddPt(false); setPickedPatient(null); setRosterSearch('') }} style={{ padding: '10px 18px', border: '1px solid #d1d5db', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancel</button>
-              <button type="submit" disabled={!pickedPatient} style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: pickedPatient ? 'linear-gradient(135deg,#8b5cf6,#a855f7)' : '#d1d5db', color: '#fff', fontWeight: 700, cursor: pickedPatient ? 'pointer' : 'default', fontSize: 13, boxShadow: pickedPatient ? '0 8px 18px -6px rgba(139,92,246,.55)' : 'none' }}>Enroll</button>
+              <button type="submit" disabled={!pickedPatient || !newPt.consent_date || !newPt.consent_method} style={{ padding: '10px 20px', border: 'none', borderRadius: 9, background: (pickedPatient && newPt.consent_date && newPt.consent_method) ? 'linear-gradient(135deg,#8b5cf6,#a855f7)' : '#d1d5db', color: '#fff', fontWeight: 700, cursor: (pickedPatient && newPt.consent_date && newPt.consent_method) ? 'pointer' : 'default', fontSize: 13, boxShadow: (pickedPatient && newPt.consent_date && newPt.consent_method) ? '0 8px 18px -6px rgba(139,92,246,.55)' : 'none' }}>Enroll</button>
             </div>
           </form>
         </div>
