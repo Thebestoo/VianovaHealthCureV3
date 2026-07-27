@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, AlertCircle, Plus, RefreshCw, Users, Search, UserMinus, Wand2, X } from 'lucide-react'
+import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, AlertCircle, Plus, RefreshCw, Users, Search, UserMinus, Wand2, X, Clock } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
 import {
@@ -22,6 +22,34 @@ function statusFor(key, val) {
   if (n < cfg.critical[0] || n > cfg.critical[1]) return 'critical'
   if (n < cfg.normal[0]   || n > cfg.normal[1])   return 'warning'
   return 'normal'
+}
+
+// Worst status across every tracked vital in a single reading — drives the
+// roster-wide triage dot/sort so a patient shows red the moment ANY vital
+// (not just the one currently in view) goes critical.
+function worstStatusFor(reading) {
+  if (!reading) return 'none'
+  let worst = 'normal'
+  for (const cfg of VITALS_CONFIG) {
+    const s = statusFor(cfg.key, reading[cfg.key])
+    if (s === 'critical') return 'critical'
+    if (s === 'warning') worst = 'warning'
+  }
+  return worst
+}
+
+const STATUS_RANK = { critical: 0, warning: 1, normal: 2, none: 3 }
+
+function timeAgo(iso) {
+  if (!iso) return null
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.round(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.round(hrs / 24)
+  return `${days}d ago`
 }
 
 const STATUS_COLORS = { normal: 'var(--success)', warning: 'var(--warning)', critical: 'var(--danger)' }
@@ -67,8 +95,11 @@ export default function RPM() {
   const { key } = useKey()
   const [patients, setPatients] = useState([])
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [selected, setSelected] = useState(null)
   const [readings, setReadings] = useState([])
+  const [readingSearch, setReadingSearch] = useState('')
+  const [patientLatest, setPatientLatest] = useState({}) // { [patientId]: latestReading } — roster-wide vitals awareness
   const [form, setForm] = useState({ patient_id: '', heart_rate: '', spo2: '', systolic_bp: '', diastolic_bp: '', temperature: '', resp_rate: '', note: '' })
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -99,15 +130,36 @@ export default function RPM() {
     try {
       const r = await fetch('/api/rpm/patients', { headers: { 'x-api-key': key } })
       const d = await r.json()
-      setPatients(d.patients || [])
+      const list = d.patients || []
+      setPatients(list)
+      loadLatestVitals(list)
     } catch {}
+  }
+
+  // The patient list endpoint only returns demographics — it has no idea which
+  // patients currently have critical/abnormal vitals. Without this, "Critical
+  // Vitals Now" / "Out of Range Now" only ever reflected the ONE currently
+  // selected patient (showing 0 for everyone else, even mid-crisis). Pulling
+  // each patient's latest reading once up front makes the roster stats and
+  // the sidebar's triage dots reflect reality instead of whoever's open.
+  async function loadLatestVitals(list) {
+    const entries = await Promise.all(list.map(async p => {
+      try {
+        const r = await fetch(`/api/rpm/patients/${p.id}/readings`, { headers: { 'x-api-key': key } })
+        const d = await r.json()
+        return [p.id, (d.readings || [])[0] || null]
+      } catch { return [p.id, null] }
+    }))
+    setPatientLatest(Object.fromEntries(entries))
   }
 
   async function loadReadings(pid) {
     try {
       const r = await fetch(`/api/rpm/patients/${pid}/readings`, { headers: { 'x-api-key': key } })
       const d = await r.json()
-      setReadings(d.readings || [])
+      const list = d.readings || []
+      setReadings(list)
+      setPatientLatest(pl => ({ ...pl, [pid]: list[0] || null }))
     } catch {}
   }
 
@@ -204,14 +256,31 @@ export default function RPM() {
     time: formatReadingTime(r.recorded_at, chartSpansMultipleDays),
     hr:   r.heart_rate != null ? Number(r.heart_rate) : null,
     spo2: r.spo2 != null ? Number(r.spo2) : null,
-    sys:  r.systolic_bp,
-    temp: r.temperature ? parseFloat(r.temperature) : null,
   }))
 
   const latest = readings[0] || {}
-  const filteredPatients = patients.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()))
-  const criticalCount = readings.length && selected ? VITALS_CONFIG.filter(cfg => statusFor(cfg.key, latest[cfg.key]) === 'critical').length : 0
-  const warningCount  = readings.length && selected ? VITALS_CONFIG.filter(cfg => statusFor(cfg.key, latest[cfg.key]) === 'warning').length : 0
+
+  // Roster-wide vital status — computed once from the latest-reading map so the
+  // sidebar dots, sort order and top stat cards all agree with each other and
+  // stay accurate no matter which patient (if any) is currently open.
+  const rosterStatus = Object.fromEntries(patients.map(p => [p.id, worstStatusFor(patientLatest[p.id])]))
+  const statusCounts = patients.reduce((acc, p) => {
+    const s = rosterStatus[p.id]
+    if (s === 'critical' || s === 'warning') acc[s]++
+    return acc
+  }, { critical: 0, warning: 0 })
+
+  const filteredPatients = patients
+    .filter(p => p.name?.toLowerCase().includes(search.toLowerCase()) || p.condition?.toLowerCase().includes(search.toLowerCase()))
+    .filter(p => statusFilter === 'all' || rosterStatus[p.id] === statusFilter)
+    .sort((a, b) => STATUS_RANK[rosterStatus[a.id]] - STATUS_RANK[rosterStatus[b.id]] || a.name.localeCompare(b.name))
+
+  const filteredReadings = readings.filter(r => {
+    if (!readingSearch.trim()) return true
+    const q = readingSearch.toLowerCase()
+    return r.note?.toLowerCase().includes(q) ||
+      formatReadingTime(r.recorded_at, true).toLowerCase().includes(q)
+  })
 
   return (
     <div>
@@ -230,9 +299,9 @@ export default function RPM() {
       <div className="stats-grid">
         {[
           { label: 'Enrolled Patients', value: patients.length, icon: Users, bg: 'var(--primary-light)', color: 'var(--primary)' },
+          { label: 'Critical Vitals Now', value: statusCounts.critical, icon: AlertTriangle, bg: 'var(--danger-light)', color: 'var(--danger)' },
+          { label: 'Out of Range Now', value: statusCounts.warning, icon: AlertCircle, bg: 'var(--warning-light)', color: 'var(--warning)' },
           { label: 'Readings (Selected)', value: readings.length, icon: Activity, bg: 'var(--primary-light)', color: 'var(--primary)' },
-          { label: 'Critical Vitals Now', value: criticalCount, icon: AlertTriangle, bg: 'var(--danger-light)', color: 'var(--danger)' },
-          { label: 'Out of Range Now', value: warningCount, icon: AlertCircle, bg: 'var(--warning-light)', color: 'var(--warning)' },
         ].map(s => (
           <div key={s.label} className="card stat-card">
             <div className="stat-icon" style={{ background: s.bg }}><s.icon size={19} color={s.color} /></div>
@@ -248,7 +317,7 @@ export default function RPM() {
         </div>
       )}
 
-      <div className="rpm-layout">
+      <div className="list-detail-layout">
         {/* Patient List */}
         <div>
           <div className="card">
@@ -258,14 +327,31 @@ export default function RPM() {
               </span>
               <div style={{ position: 'relative' }}>
                 <Search size={13} color="var(--text3)" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patients…"
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patients or condition…"
                   style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px 7px 28px', fontSize: 12.5, boxSizing: 'border-box', outline: 'none' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[
+                  { key: 'all', label: 'All', color: 'var(--text2)' },
+                  { key: 'critical', label: `Critical (${statusCounts.critical})`, color: 'var(--danger)' },
+                  { key: 'warning', label: `Out of range (${statusCounts.warning})`, color: 'var(--warning)' },
+                ].map(f => (
+                  <button key={f.key} type="button" onClick={() => setStatusFilter(s => s === f.key ? 'all' : f.key)}
+                    style={{
+                      padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                      border: `1px solid ${statusFilter === f.key ? f.color : 'var(--border)'}`,
+                      background: statusFilter === f.key ? f.color : 'var(--surface)',
+                      color: statusFilter === f.key ? '#fff' : f.color,
+                    }}>
+                    {f.label}
+                  </button>
+                ))}
               </div>
             </div>
             <div style={{ maxHeight: 560, overflowY: 'auto' }}>
               {filteredPatients.length === 0 && (
-                <div className="empty-state" style={{ padding: '28px 16px' }}>
-                  <p>No patients found.<br />Click "Add Patient" to start.</p>
+                <div className="empty-state" style={{ padding: '24px 16px' }}>
+                  <p>{patients.length === 0 ? <>No patients found.<br />Click "Add Patient" to start.</> : 'No patients match this filter.'}</p>
                 </div>
               )}
               {filteredPatients.map(p => (
@@ -288,6 +374,10 @@ export default function RPM() {
                     <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 1 }}>{p.condition || 'No condition set'}</div>
                   </div>
+                  {rosterStatus[p.id] !== 'none' && (
+                    <span title={rosterStatus[p.id] === 'critical' ? 'Critical vitals' : rosterStatus[p.id] === 'warning' ? 'Out of range' : 'Vitals normal'}
+                      style={{ width: 8, height: 8, borderRadius: 99, flexShrink: 0, background: STATUS_COLORS[rosterStatus[p.id]] }} />
+                  )}
                 </button>
               ))}
             </div>
@@ -297,7 +387,7 @@ export default function RPM() {
         {/* Right panel */}
         <div>
           {!selected ? (
-            <div className="card empty-state" style={{ padding: '70px 32px' }}>
+            <div className="card empty-state" style={{ padding: '56px 28px' }}>
               <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                 <Activity size={28} color="var(--primary)" />
               </div>
@@ -313,7 +403,14 @@ export default function RPM() {
                     <div style={{ width: 40, height: 40, borderRadius: 11, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 800 }}>
                       {initials(selected.name)}
                     </div>
-                    <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--text)' }}>{selected.name}</div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--text)' }}>{selected.name}</div>
+                      {readings.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text3)', marginTop: 1 }}>
+                          <Clock size={11} /> Vitals updated {timeAgo(latest.recorded_at)}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn btn-secondary btn-sm" onClick={() => loadReadings(selected.id)}>
@@ -405,10 +502,19 @@ export default function RPM() {
               {/* Readings history */}
               <div className="card">
                 <div className="card-header">
-                  <span className="card-title">Reading History</span>
+                  <span className="card-title">Reading History <span style={{ color: 'var(--text3)', fontWeight: 500 }}>({filteredReadings.length}{filteredReadings.length !== readings.length ? ` of ${readings.length}` : ''})</span></span>
+                  {readings.length > 0 && (
+                    <div style={{ position: 'relative', width: 200, maxWidth: '45%' }}>
+                      <Search size={12} color="var(--text3)" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)' }} />
+                      <input value={readingSearch} onChange={e => setReadingSearch(e.target.value)} placeholder="Search date or note…"
+                        style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 9px 6px 26px', fontSize: 12, boxSizing: 'border-box', outline: 'none' }} />
+                    </div>
+                  )}
                 </div>
                 {readings.length === 0 ? (
                   <div className="empty-state"><p>No readings logged yet.</p></div>
+                ) : filteredReadings.length === 0 ? (
+                  <div className="empty-state"><p>No readings match "{readingSearch}".</p></div>
                 ) : (
                   <div className="table-wrap">
                     <table>
@@ -420,7 +526,7 @@ export default function RPM() {
                         </tr>
                       </thead>
                       <tbody>
-                        {readings.map(r => (
+                        {filteredReadings.map(r => (
                           <tr key={r.id}>
                             <td style={{ color: 'var(--text2)', whiteSpace: 'nowrap' }}>{new Date(r.recorded_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                             <td style={{ color: STATUS_COLORS[statusFor('heart_rate', r.heart_rate)], fontWeight: 700 }}>{r.heart_rate ?? '—'}</td>

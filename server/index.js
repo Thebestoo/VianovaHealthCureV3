@@ -1949,7 +1949,11 @@ app.post('/api/rpm/patients', auth, async (req, res) => {
 })
 
 app.get('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
-  const rows = (await db.execute({ sql: 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC', args: [req.params.pid] })).rows
+  const limit = Math.min(parseInt(req.query.limit, 10) || 0, 500)
+  const sql = limit > 0
+    ? 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT ' + limit
+    : 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC'
+  const rows = (await db.execute({ sql, args: [req.params.pid] })).rows
   res.json({ readings: rows })
 })
 
@@ -2074,7 +2078,11 @@ app.get('/api/ccm/patients/:pid/plan/history', auth, async (req, res) => {
 app.get('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
   try {
     if (!(await loadOwnedCcmPatient(req.params.pid, req.apiKey))) return res.status(404).json({ error: 'Patient not found' })
-    const rows = (await db.execute({ sql: 'SELECT * FROM ccm_checkins WHERE patient_id = ? ORDER BY created_at DESC', args: [req.params.pid] })).rows
+    const sql = req.query.since
+      ? 'SELECT * FROM ccm_checkins WHERE patient_id = ? AND created_at >= ? ORDER BY created_at DESC'
+      : 'SELECT * FROM ccm_checkins WHERE patient_id = ? ORDER BY created_at DESC'
+    const args = req.query.since ? [req.params.pid, req.query.since] : [req.params.pid]
+    const rows = (await db.execute({ sql, args })).rows
     res.json({ checkins: rows })
   } catch (e) { res.status(500).json({ error: 'Failed to load check-ins', detail: e.message }) }
 })

@@ -27,10 +27,36 @@ function initials(name = '') {
   return name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase()
 }
 
+function timeAgo(iso) {
+  if (!iso) return null
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.round(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.round(hrs / 24)
+  return `${days}d ago`
+}
+
+// CPT 99490 billing eligibility is based on minutes logged in the current
+// calendar month — shared by the roster aggregation, the per-patient sync,
+// and the selected-patient detail header so all three agree.
+function currentMonthStart() {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+}
+function sumMinutesThisMonth(checkins) {
+  const monthStart = currentMonthStart()
+  return checkins.filter(c => c.created_at >= monthStart).reduce((s, c) => s + (c.minutes || 0), 0)
+}
+
 export default function CCM() {
   const { key } = useKey()
   const [patients, setPatients]     = useState([])
   const [search, setSearch]         = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [rosterMinutes, setRosterMinutes] = useState({}) // { [patientId]: minutesThisMonth } — real billing eligibility, not a guess
   const [selected, setSelected]     = useState(null)
   const [plan, setPlan]             = useState(null)
   const [checkins, setCheckins]     = useState([])
@@ -91,8 +117,26 @@ export default function CCM() {
     try {
       const r = await fetch('/api/ccm/patients', { headers: { 'x-api-key': key } })
       const d = await r.json()
-      setPatients(d.patients || [])
+      const list = d.patients || []
+      setPatients(list)
+      loadRosterMinutes(list)
     } catch {}
+  }
+
+  // The patient list has no billing data on it — "Est. Billable" used to be a
+  // flat 62% guess with no basis in real check-ins. This pulls each patient's
+  // check-ins once up front so the stat (and the per-patient minutes badge in
+  // the sidebar) reflect actual logged minutes for the current calendar month.
+  async function loadRosterMinutes(list) {
+    const since = currentMonthStart()
+    const entries = await Promise.all(list.map(async p => {
+      try {
+        const r = await fetch(`/api/ccm/patients/${p.id}/checkins?since=${encodeURIComponent(since)}`, { headers: { 'x-api-key': key } })
+        const d = await r.json()
+        return [p.id, sumMinutesThisMonth(d.checkins || [])]
+      } catch { return [p.id, 0] }
+    }))
+    setRosterMinutes(Object.fromEntries(entries))
   }
 
   async function loadPlan(pid) {
@@ -119,7 +163,9 @@ export default function CCM() {
     try {
       const r = await fetch(`/api/ccm/patients/${pid}/checkins`, { headers: { 'x-api-key': key } })
       const d = await r.json()
-      setCheckins(d.checkins || [])
+      const list = d.checkins || []
+      setCheckins(list)
+      setRosterMinutes(rm => ({ ...rm, [pid]: sumMinutesThisMonth(list) }))
     } catch {}
   }
 
@@ -291,9 +337,7 @@ export default function CCM() {
     } catch {} finally { setAiDrafting(false) }
   }
 
-  const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  const monthlyMinutes = checkins.filter(c => c.created_at >= monthStart).reduce((s, c) => s + (c.minutes || 0), 0)
+  const monthlyMinutes = sumMinutesThisMonth(checkins)
   const ccmEligible = monthlyMinutes >= 20
   const minutesPct = Math.min(100, (monthlyMinutes / 20) * 100)
 
@@ -301,9 +345,15 @@ export default function CCM() {
   const totalTasks = planTasks.length
   const progressPct = totalTasks ? (doneTasks / totalTasks) * 100 : 0
 
-  const filteredPatients = patients.filter(p => p.name?.toLowerCase().includes(search.toLowerCase()))
+  const filteredPatients = patients
+    .filter(p => p.name?.toLowerCase().includes(search.toLowerCase()) || p.condition?.toLowerCase().includes(search.toLowerCase()))
+    .filter(p => statusFilter === 'all' || (p.status || 'active') === statusFilter)
   const activeCount = patients.filter(p => (p.status || 'active') === 'active').length
-  const billableEstimate = patients.length ? Math.round(patients.length * 0.62) : 0
+  const inactiveCount = patients.filter(p => (p.status || 'active') === 'inactive').length
+  // Real count of patients who've hit the 20-min/month CPT 99490 threshold —
+  // derived from each patient's actual logged check-in minutes (loadRosterMinutes),
+  // not a flat percentage guess.
+  const billableCount = patients.filter(p => (rosterMinutes[p.id] || 0) >= 20).length
   // Distinct chronic conditions across the enrolled roster — purely a display metric,
   // doesn't touch enrollment/business logic.
   const conditionsTracked = new Set(
@@ -340,8 +390,8 @@ export default function CCM() {
           <div className="stat-icon" style={{ background: '#f5f3ff' }}>
             <DollarSign size={20} color="#8b5cf6" />
           </div>
-          <div className="stat-val">{billableEstimate}</div>
-          <div className="stat-label">Est. Billable (99490)</div>
+          <div className="stat-val">{billableCount}</div>
+          <div className="stat-label">Billable This Month (99490)</div>
         </div>
         <div className="card stat-card">
           <div className="stat-icon" style={{ background: 'var(--primary-light)' }}>
@@ -360,7 +410,7 @@ export default function CCM() {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20 }}>
+        <div className="list-detail-layout">
           {/* Patient list */}
           <div>
             <div className="card">
@@ -371,6 +421,23 @@ export default function CCM() {
                   <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patients…"
                     style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px 7px 28px', fontSize: 12.5, boxSizing: 'border-box', outline: 'none' }} />
                 </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {[
+                    { key: 'all', label: 'All' },
+                    { key: 'active', label: `Active (${activeCount})` },
+                    { key: 'inactive', label: `Inactive (${inactiveCount})` },
+                  ].map(f => (
+                    <button key={f.key} onClick={() => setStatusFilter(f.key)}
+                      style={{
+                        border: '1px solid ' + (statusFilter === f.key ? '#8b5cf6' : 'var(--border)'),
+                        background: statusFilter === f.key ? '#f5f3ff' : '#fff',
+                        color: statusFilter === f.key ? '#7c3aed' : 'var(--text2)',
+                        borderRadius: 99, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}>
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div style={{ maxHeight: 560, overflowY: 'auto' }}>
                 {filteredPatients.length === 0 && (
@@ -378,7 +445,10 @@ export default function CCM() {
                     No patients found.
                   </div>
                 )}
-                {filteredPatients.map(p => (
+                {filteredPatients.map(p => {
+                  const mins = rosterMinutes[p.id] || 0
+                  const billable = mins >= 20
+                  return (
                   <button key={p.id} onClick={() => setSelected(p)}
                     style={{
                       width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', borderBottom: '1px solid var(--border)',
@@ -393,12 +463,16 @@ export default function CCM() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 1 }}>{p.condition}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{p.condition}</span>
+                          <span style={{ color: billable ? 'var(--success)' : 'var(--text3)', fontWeight: 600 }}>· {mins}m</span>
+                        </div>
                       </div>
                       <div style={{ width: 7, height: 7, borderRadius: 99, background: STATUS_COLOR[p.status || 'active'], flexShrink: 0 }} />
                     </div>
                   </button>
-                ))}
+                  )
+                })}
               </div>
             </div>
           </div>
@@ -406,7 +480,7 @@ export default function CCM() {
           {/* Right panel */}
           <div>
             {!selected ? (
-              <div className="card" style={{ padding: '70px 32px', textAlign: 'center', color: 'var(--text3)' }}>
+              <div className="card" style={{ padding: '56px 28px', textAlign: 'center', color: 'var(--text3)' }}>
                 <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                   <ClipboardList size={28} color="#a78bfa" />
                 </div>
@@ -434,6 +508,11 @@ export default function CCM() {
                             </span>
                           )}
                         </div>
+                        {checkins[0]?.created_at && (
+                          <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Clock size={11} /> Last check-in {timeAgo(checkins[0].created_at)}
+                          </div>
+                        )}
                         {careTeam.length > 0 && (
                           <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {careTeam.map((m, i) => (
