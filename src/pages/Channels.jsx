@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 
 const DEFAULT_RULES = 'No racism, hate speech, or discrimination of any kind.\nNo harassment or personal attacks.\nKeep discussion professional and patient-related.\nRespect patient confidentiality (no PHI outside secure systems).'
 
-const AVATAR_PALETTE = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#6366f1', '#ef4444', '#14b8a6']
+const AVATAR_PALETTE = ['#0e7490', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#6366f1', '#ef4444', '#14b8a6']
 function avatarColor(str) {
   let hash = 0
   for (let i = 0; i < (str || '').length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash)
@@ -37,6 +37,32 @@ function timeAgo(iso) {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   return d.toLocaleDateString()
+}
+
+function sameDay(a, b) {
+  const da = new Date(a), db = new Date(b)
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate()
+}
+
+function dayLabel(iso) {
+  const d = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (sameDay(d, today)) return 'Today'
+  if (sameDay(d, yesterday)) return 'Yesterday'
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined })
+}
+
+// System/admin-call/invite messages render as centered cards, not chat bubbles —
+// consecutive regular messages from the same sender within this window collapse
+// into one visual group (avatar/name shown once) like most chat apps.
+const GROUP_WINDOW_MS = 5 * 60 * 1000
+function isSpecial(m) { return m.type === 'system' || m.type === 'admin_call' || m.type === 'invite' }
+function isGrouped(msg, prev) {
+  if (!prev || isSpecial(msg) || isSpecial(prev)) return false
+  if (prev.sender_email !== msg.sender_email) return false
+  return (new Date(msg.created_at) - new Date(prev.created_at)) < GROUP_WINDOW_MS
 }
 
 function previewText(c) {
@@ -326,11 +352,19 @@ export default function Channels() {
   const joinedChannels   = channels.filter(c => (isSuperAdmin || c.my_status === 'joined') && matchesSearch(c))
   const invitedChannels  = channels.filter(c => !isSuperAdmin && c.my_status === 'invited' && matchesSearch(c))
   const isUnread = c => c.id !== selectedId && c.last_message_at && c.last_message_at > (lastReadMap[c.id] || '')
+  const unreadTotal = useMemo(() => channels.filter(isUnread).length, [channels, selectedId, lastReadMap])
 
   return (
     <div>
       <div className="topbar">
-        <span className="topbar-title">Doctor Channels</span>
+        <span className="topbar-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          Doctor Channels
+          {unreadTotal > 0 && (
+            <span style={{ background: 'var(--primary)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, lineHeight: 1.5 }}>
+              {unreadTotal} unread
+            </span>
+          )}
+        </span>
         <div className="topbar-right">
           {isSuperAdmin && (
             <button className="btn btn-primary btn-sm" onClick={() => { setForm({ name: '', rules: DEFAULT_RULES, head_doctor_id: '' }); setCreateError(''); setShowCreate(true) }}>
@@ -340,249 +374,289 @@ export default function Channels() {
         </div>
       </div>
 
-      <div className={`ch-layout${selected ? ' ch-has-selected' : ''}`} style={{ display: 'flex', height: 'calc(100vh - 56px)' }}>
-        {/* Sidebar */}
-        <div className="ch-sidebar" style={{ width: 280, borderRight: '1px solid var(--border)', background: '#fff', overflowY: 'auto', flexShrink: 0 }}>
-          {isSuperAdmin && adminCalls.length > 0 && (
-            <div style={{ borderBottom: '1px solid var(--border)' }}>
-              <div style={{ padding: '14px 16px 6px', fontSize: 11, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '.05em', display: 'flex', alignItems: 'center', gap: 5 }}>
-                <Siren size={12} /> Admin Section ({adminCalls.length})
+      <div style={{ padding: '20px 24px 24px' }}>
+        <div className={`card ch-layout${selected ? ' ch-has-selected' : ''}`}
+          style={{ display: 'flex', height: 'calc(100vh - 106px)', overflow: 'hidden' }}>
+          {/* Sidebar */}
+          <div className="ch-sidebar" style={{ width: 288, borderRight: '1px solid var(--border)', background: 'var(--surface)', overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+            {isSuperAdmin && adminCalls.length > 0 && (
+              <div style={{ borderBottom: '1px solid var(--border)' }}>
+                <div style={{ padding: '14px 16px 6px', fontSize: 11, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '.05em', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Siren size={12} /> Admin Section ({adminCalls.length})
+                </div>
+                {adminCalls.map(c => (
+                  <div key={c.id} onClick={() => setSelectedId(c.channel_id)} className="followup-row"
+                    style={{ padding: '8px 16px 10px', cursor: 'pointer' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>#{c.channel_name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', margin: '2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.message}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text3)' }}>{timeAgo(c.created_at)}</span>
+                      <button onClick={e => { e.stopPropagation(); resolveCall(c.channel_id, c.id) }} className="badge badge-danger"
+                        style={{ border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+                        Resolve
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              {adminCalls.map(c => (
-                <div key={c.id} onClick={() => setSelectedId(c.channel_id)} className="followup-row"
-                  style={{ padding: '8px 16px 10px', cursor: 'pointer' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>#{c.channel_name}</div>
-                  <div style={{ fontSize: 12, color: '#374151', margin: '2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.message}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{timeAgo(c.created_at)}</span>
-                    <button onClick={e => { e.stopPropagation(); resolveCall(c.channel_id, c.id) }}
-                      style={{ padding: '3px 10px', border: 'none', borderRadius: 6, background: '#fee2e2', color: '#dc2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-                      Resolve
+            )}
+            {channels.length > 0 && (
+              <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ position: 'relative' }}>
+                  <Search size={13} color="var(--text3)" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search channels…"
+                    className="ch-search-input"
+                    style={{ width: '100%', padding: '8px 10px 8px 32px', border: '1.5px solid var(--border)', background: 'var(--surface2)', borderRadius: 99, fontSize: 12.5, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }}
+                  />
+                </div>
+              </div>
+            )}
+            {loadingList ? (
+              <div style={{ padding: 30, textAlign: 'center' }}>
+                <div className="spinner spinner-dark" style={{ margin: '0 auto' }} />
+              </div>
+            ) : channels.length === 0 ? (
+              <div className="empty-state" style={{ padding: '30px 20px' }}>
+                <MessageSquare strokeWidth={1.2} />
+                <p style={{ fontSize: 13 }}>{isSuperAdmin ? 'No channels yet. Create one to get started.' : 'No channels yet. Ask a Head Doctor to invite you.'}</p>
+              </div>
+            ) : invitedChannels.length === 0 && joinedChannels.length === 0 ? (
+              <div className="empty-state" style={{ padding: '30px 20px' }}>
+                <Search strokeWidth={1.2} />
+                <p style={{ fontSize: 13 }}>No channels match "{search}"</p>
+              </div>
+            ) : (
+              <>
+                {invitedChannels.length > 0 && (
+                  <div style={{ padding: '14px 16px 4px', fontSize: 11, fontWeight: 700, color: 'var(--warning)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                    Invitations ({invitedChannels.length})
+                  </div>
+                )}
+                {invitedChannels.map(c => (
+                  <ChannelRow key={c.id} c={c} active={c.id === selectedId} pending onClick={() => setSelectedId(c.id)} />
+                ))}
+                <div style={{ padding: '14px 16px 4px', fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                  Channels ({joinedChannels.length})
+                </div>
+                {joinedChannels.map(c => (
+                  <ChannelRow key={c.id} c={c} active={c.id === selectedId} unread={isUnread(c)} muted={mutedSet.has(c.id)}
+                    onClick={() => setSelectedId(c.id)} onToggleMute={() => toggleMute(c.id)} />
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Main panel */}
+          <div className="ch-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--surface2)', containerType: 'inline-size' }}>
+            {!selected ? (
+              <div className="empty-state" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                <MessageSquare strokeWidth={1.2} />
+                <p>Select a channel to start chatting</p>
+              </div>
+            ) : myStatus === 'invited' ? (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 60, overflowY: 'auto' }}>
+                <div className="card hoverable animate-fade-up" style={{ maxWidth: 460, width: '100%', padding: '28px 28px 24px', textAlign: 'center', margin: 16 }}>
+                  <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--warning-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                    <Hash size={24} color="var(--warning)" />
+                  </div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>{selected.name}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 18 }}>
+                    <Crown size={13} style={{ display: 'inline', verticalAlign: -2, marginRight: 4, color: 'var(--warning)' }} />
+                    {selected.head_doctor_name} invited you to join this channel
+                  </div>
+                  <div style={{ textAlign: 'left', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Channel Rules</div>
+                    {selected.rules.split('\n').map((r, i) => (
+                      <div key={i} style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 4, display: 'flex', gap: 6 }}>
+                        <span style={{ color: 'var(--text3)' }}>•</span>{r}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                    <button disabled={responding} onClick={() => respond(true)} className="btn btn-success">
+                      {responding ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={14} />}
+                      Accept Join
+                    </button>
+                    <button disabled={responding} onClick={() => respond(false)} className="btn btn-secondary"
+                      style={{ color: 'var(--danger)', borderColor: 'var(--danger-light)' }}>
+                      <XCircle size={14} />
+                      Decline Join
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-          {channels.length > 0 && (
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={13} color="#9ca3af" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Search channels…"
-                  style={{ width: '100%', padding: '7px 10px 7px 30px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 12.5, outline: 'none', boxSizing: 'border-box' }}
-                />
               </div>
-            </div>
-          )}
-          {loadingList ? (
-            <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af' }}>
-              <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
-            </div>
-          ) : channels.length === 0 ? (
-            <div style={{ padding: '30px 20px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
-              {isSuperAdmin ? 'No channels yet. Create one to get started.' : 'No channels yet. Ask a Head Doctor to invite you.'}
-            </div>
-          ) : invitedChannels.length === 0 && joinedChannels.length === 0 ? (
-            <div style={{ padding: '30px 20px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No channels match "{search}"</div>
-          ) : (
-            <>
-              {invitedChannels.length > 0 && (
-                <div style={{ padding: '14px 16px 4px', fontSize: 11, fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                  Invitations ({invitedChannels.length})
-                </div>
-              )}
-              {invitedChannels.map(c => (
-                <ChannelRow key={c.id} c={c} active={c.id === selectedId} pending onClick={() => setSelectedId(c.id)} />
-              ))}
-              <div style={{ padding: '14px 16px 4px', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                Channels ({joinedChannels.length})
-              </div>
-              {joinedChannels.map(c => (
-                <ChannelRow key={c.id} c={c} active={c.id === selectedId} unread={isUnread(c)} muted={mutedSet.has(c.id)}
-                  onClick={() => setSelectedId(c.id)} onToggleMute={() => toggleMute(c.id)} />
-              ))}
-            </>
-          )}
-        </div>
-
-        {/* Main panel */}
-        <div className="ch-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#f8fafc' }}>
-          {!selected ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', gap: 10 }}>
-              <MessageSquare size={40} strokeWidth={1.2} />
-              <div style={{ fontSize: 14 }}>Select a channel to start chatting</div>
-            </div>
-          ) : myStatus === 'invited' ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 60 }}>
-              <div className="card animate-fade-up" style={{ maxWidth: 460, width: '100%', padding: '28px 28px 24px', textAlign: 'center' }}>
-                <div style={{ width: 52, height: 52, borderRadius: 14, background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  <Hash size={24} color="#d97706" />
-                </div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: '#111827', marginBottom: 4 }}>{selected.name}</div>
-                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 18 }}>
-                  <Crown size={13} style={{ display: 'inline', verticalAlign: -2, marginRight: 4, color: '#d97706' }} />
-                  {selected.head_doctor_name} invited you to join this channel
-                </div>
-                <div style={{ textAlign: 'left', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Channel Rules</div>
-                  {selected.rules.split('\n').map((r, i) => (
-                    <div key={i} style={{ fontSize: 13, color: '#374151', marginBottom: 4, display: 'flex', gap: 6 }}>
-                      <span style={{ color: '#9ca3af' }}>•</span>{r}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                  <button disabled={responding} onClick={() => respond(true)}
-                    style={{ padding: '9px 20px', border: 'none', borderRadius: 8, background: '#059669', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {responding ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={14} />}
-                    Accept Join
-                  </button>
-                  <button disabled={responding} onClick={() => respond(false)}
-                    style={{ padding: '9px 20px', border: '1px solid #fecaca', borderRadius: 8, background: '#fff', color: '#dc2626', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <XCircle size={14} />
-                    Decline Join
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Channel header */}
-              <div style={{ padding: '14px 22px', background: '#fff', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  <button className="ch-back" onClick={() => setSelectedId(null)} title="Back to channels"
-                    style={{ display: 'none', background: '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: '#374151' }}>
-                    ‹
-                  </button>
-                  <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Hash size={15} color="#9ca3af" /> {selected.name}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                    <Crown size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 3, color: '#d97706' }} />
-                    {selected.head_doctor_name} ·{' '}
-                    <span onClick={() => setShowMembers(true)} style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}>
-                      {members.length || '…'} member{members.length === 1 ? '' : 's'}
-                    </span>
-                  </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => toggleMute(selectedId)} title={mutedSet.has(selectedId) ? 'Unmute notifications' : 'Mute notifications'}
-                    style={{ background: mutedSet.has(selectedId) ? '#fef2f2' : '#f3f4f6', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: mutedSet.has(selectedId) ? '#dc2626' : '#374151' }}>
-                    {mutedSet.has(selectedId) ? <BellOff size={13} /> : <Bell size={13} />}
-                  </button>
-                  <button onClick={() => setShowMembers(true)} title="Channel members"
-                    style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}>
-                    <Users size={13} /> Members
-                  </button>
-                  <button onClick={() => setShowRules(true)} title="Channel rules"
-                    style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}>
-                    <Info size={13} /> Rules
-                  </button>
-                  {!isSuperAdmin && !isHead && (
-                    <button onClick={leaveChannel} title="Leave channel"
-                      style={{ background: '#fef2f2', border: 'none', borderRadius: 8, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#dc2626' }}>
-                      <LogOut size={13} /> Leave
+            ) : (
+              <>
+                {/* Channel header */}
+                <div style={{ padding: '14px 22px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                    <button className="ch-back ch-icon-btn" onClick={() => setSelectedId(null)} title="Back to channels"
+                      style={{ display: 'none', width: 32, height: 32, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      ‹
                     </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Messages */}
-              <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {loadingMsgs ? (
-                  <div style={{ textAlign: 'center', color: '#9ca3af', padding: 30 }}><Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /></div>
-                ) : messages.length === 0 ? (
-                  <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: 30 }}>No messages yet — say hello!</div>
-                ) : messages.map(m => {
-                  if (m.type === 'system') {
-                    return <div key={m.id} style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>{m.message}</div>
-                  }
-                  if (m.type === 'admin_call') {
-                    return (
-                      <div key={m.id} style={{ alignSelf: 'center', maxWidth: 420, width: '100%' }}>
-                        <div className="card" style={{ padding: '14px 18px', textAlign: 'center', border: `1.5px solid ${m.resolved ? '#e5e7eb' : '#fecaca'}`, background: m.resolved ? '#f9fafb' : '#fef2f2' }}>
-                          {m.resolved ? <BellRing size={16} color="#9ca3af" style={{ marginBottom: 6 }} /> : <Siren size={16} color="#dc2626" style={{ marginBottom: 6 }} />}
-                          <div style={{ fontSize: 13, fontWeight: 600, color: m.resolved ? '#6b7280' : '#991b1b' }}>{m.message}</div>
-                          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>{timeAgo(m.created_at)}</div>
-                          {isSuperAdmin && (
-                            m.resolved ? (
-                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>Resolved by {m.resolved_by}</div>
-                            ) : (
-                              <button onClick={() => resolveCall(selectedId, m.id)}
-                                style={{ marginTop: 8, padding: '5px 14px', border: 'none', borderRadius: 7, background: '#dc2626', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                                Resolve
-                              </button>
-                            )
-                          )}
-                        </div>
+                    <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <Hash size={15} color="var(--text3)" style={{ flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{selected.name}</span>
                       </div>
-                    )
-                  }
-                  if (m.type === 'invite') {
-                    let meta = {}
-                    try { meta = JSON.parse(m.meta || '{}') } catch {}
-                    return (
-                      <div key={m.id} style={{ alignSelf: 'center', maxWidth: 420, width: '100%' }}>
-                        <div className="card" style={{ padding: '14px 18px', textAlign: 'center', border: '1.5px solid #bfdbfe', background: '#eff6ff' }}>
-                          <AtSign size={16} color="#1d4ed8" style={{ marginBottom: 6 }} />
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#1e40af' }}>{m.message}</div>
-                          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>{timeAgo(m.created_at)}</div>
-                        </div>
-                      </div>
-                    )
-                  }
-                  const mine = m.sender_email === email
-                  const canDelete = mine || isSuperAdmin
-                  return (
-                    <div key={m.id} style={{ display: 'flex', gap: 10, flexDirection: mine ? 'row-reverse' : 'row' }}>
-                      <Avatar name={m.sender_name} size={30} src={m.sender_avatar} />
-                      <div style={{ maxWidth: '65%' }}>
-                        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-                          {m.sender_name} · {timeAgo(m.created_at)}
-                          {canDelete && (
-                            <Trash2 size={11} onClick={() => window.confirm('Delete this message?') && deleteMessage(m.id)}
-                              style={{ cursor: 'pointer', opacity: 0.5 }} />
-                          )}
-                        </div>
-                        <div style={{
-                          padding: '9px 14px', borderRadius: 12, fontSize: 13.5, lineHeight: 1.4, whiteSpace: 'pre-wrap',
-                          background: mine ? '#0ea5e9' : '#fff', color: mine ? '#fff' : '#1e293b',
-                          border: mine ? 'none' : '1px solid #e5e7eb',
-                        }}>
-                          {m.message}
-                        </div>
+                      <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <Crown size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 3, color: 'var(--warning)' }} />
+                        {selected.head_doctor_name} ·{' '}
+                        <span onClick={() => setShowMembers(true)} style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}>
+                          {members.length || '…'} member{members.length === 1 ? '' : 's'}
+                        </span>
                       </div>
                     </div>
-                  )
-                })}
-              </div>
+                  </div>
+                  <div className="ch-header-buttons" style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button onClick={() => toggleMute(selectedId)} title={mutedSet.has(selectedId) ? 'Unmute notifications' : 'Mute notifications'}
+                      className="ch-icon-btn" style={mutedSet.has(selectedId) ? { background: 'var(--danger-light)', color: 'var(--danger)' } : undefined}>
+                      {mutedSet.has(selectedId) ? <BellOff size={13} /> : <Bell size={13} />}
+                    </button>
+                    <button onClick={() => setShowMembers(true)} title="Channel members" className="ch-icon-btn">
+                      <Users size={13} /> <span className="ch-btn-label">Members</span>
+                    </button>
+                    <button onClick={() => setShowRules(true)} title="Channel rules" className="ch-icon-btn">
+                      <Info size={13} /> <span className="ch-btn-label">Rules</span>
+                    </button>
+                    {!isSuperAdmin && !isHead && (
+                      <button onClick={leaveChannel} title="Leave channel" className="ch-icon-btn" style={{ background: 'var(--danger-light)', color: 'var(--danger)' }}>
+                        <LogOut size={13} /> <span className="ch-btn-label">Leave</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-              {/* Input */}
-              <form onSubmit={handleSend} style={{ padding: '12px 22px', background: '#fff', borderTop: '1px solid var(--border)', display: 'flex', gap: 10 }}>
-                <input
-                  type="text"
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  placeholder={
-                    isSuperAdmin ? 'Message #' + selected.name + '  (try /kick, /ban, /timeout, /warn, /addrule, /removerule)'
-                    : isHead ? 'Message #' + selected.name + '  (try /invite Dr. Name, /info, /admin)'
-                    : 'Message #' + selected.name + '  (try /info, /admin)'
-                  }
-                  style={{ flex: 1, padding: '10px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13.5, outline: 'none' }}
-                />
-                <button type="submit" disabled={sending || !input.trim()}
-                  style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: input.trim() ? '#0ea5e9' : '#e2e8f0', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: input.trim() ? 'pointer' : 'default' }}>
-                  {sending ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
-                </button>
-              </form>
-            </>
-          )}
+                {/* Messages */}
+                <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {loadingMsgs ? (
+                    <div style={{ textAlign: 'center', padding: 30 }}><div className="spinner spinner-dark" style={{ margin: '0 auto' }} /></div>
+                  ) : messages.length === 0 ? (
+                    <div className="empty-state" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                      <MessageSquare strokeWidth={1.2} />
+                      <p>No messages yet — say hello!</p>
+                    </div>
+                  ) : messages.map((m, i) => {
+                    const prev = messages[i - 1]
+                    const showDivider = !prev || !sameDay(m.created_at, prev.created_at)
+                    const divider = showDivider && (
+                      <div style={{ textAlign: 'center', margin: i === 0 ? '0 0 8px' : '10px 0 8px' }}>
+                        <span style={{ background: 'var(--surface2)', color: 'var(--text3)', fontSize: 11, fontWeight: 700, padding: '4px 14px', borderRadius: 99, letterSpacing: '.02em' }}>
+                          {dayLabel(m.created_at)}
+                        </span>
+                      </div>
+                    )
+
+                    if (m.type === 'system') {
+                      return (
+                        <React.Fragment key={m.id}>
+                          {divider}
+                          <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text3)', fontStyle: 'italic', margin: '6px 0' }}>{m.message}</div>
+                        </React.Fragment>
+                      )
+                    }
+                    if (m.type === 'admin_call') {
+                      return (
+                        <React.Fragment key={m.id}>
+                          {divider}
+                          <div style={{ alignSelf: 'center', maxWidth: 420, width: '100%', margin: '6px 0' }}>
+                            <div className="card" style={{ padding: '14px 18px', textAlign: 'center', border: `1.5px solid ${m.resolved ? 'var(--border)' : 'var(--danger)'}`, background: m.resolved ? 'var(--surface2)' : 'var(--danger-light)' }}>
+                              {m.resolved ? <BellRing size={16} color="var(--text3)" style={{ marginBottom: 6 }} /> : <Siren size={16} color="var(--danger)" style={{ marginBottom: 6 }} />}
+                              <div style={{ fontSize: 13, fontWeight: 600, color: m.resolved ? 'var(--text2)' : 'var(--danger)' }}>{m.message}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{timeAgo(m.created_at)}</div>
+                              {isSuperAdmin && (
+                                m.resolved ? (
+                                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>Resolved by {m.resolved_by}</div>
+                                ) : (
+                                  <button onClick={() => resolveCall(selectedId, m.id)} className="btn btn-danger btn-sm" style={{ marginTop: 8 }}>
+                                    Resolve
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      )
+                    }
+                    if (m.type === 'invite') {
+                      return (
+                        <React.Fragment key={m.id}>
+                          {divider}
+                          <div style={{ alignSelf: 'center', maxWidth: 420, width: '100%', margin: '6px 0' }}>
+                            <div className="card" style={{ padding: '14px 18px', textAlign: 'center', border: '1.5px solid var(--border-strong)', background: 'var(--primary-light)' }}>
+                              <AtSign size={16} color="var(--primary-dark)" style={{ marginBottom: 6 }} />
+                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--primary-dark)' }}>{m.message}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{timeAgo(m.created_at)}</div>
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      )
+                    }
+
+                    const mine = m.sender_email === email
+                    const canDelete = mine || isSuperAdmin
+                    const grouped = isGrouped(m, prev) && !showDivider
+
+                    return (
+                      <React.Fragment key={m.id}>
+                        {divider}
+                        <div className="msg-row" style={{ display: 'flex', gap: 10, flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', marginTop: showDivider ? 0 : (grouped ? 2 : 14) }}>
+                          {grouped ? <div style={{ width: 30, flexShrink: 0 }} /> : <Avatar name={m.sender_name} size={30} src={m.sender_avatar} />}
+                          <div style={{ maxWidth: '65%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
+                            {!grouped && (
+                              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 3 }}>
+                                {m.sender_name} · {timeAgo(m.created_at)}
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexDirection: mine ? 'row-reverse' : 'row' }}>
+                              <div style={{
+                                padding: '9px 14px', fontSize: 13.5, lineHeight: 1.4, whiteSpace: 'pre-wrap',
+                                borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                                background: mine ? 'var(--primary)' : 'var(--surface)', color: mine ? '#fff' : 'var(--text)',
+                                border: mine ? 'none' : '1px solid var(--border)',
+                              }}>
+                                {m.message}
+                              </div>
+                              {canDelete && (
+                                <Trash2 size={12} onClick={() => window.confirm('Delete this message?') && deleteMessage(m.id)}
+                                  className="msg-meta-hover" style={{ cursor: 'pointer', color: 'var(--text3)', flexShrink: 0 }} />
+                              )}
+                            </div>
+                            {grouped && (
+                              <div className="msg-meta-hover" style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{timeAgo(m.created_at)}</div>
+                            )}
+                          </div>
+                        </div>
+                      </React.Fragment>
+                    )
+                  })}
+                </div>
+
+                {/* Input */}
+                <form onSubmit={handleSend} style={{ padding: '12px 22px', background: 'var(--surface)', borderTop: '1px solid var(--border)', display: 'flex', gap: 10 }}>
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    placeholder={
+                      isSuperAdmin ? 'Message #' + selected.name + '  (try /kick, /ban, /timeout, /warn, /addrule, /removerule)'
+                      : isHead ? 'Message #' + selected.name + '  (try /invite Dr. Name, /info, /admin)'
+                      : 'Message #' + selected.name + '  (try /info, /admin)'
+                    }
+                    className="ch-msg-input"
+                    style={{ flex: 1, padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13.5, outline: 'none', color: 'var(--text)', background: 'var(--surface)' }}
+                  />
+                  <button type="submit" disabled={sending || !input.trim()} className="ch-send-btn"
+                    style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: input.trim() ? 'var(--primary)' : 'var(--border)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: input.trim() ? 'pointer' : 'default' }}>
+                    {sending ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -590,27 +664,27 @@ export default function Channels() {
       {showRules && selected && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
           onClick={e => e.target === e.currentTarget && setShowRules(false)}>
-          <div className="animate-fade-up" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 420, boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
-            <div style={{ padding: '18px 22px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 15, color: '#111827' }}>
-                <ShieldCheck size={17} color="#0ea5e9" /> #{selected.name} Rules
+          <div className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 420, boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>
+                <ShieldCheck size={17} color="var(--primary)" /> #{selected.name} Rules
               </div>
-              <button onClick={() => setShowRules(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
+              <button onClick={() => setShowRules(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}><X size={18} /></button>
             </div>
             <div style={{ padding: '18px 22px' }}>
               {selected.rules.split('\n').map((r, i) => (
-                <div key={i} style={{ fontSize: 13.5, color: '#374151', marginBottom: 8, display: 'flex', gap: 8 }}>
-                  <Check size={14} color="#059669" style={{ marginTop: 2, flexShrink: 0 }} />
-                  {isSuperAdmin && <span style={{ color: '#9ca3af', fontVariantNumeric: 'tabular-nums' }}>{i + 1}.</span>}
+                <div key={i} style={{ fontSize: 13.5, color: 'var(--text2)', marginBottom: 8, display: 'flex', gap: 8 }}>
+                  <Check size={14} color="var(--success)" style={{ marginTop: 2, flexShrink: 0 }} />
+                  {isSuperAdmin && <span style={{ color: 'var(--text3)', fontVariantNumeric: 'tabular-nums' }}>{i + 1}.</span>}
                   {r}
                 </div>
               ))}
-              <div style={{ marginTop: 14, fontSize: 12, color: '#9ca3af' }}>
-                Head Doctor: <strong style={{ color: '#374151' }}>{selected.head_doctor_name}</strong>
+              <div style={{ marginTop: 14, fontSize: 12, color: 'var(--text3)' }}>
+                Head Doctor: <strong style={{ color: 'var(--text2)' }}>{selected.head_doctor_name}</strong>
               </div>
               {isSuperAdmin && (
-                <div style={{ marginTop: 14, padding: '10px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 11.5, color: '#6b7280', lineHeight: 1.6 }}>
-                  <strong style={{ color: '#374151' }}>Admin commands:</strong><br />
+                <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11.5, color: 'var(--text2)', lineHeight: 1.6 }}>
+                  <strong style={{ color: 'var(--text)' }}>Admin commands:</strong><br />
                   /addrule &lt;text&gt; · /removerule &lt;number or text&gt; · /kick &lt;name&gt; · /ban &lt;name&gt; · /timeout &lt;name&gt; [minutes] · /warn &lt;name&gt; [| reason]
                 </div>
               )}
@@ -623,23 +697,23 @@ export default function Channels() {
       {showMembers && selected && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
           onClick={e => e.target === e.currentTarget && setShowMembers(false)}>
-          <div className="animate-fade-up" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 380, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
-            <div style={{ padding: '18px 22px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 15, color: '#111827' }}>
-                <Users size={17} color="#0ea5e9" /> #{selected.name} Members ({members.length})
+          <div className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 380, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>
+                <Users size={17} color="var(--primary)" /> #{selected.name} Members ({members.length})
               </div>
-              <button onClick={() => setShowMembers(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
+              <button onClick={() => setShowMembers(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}><X size={18} /></button>
             </div>
             <div style={{ padding: '10px 14px', overflowY: 'auto' }}>
               {members.map(m => (
                 <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px' }}>
                   <Avatar name={m.user_name} size={32} src={m.avatar} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user_name}</div>
-                    <div style={{ fontSize: 11, color: '#9ca3af' }}>{m.user_email}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user_name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{m.user_email}</div>
                   </div>
                   {m.member_role === 'head' && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 700, color: '#d97706', background: '#fffbeb', padding: '3px 8px', borderRadius: 99, flexShrink: 0 }}>
+                    <span className="badge badge-warning" style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                       <Crown size={10} /> Head
                     </span>
                   )}
@@ -654,39 +728,36 @@ export default function Channels() {
       {showCreate && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
           onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
-          <div className="animate-fade-up" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Hash size={17} color="#1d4ed8" />
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Hash size={17} color="var(--primary)" />
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>New Channel</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>New Channel</div>
               </div>
-              <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#9ca3af' }}><X size={18} /></button>
+              <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}><X size={18} /></button>
             </div>
             <form onSubmit={handleCreate} style={{ padding: '20px 24px' }}>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Channel Name *</label>
+              <div className="form-group">
+                <label className="form-label">Channel Name<span className="req">*</span></label>
                 <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="Cardiology Team"
-                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                  placeholder="Cardiology Team" className="form-input" />
               </div>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Head Doctor *</label>
-                <select value={form.head_doctor_id} onChange={e => setForm(f => ({ ...f, head_doctor_id: e.target.value }))}
-                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}>
+              <div className="form-group">
+                <label className="form-label">Head Doctor<span className="req">*</span></label>
+                <select value={form.head_doctor_id} onChange={e => setForm(f => ({ ...f, head_doctor_id: e.target.value }))} className="form-select">
                   <option value="">Select a doctor…</option>
                   {doctors.map(d => <option key={d.id} value={d.id}>{d.name} ({d.email})</option>)}
                 </select>
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>The Head Doctor can invite other doctors with /invite.</div>
+                <div className="form-hint">The Head Doctor can invite other doctors with /invite.</div>
               </div>
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 5 }}>Channel Rules</label>
-                <textarea value={form.rules} onChange={e => setForm(f => ({ ...f, rules: e.target.value }))} rows={4}
-                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+              <div className="form-group">
+                <label className="form-label">Channel Rules</label>
+                <textarea value={form.rules} onChange={e => setForm(f => ({ ...f, rules: e.target.value }))} rows={4} className="form-textarea" />
               </div>
               {createError && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#dc2626', marginBottom: 14 }}>{createError}</div>
+                <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: 'var(--danger)', marginBottom: 14 }}>{createError}</div>
               )}
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowCreate(false)} className="btn btn-secondary btn-sm">Cancel</button>
@@ -700,13 +771,28 @@ export default function Channels() {
       )}
 
       <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .ch-icon-btn {
+          background: var(--surface2); border: none; border-radius: 8px; padding: 7px 12px;
+          display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 12px; font-weight: 600;
+          color: var(--text2); transition: background .15s, color .15s;
+        }
+        .ch-icon-btn:hover { background: var(--border); color: var(--text); }
+        .ch-search-input:focus { border-color: var(--primary) !important; background: var(--surface) !important; }
+        .ch-msg-input:focus { border-color: var(--primary) !important; box-shadow: 0 0 0 3.5px var(--primary-muted); }
+        .ch-send-btn:hover:not(:disabled) { background: var(--primary-dark) !important; }
+        .msg-meta-hover { opacity: 0; transition: opacity .15s; }
+        .msg-row:hover .msg-meta-hover { opacity: 1; }
         @media (max-width: 640px) {
           .ch-sidebar { width: 100% !important; }
           .ch-main { display: none !important; }
           .ch-has-selected .ch-sidebar { display: none !important; }
           .ch-has-selected .ch-main { display: flex !important; }
           .ch-back { display: flex !important; }
+        }
+        @container (max-width: 480px) {
+          .ch-header-buttons { gap: 4px !important; }
+          .ch-icon-btn { padding: 7px 9px !important; }
+          .ch-icon-btn span.ch-btn-label { display: none; }
         }
       `}</style>
     </div>
@@ -717,27 +803,27 @@ function ChannelRow({ c, active, pending, unread, muted, onClick, onToggleMute }
   return (
     <div onClick={onClick} className="followup-row" style={{
       padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
-      background: active ? '#eff6ff' : 'transparent', borderLeft: active ? '3px solid #0ea5e9' : '3px solid transparent',
+      background: active ? 'var(--primary-light)' : 'transparent', borderLeft: active ? '3px solid var(--primary)' : '3px solid transparent',
       transition: 'background .15s ease',
     }}>
       <Avatar name={c.name} size={32} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: unread ? 800 : 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
+        <div style={{ fontSize: 13, fontWeight: unread ? 800 : 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
           {c.name}
-          {muted && <BellOff size={11} color="#9ca3af" />}
+          {muted && <BellOff size={11} color="var(--text3)" />}
         </div>
-        <div style={{ fontSize: 11, color: pending ? '#d97706' : '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ fontSize: 11, color: pending ? 'var(--warning)' : 'var(--text3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {pending ? 'Pending invite' : previewText(c)}
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
-        {c.last_message_at && !pending && <span style={{ fontSize: 10, color: '#9ca3af' }}>{timeAgo(c.last_message_at)}</span>}
-        {pending ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} /> :
-          unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#0ea5e9' }} />}
+        {c.last_message_at && !pending && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{timeAgo(c.last_message_at)}</span>}
+        {pending ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warning)' }} /> :
+          unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)' }} />}
       </div>
       {!pending && onToggleMute && (
         <button onClick={e => { e.stopPropagation(); onToggleMute() }} title={muted ? 'Unmute' : 'Mute'}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 9, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 9, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {muted ? <BellOff size={13} /> : <Bell size={13} />}
         </button>
       )}
