@@ -380,6 +380,9 @@ tr:hover td { background: #fafcff; }
 .review-layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; padding: 24px 32px; }
 .review-sidebar { position: sticky; top: 80px; }
 
+/* ── list + detail panel (RPM patient list / vitals detail) ── */
+.rpm-layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; padding: 24px 32px; }
+
 /* ── stats ── */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; padding: 24px 32px 0; }
 .dash-charts-grid { grid-template-columns: 1fr 1fr; }
@@ -493,6 +496,7 @@ tr:hover td { background: #fafcff; }
   .main-content { margin-left: 0; }
   .stats-grid { grid-template-columns: 1fr 1fr; padding: 16px; gap: 12px; }
   .review-layout { grid-template-columns: 1fr; padding: 16px; gap: 16px; }
+  .rpm-layout { grid-template-columns: 1fr; padding: 16px; gap: 16px; }
 
   /* pages that hardcode repeat(N, 1fr) grids instead of .stats-grid — collapse to 2 columns */
   [style*="repeat(3,"], [style*="repeat(3, "],
@@ -540,6 +544,7 @@ tr:hover td { background: #fafcff; }
   [style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
 
   .review-layout { padding: 12px; gap: 12px; }
+  .rpm-layout { padding: 12px; gap: 12px; }
   .card-body { padding: 12px; }
   .card-header { padding: 12px 14px; }
   .page-header { padding: 14px 12px 0; }

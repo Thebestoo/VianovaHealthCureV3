@@ -35,6 +35,34 @@ function initials(name = '') {
   return name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase()
 }
 
+// Includes the date whenever the visible readings span more than one calendar
+// day, so trend points stay unambiguous instead of showing bare "HH:MM" for
+// readings logged a day apart.
+function formatReadingTime(iso, includeDate) {
+  const d = new Date(iso)
+  return includeDate
+    ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function VitalsTrendTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 13px', boxShadow: 'var(--shadow-md)' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
+      {payload.map(p => (
+        <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, marginTop: 3 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+          <span style={{ color: 'var(--text2)' }}>{p.name}</span>
+          <span style={{ fontWeight: 700, color: 'var(--text)', marginLeft: 'auto' }}>
+            {p.value ?? '—'}{p.value != null ? (p.dataKey === 'hr' ? ' bpm' : ' %') : ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function RPM() {
   const { key } = useKey()
   const [patients, setPatients] = useState([])
@@ -169,10 +197,13 @@ export default function RPM() {
     } finally { setDisenrolling(false) }
   }
 
-  const chartData = readings.slice().reverse().slice(-20).map(r => ({
-    time: new Date(r.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    hr:   r.heart_rate,
-    spo2: r.spo2,
+  const recentReadings = readings.slice().reverse().slice(-7)
+  const chartSpansMultipleDays = recentReadings.length > 0 &&
+    new Date(recentReadings[0].recorded_at).toDateString() !== new Date(recentReadings[recentReadings.length - 1].recorded_at).toDateString()
+  const chartData = recentReadings.map(r => ({
+    time: formatReadingTime(r.recorded_at, chartSpansMultipleDays),
+    hr:   r.heart_rate != null ? Number(r.heart_rate) : null,
+    spo2: r.spo2 != null ? Number(r.spo2) : null,
     sys:  r.systolic_bp,
     temp: r.temperature ? parseFloat(r.temperature) : null,
   }))
@@ -217,7 +248,7 @@ export default function RPM() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20, padding: '24px 32px' }}>
+      <div className="rpm-layout">
         {/* Patient List */}
         <div>
           <div className="card">
@@ -323,29 +354,48 @@ export default function RPM() {
               {chartData.length > 1 && (
                 <div className="card" style={{ marginBottom: 20 }}>
                   <div className="card-header">
-                    <span className="card-title">Vital Trends (last 20 readings)</span>
+                    <div>
+                      <span className="card-title">Vital Trends</span>
+                      <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+                        Last {chartData.length} reading{chartData.length === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text2)' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--danger)' }} /> Heart Rate
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)' }} /> SpO2
+                      </span>
+                    </div>
                   </div>
                   <div className="card-body">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <AreaChart data={chartData} margin={{ top: 4, right: 10, left: -10, bottom: 0 }}>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <AreaChart data={chartData} margin={{ top: 6, right: 6, left: -6, bottom: 0 }}>
                       <defs>
                         <linearGradient id="hrGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--danger)" stopOpacity={0.25} />
+                          <stop offset="5%" stopColor="var(--danger)" stopOpacity={0.22} />
                           <stop offset="95%" stopColor="var(--danger)" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="spo2Grad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.25} />
+                          <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.22} />
                           <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                      <XAxis dataKey="time" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid var(--border)' }} />
-                      <ReferenceLine y={100} stroke="var(--danger)" strokeDasharray="4 2" strokeWidth={1} />
-                      <ReferenceLine y={60}  stroke="var(--danger)" strokeDasharray="4 2" strokeWidth={1} />
-                      <Area type="monotone" dataKey="hr"   stroke="var(--danger)" strokeWidth={2} fill="url(#hrGrad)"   name="Heart Rate" />
-                      <Area type="monotone" dataKey="spo2" stroke="var(--primary)" strokeWidth={2} fill="url(#spo2Grad)" name="SpO2" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                      <XAxis dataKey="time" tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} />
+                      <YAxis yAxisId="hr" tick={{ fontSize: 11, fill: 'var(--danger)' }} axisLine={false} tickLine={false} width={32}
+                        domain={['dataMin - 10', 'dataMax + 10']} allowDecimals={false} />
+                      <YAxis yAxisId="spo2" orientation="right" tick={{ fontSize: 11, fill: 'var(--primary)' }} axisLine={false} tickLine={false} width={36}
+                        domain={[85, 100]} allowDecimals={false} />
+                      <Tooltip content={<VitalsTrendTooltip />} cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '3 3' }} />
+                      <ReferenceLine yAxisId="hr" y={100} stroke="var(--text3)" strokeDasharray="4 3" strokeOpacity={0.6} />
+                      <ReferenceLine yAxisId="hr" y={60} stroke="var(--text3)" strokeDasharray="4 3" strokeOpacity={0.6}
+                        label={{ value: 'HR normal range', position: 'insideBottomLeft', fontSize: 10, fill: 'var(--text3)' }} />
+                      <Area yAxisId="hr" type="monotone" dataKey="hr" stroke="var(--danger)" strokeWidth={2.5} fill="url(#hrGrad)" name="Heart Rate"
+                        dot={{ r: 3.5, fill: 'var(--danger)', stroke: 'var(--surface)', strokeWidth: 2 }} activeDot={{ r: 5.5 }} connectNulls />
+                      <Area yAxisId="spo2" type="monotone" dataKey="spo2" stroke="var(--primary)" strokeWidth={2.5} fill="url(#spo2Grad)" name="SpO2"
+                        dot={{ r: 3.5, fill: 'var(--primary)', stroke: 'var(--surface)', strokeWidth: 2 }} activeDot={{ r: 5.5 }} connectNulls />
                     </AreaChart>
                   </ResponsiveContainer>
                   </div>
