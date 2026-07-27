@@ -118,7 +118,12 @@ export function DonutOverview({ data, size = 120, thickness = 16, centerLabel })
             >
               {data.map((d, i) => <Cell key={i} fill={d.color || PIE_COLORS[i % PIE_COLORS.length]} stroke="none" />)}
             </Pie>
-            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }} />
+            <Tooltip
+              contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0', padding: '5px 10px' }}
+              position={{ x: size / 2 - 45, y: size - 14 }}
+              wrapperStyle={{ zIndex: 20, pointerEvents: 'none' }}
+              isAnimationActive={false}
+            />
           </PieChart>
         </ResponsiveContainer>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
