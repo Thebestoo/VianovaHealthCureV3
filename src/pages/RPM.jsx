@@ -422,7 +422,7 @@ export default function RPM() {
                     </button>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16 }}>
                   {VITALS_CONFIG.map(cfg => {
                     const val = latest[cfg.key]
                     const st  = statusFor(cfg.key, val)
@@ -482,9 +482,9 @@ export default function RPM() {
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                       <XAxis dataKey="time" tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} />
                       <YAxis yAxisId="hr" tick={{ fontSize: 11, fill: 'var(--danger)' }} axisLine={false} tickLine={false} width={32}
-                        domain={['dataMin - 10', 'dataMax + 10']} allowDecimals={false} />
+                        domain={['dataMin - 10', 'dataMax + 10']} allowDecimals={false} allowDataOverflow />
                       <YAxis yAxisId="spo2" orientation="right" tick={{ fontSize: 11, fill: 'var(--primary)' }} axisLine={false} tickLine={false} width={36}
-                        domain={[85, 100]} allowDecimals={false} />
+                        domain={[85, 100]} allowDecimals={false} allowDataOverflow />
                       <Tooltip content={<VitalsTrendTooltip />} cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '3 3' }} />
                       <ReferenceLine yAxisId="hr" y={100} stroke="var(--text3)" strokeDasharray="4 3" strokeOpacity={0.6} />
                       <ReferenceLine yAxisId="hr" y={60} stroke="var(--text3)" strokeDasharray="4 3" strokeOpacity={0.6}

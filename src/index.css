@@ -381,7 +381,10 @@ tr:hover td { background: #fafcff; }
 .review-sidebar { position: sticky; top: 80px; }
 
 /* ── list + detail panel (RPM patient list / vitals detail) ── */
-.list-detail-layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; padding: 24px 32px; }
+/* minmax(0, 1fr) — not plain 1fr — so the detail column can shrink below its
+   content's min-content width instead of blowing out past the container when
+   a nested grid (e.g. vitals cards) has a wide intrinsic size. */
+.list-detail-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; padding: 24px 32px; }
 
 /* ── stats ── */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; padding: 24px 32px 0; }
