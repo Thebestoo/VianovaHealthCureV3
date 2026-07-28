@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, AlertCircle, Plus, RefreshCw, Users, Search, UserMinus, Wand2, X, Clock } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
+import PatientSnapshot from '../components/PatientSnapshot.jsx'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts'
@@ -189,6 +190,7 @@ export default function RPM() {
           name: pickedPatient.name,
           dob: pickedPatient.dob,
           condition: newPatient.condition || pickedPatient.conditions || '',
+          gen_patient_id: pickedPatient.id,
         })
       })
       setShowAddPatient(false)
@@ -422,6 +424,7 @@ export default function RPM() {
                     </button>
                   </div>
                 </div>
+                <PatientSnapshot patient={selected} compact />
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16 }}>
                   {VITALS_CONFIG.map(cfg => {
                     const val = latest[cfg.key]

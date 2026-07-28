@@ -11,7 +11,7 @@ import { parseFhirBundle } from '../utils/parseFhir.js'
 import FhirPreview from '../components/FhirPreview.jsx'
 import {
   normalizePhone, normalizeName, normalizeDOB,
-  computeQualityScore, qualityTier, PATIENT_FIELDS, parseCSV
+  computeQualityScore, qualityTier, PATIENT_FIELDS, parseCSV, toArr
 } from '../utils/patientUtils.js'
 
 /* ── small helpers ── */
@@ -56,10 +56,12 @@ function SourceBadge({ source }) {
   return <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 10, fontWeight: 700, color: s.color, background: s.bg }}>{s.label}</span>
 }
 
-const toArr  = v => (typeof v === 'string' ? v.split(/[,\n]+/).map(s => s.trim()).filter(Boolean) : (v || []))
+// Splits the comma/newline-separated text of an in-progress edit form field into
+// an array — distinct from the imported `toArr` (patientUtils.js), which parses the
+// JSON-array-or-CSV string already stored on a patient record for display.
+const formFieldToArr = v => (typeof v === 'string' ? v.split(/[,\n]+/).map(s => s.trim()).filter(Boolean) : (v || []))
 const arrStr = a => (Array.isArray(a) ? a.join(', ') : (a || ''))
 function tryParse(v)    { try { return typeof v === 'string' ? JSON.parse(v) : v } catch { return v } }
-function tryParseArr(v) { const r = tryParse(v); return Array.isArray(r) ? r : (r ? [r] : []) }
 
 const EMPTY = { name: '', dob: '', sex: '', mrn: '', phone: '', email: '', address: '', language: '', conditions: '', medications: '', allergies: '', notes: '' }
 
@@ -306,9 +308,9 @@ export default function Patients() {
     setSaving(true); setDupWarning('')
     const body = {
       ...form,
-      conditions:  JSON.stringify(toArr(form.conditions)),
-      medications: JSON.stringify(toArr(form.medications)),
-      allergies:   JSON.stringify(toArr(form.allergies)),
+      conditions:  JSON.stringify(formFieldToArr(form.conditions)),
+      medications: JSON.stringify(formFieldToArr(form.medications)),
+      allergies:   JSON.stringify(formFieldToArr(form.allergies)),
       fhir_vitals: fhirData?.vitals ? JSON.stringify(fhirData.vitals) : undefined,
       import_source: fhirData ? 'fhir' : (editId ? undefined : 'manual'),
     }
@@ -482,10 +484,10 @@ export default function Patients() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {viewFiltered.map(p => {
-              const conditions  = tryParseArr(p.conditions)
-              const medications = tryParseArr(p.medications)
-              const allergies   = tryParseArr(p.allergies)
-              const vitals      = tryParseArr(p.fhir_vitals)
+              const conditions  = toArr(p.conditions)
+              const medications = toArr(p.medications)
+              const allergies   = toArr(p.allergies)
+              const vitals      = toArr(p.fhir_vitals)
               const isOpen      = expanded === p.id
               const score       = p.data_quality_score ?? computeQualityScore(p)
               return (
@@ -761,7 +763,7 @@ export default function Patients() {
 
               {/* Live quality preview */}
               {(() => {
-                const preview = { ...form, conditions: JSON.stringify(toArr(form.conditions)), medications: JSON.stringify(toArr(form.medications)), allergies: JSON.stringify(toArr(form.allergies)) }
+                const preview = { ...form, conditions: JSON.stringify(formFieldToArr(form.conditions)), medications: JSON.stringify(formFieldToArr(form.medications)), allergies: JSON.stringify(formFieldToArr(form.allergies)) }
                 const s = computeQualityScore(preview)
                 const t = qualityTier(s)
                 return (

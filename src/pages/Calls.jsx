@@ -4,6 +4,7 @@ import {
   Users, Clock, Check, X, Loader2, Search, Send, User as UserIcon, CalendarClock,
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import PatientSnapshot from '../components/PatientSnapshot.jsx'
 
 const TABS = [
   { key: 'ai',       label: 'AI Assistant',      icon: Bot },
@@ -458,7 +459,7 @@ function PatientCallbacksPanel({ apiKey, email }) {
   const [patients, setPatients] = useState([])
   const [doctors, setDoctors] = useState([])
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ patient_id: '', target_doctor_email: '', reason: '' })
+  const [form, setForm] = useState({ patient_id: '', target_doctor_email: '', reason: '', caller_role: 'patient', family_member_name: '' })
   const [patientSearch, setPatientSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -489,9 +490,13 @@ function PatientCallbacksPanel({ apiKey, email }) {
     try {
       await fetch('/api/call-requests', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ patient_id: patient.id, patient_name: patient.name, patient_phone: patient.phone, target_doctor_email: form.target_doctor_email, reason: form.reason }),
+        body: JSON.stringify({
+          patient_id: patient.id, patient_name: patient.name, patient_phone: patient.phone,
+          target_doctor_email: form.target_doctor_email, reason: form.reason,
+          caller_role: form.caller_role, family_member_name: form.caller_role === 'family' ? form.family_member_name : '',
+        }),
       })
-      setForm({ patient_id: '', target_doctor_email: '', reason: '' })
+      setForm({ patient_id: '', target_doctor_email: '', reason: '', caller_role: 'patient', family_member_name: '' })
       setPatientSearch('')
       setShowForm(false)
       load()
@@ -567,6 +572,30 @@ function PatientCallbacksPanel({ apiKey, email }) {
                 {filteredPatients.length === 0 && <div style={{ padding: '7px 12px', fontSize: 12, color: 'var(--text3)' }}>No matches</div>}
               </div>
             )}
+            {form.patient_id && <PatientSnapshot patient={patients.find(p => p.id === form.patient_id)} compact />}
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', display: 'block', marginBottom: 4 }}>Who is calling?</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={() => setForm(f => ({ ...f, caller_role: 'patient' }))}
+                style={{ flex: 1, padding: '7px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                  border: form.caller_role === 'patient' ? '1px solid var(--primary-dark)' : '1px solid #e5e7eb',
+                  background: form.caller_role === 'patient' ? 'var(--primary-light)' : '#fff',
+                  color: form.caller_role === 'patient' ? 'var(--primary-dark)' : 'var(--text2)' }}>
+                Patient
+              </button>
+              <button type="button" onClick={() => setForm(f => ({ ...f, caller_role: 'family' }))}
+                style={{ flex: 1, padding: '7px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                  border: form.caller_role === 'family' ? '1px solid var(--primary-dark)' : '1px solid #e5e7eb',
+                  background: form.caller_role === 'family' ? 'var(--primary-light)' : '#fff',
+                  color: form.caller_role === 'family' ? 'var(--primary-dark)' : 'var(--text2)' }}>
+                Family member
+              </button>
+            </div>
+            {form.caller_role === 'family' && (
+              <input value={form.family_member_name} onChange={e => setForm(f => ({ ...f, family_member_name: e.target.value }))}
+                placeholder="Family member's name" style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', marginTop: 8 }} />
+            )}
           </div>
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', display: 'block', marginBottom: 4 }}>Route to doctor</label>
@@ -600,7 +629,14 @@ function PatientCallbacksPanel({ apiKey, email }) {
             return (
               <div key={r.id} className="card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>{r.patient_name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {r.patient_name}
+                    {r.caller_role === 'family' && (
+                      <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: 'var(--primary-light)', color: 'var(--primary-dark)' }}>
+                        Family{r.family_member_name ? `: ${r.family_member_name}` : ''}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
                     {isTarget ? `Requested by ${r.owner_name}` : `Routed to ${r.target_doctor_name}`}
                     {r.patient_phone && <> · {r.patient_phone}</>}

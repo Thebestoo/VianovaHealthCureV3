@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import SummaryActions from '../components/SummaryActions.jsx'
+import PatientSnapshot from '../components/PatientSnapshot.jsx'
 
 // Typical adult reference ranges, keyed by test name — lets the form
 // auto-fill unit/reference range the moment a known test is picked instead
@@ -398,6 +399,8 @@ export default function Labs() {
             </button>
           )}
         </div>
+
+        {patientFilter && <PatientSnapshot patient={patients.find(p => p.id === patientFilter)} />}
 
         {/* ── Results list ── */}
         {loading ? (

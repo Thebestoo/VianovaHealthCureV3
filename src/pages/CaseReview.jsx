@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import {
   AlertTriangle, CheckCircle, Clock, ChevronLeft, ShieldAlert, Check,
   Pill, FlaskConical, Stethoscope, UserRound, FileText, Save,
@@ -152,6 +153,9 @@ export default function CaseReview() {
       }),
     })
     const data = await res.json()
+    if (data.auto_assigned) {
+      toast.success(`You're now the assigned doctor on this case`)
+    }
     setRecord(data)
     if (data.follow_up_date) setFollowUpDate(data.follow_up_date)
     setSaving(false)
@@ -692,6 +696,11 @@ export default function CaseReview() {
               }
             </div>
             <div className="card-body">
+              {record?.assigned_to_name && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
+                  <UserRound size={13} /> Assigned to <strong style={{ color: 'var(--text2)' }}>{record.assigned_to_name}</strong>
+                </div>
+              )}
               {a?.doctor_review?.approved && (
                 <div className="approved-overlay mb-4" style={{ marginBottom: 16 }}>
                   <div style={{ fontWeight: 600, color: 'var(--success)', fontSize: 13, display:'flex',alignItems:'center',gap:6 }}><CheckCircle size={14} /> Approved by {a.doctor_review.reviewed_by}</div>
@@ -704,6 +713,21 @@ export default function CaseReview() {
                 <input className="form-input" placeholder="Dr. Name" value={reviewedBy} onChange={e => setReviewedBy(e.target.value)} />
               </div>
 
+              <div className="form-group">
+                <label className="form-label">Doctor Notes</label>
+                <textarea className="form-textarea" rows={5} placeholder="Add clinical notes, corrections, or comments…"
+                  value={doctorNotes} onChange={e => setDoctorNotes(e.target.value)} />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Final Approved Cure (edited plan)</label>
+                <textarea className="form-textarea" rows={6}
+                  placeholder="Write the approved treatment plan here. This is what will be communicated to the patient after approval."
+                  value={finalCure} onChange={e => setFinalCure(e.target.value)} />
+              </div>
+
+              {/* Follow-up scheduling comes after the final cure is drafted, since the
+                  follow-up date should reflect the approved plan, not precede it. */}
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <CalendarClock size={13} /> Follow-up Date
@@ -720,19 +744,6 @@ export default function CaseReview() {
                     Follow-up in {Math.ceil((new Date(followUpDate) - new Date()) / 86400000)} day(s)
                   </div>
                 )}
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Doctor Notes</label>
-                <textarea className="form-textarea" rows={5} placeholder="Add clinical notes, corrections, or comments…"
-                  value={doctorNotes} onChange={e => setDoctorNotes(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Final Approved Cure (edited plan)</label>
-                <textarea className="form-textarea" rows={6}
-                  placeholder="Write the approved treatment plan here. This is what will be communicated to the patient after approval."
-                  value={finalCure} onChange={e => setFinalCure(e.target.value)} />
               </div>
 
               <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: approve ? 'var(--success-light)' : 'var(--surface2)', borderRadius: 8, cursor: 'pointer' }}

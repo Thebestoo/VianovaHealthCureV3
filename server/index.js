@@ -207,6 +207,22 @@ async function initDB() {
     `ALTER TABLE ccm_care_plans ADD COLUMN goals TEXT`,
     `ALTER TABLE ccm_care_plans ADD COLUMN care_team TEXT`,
     `ALTER TABLE ccm_care_plans ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
+    // CCM check-ins — link a check-in to the call it was logged from (patient<->doctor
+    // or family<->doctor), so review-of-care shows exactly which conversation it came from
+    `ALTER TABLE ccm_checkins ADD COLUMN call_id TEXT`,
+    // CCM patients are enrolled as a separate row with their own id (copied from the
+    // gen_patients roster at enroll time) — call_requests.patient_id refers to the
+    // gen_patients id, so without this link a CCM check-in could never be matched back
+    // to the call it came from.
+    `ALTER TABLE ccm_patients ADD COLUMN gen_patient_id TEXT`,
+    // Calls — distinguish a patient calling in from a family member calling on the
+    // patient's behalf, so "family<->doctor" calls are modeled, not just patient<->doctor
+    `ALTER TABLE call_requests ADD COLUMN caller_role TEXT NOT NULL DEFAULT 'patient'`,
+    `ALTER TABLE call_requests ADD COLUMN family_member_name TEXT`,
+    // RPM patients are enrolled as their own row (only name/dob/condition) — link back
+    // to the gen_patients roster so the RPM page can show full demographics/conditions/
+    // meds/allergies instead of just a name and a single free-text condition string.
+    `ALTER TABLE rpm_patients ADD COLUMN gen_patient_id TEXT`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -311,15 +327,47 @@ function validEmail(e) {
 const client = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 // ── ownership helpers ──────────────────────────────────────────────────────────
+// Any doctor may open a case they own, a case already assigned to them, or an
+// unassigned case still awaiting a second reviewer — that last clause is what lets
+// a doctor pick up and self-assign as the reviewing "assistant" without a
+// superadmin having to push the assignment first (see PATCH /api/cases/:id/review).
 async function getCaseForKey(caseId, reqKey, reqRole) {
   if (reqRole === 'superadmin') {
     return (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ?', args: [caseId] })).rows[0] ?? null
   }
-  return (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ? AND (owner_key = ? OR assigned_to = ?)', args: [caseId, reqKey, reqKey] })).rows[0] ?? null
+  return (await db.execute({
+    sql: 'SELECT * FROM cases WHERE case_id = ? AND (owner_key = ? OR assigned_to = ? OR assigned_to IS NULL)',
+    args: [caseId, reqKey, reqKey],
+  })).rows[0] ?? null
 }
 async function listCasesForKey(reqKey, reqRole) {
   if (reqRole === 'superadmin') return (await db.execute({ sql: 'SELECT * FROM cases ORDER BY created_at DESC', args: [] })).rows
   return (await db.execute({ sql: 'SELECT * FROM cases WHERE owner_key = ? OR assigned_to = ? ORDER BY created_at DESC', args: [reqKey, reqKey] })).rows
+}
+// Cases any doctor can pick up: not their own, and not yet claimed by another doctor.
+// Capped — this is fetched on every page load (to show the queue count in the tab
+// label) regardless of which tab is active, so it must stay cheap even as the
+// system-wide backlog of unclaimed cases grows.
+async function listQueueForKey(reqKey) {
+  return (await db.execute({
+    sql: 'SELECT * FROM cases WHERE owner_key != ? AND assigned_to IS NULL ORDER BY created_at DESC LIMIT 200',
+    args: [reqKey],
+  })).rows
+}
+
+// Shared by the superadmin-driven POST /api/cases/:id/assign and the doctor
+// self-claim inside PATCH /api/cases/:id/review — same write, same audit log,
+// two different triggers.
+async function assignCase(caseId, assigneeEmail, assigneeName, assignedByName) {
+  const assignedAt = new Date().toISOString()
+  await db.execute({
+    sql: 'UPDATE cases SET assigned_to = ?, assigned_to_name = ?, assigned_by_name = ?, assigned_at = ? WHERE case_id = ?',
+    args: [assigneeEmail, assigneeName, assignedByName, assignedAt, caseId],
+  })
+  await logUpdate('case_assigned', `Case ${caseId.slice(0, 8)} assigned to ${assigneeName} by ${assignedByName}`, {
+    case_id: caseId, assigned_to: assigneeEmail, assigned_by: assignedByName,
+  })
+  return assignedAt
 }
 async function keyStats(apiKey, role) {
   const rows = role === 'superadmin'
@@ -659,33 +707,40 @@ app.post('/api/analyze', auth, aiLimiter, async (req, res) => {
   }
 })
 
+function caseToSummary(row) {
+  const patient  = JSON.parse(row.patient_input)
+  const analysis = JSON.parse(row.analysis)
+  return {
+    case_id:              row.case_id,
+    created_at:           row.created_at,
+    patient_id:           patient?.patient_id || null,
+    age:                  patient?.age,
+    sex:                  patient?.sex,
+    presenting_complaint: analysis?.presenting_complaint,
+    confidence_level:     (analysis?.confidence?.level ?? analysis?.confidence_level),
+    requires_urgent_review: analysis?.requires_urgent_review,
+    emergency_detected:   (analysis?.red_flags?.emergency_escalation_required ?? analysis?.red_flags?.emergency_detected),
+    review_status:        analysis?.doctor_review?.status,
+    approved:             analysis?.doctor_review?.approved,
+    follow_up_date:       row.follow_up_date || null,
+    vitals:               patient?.vitals || [],
+    owner_key:            row.owner_key,
+    assigned_to:          row.assigned_to || null,
+    assigned_to_name:     row.assigned_to_name || null,
+    assigned_at:          row.assigned_at || null,
+  }
+}
+
 // ── GET /api/cases ─────────────────────────────────────────────────────────────
 app.get('/api/cases', auth, async (req, res) => {
   const rows = await listCasesForKey(req.apiKey, req.keyRole)
-  const list = rows.map(row => {
-    const patient  = JSON.parse(row.patient_input)
-    const analysis = JSON.parse(row.analysis)
-    return {
-      case_id:              row.case_id,
-      created_at:           row.created_at,
-      patient_id:           patient?.patient_id || null,
-      age:                  patient?.age,
-      sex:                  patient?.sex,
-      presenting_complaint: analysis?.presenting_complaint,
-      confidence_level:     (analysis?.confidence?.level ?? analysis?.confidence_level),
-      requires_urgent_review: analysis?.requires_urgent_review,
-      emergency_detected:   (analysis?.red_flags?.emergency_escalation_required ?? analysis?.red_flags?.emergency_detected),
-      review_status:        analysis?.doctor_review?.status,
-      approved:             analysis?.doctor_review?.approved,
-      follow_up_date:       row.follow_up_date || null,
-      vitals:               patient?.vitals || [],
-      owner_key:            row.owner_key,
-      assigned_to:          row.assigned_to || null,
-      assigned_to_name:     row.assigned_to_name || null,
-      assigned_at:          row.assigned_at || null,
-    }
-  })
-  res.json(list)
+  res.json(rows.map(caseToSummary))
+})
+
+// ── GET /api/cases/queue — unassigned cases any doctor can pick up as reviewer ──
+app.get('/api/cases/queue', auth, async (req, res) => {
+  const rows = await listQueueForKey(req.apiKey)
+  res.json(rows.map(caseToSummary))
 })
 
 // ── GET /api/cases/:id ─────────────────────────────────────────────────────────
@@ -715,11 +770,7 @@ app.post('/api/cases/:id/assign', auth, requireAdmin, async (req, res) => {
   const target = (await db.execute({ sql: 'SELECT * FROM users WHERE id = ? AND active = 1', args: [userId] })).rows[0]
   if (!target) return res.status(404).json({ error: 'User not found or inactive' })
 
-  const now = new Date().toISOString()
-  await db.execute({
-    sql: 'UPDATE cases SET assigned_to = ?, assigned_to_name = ?, assigned_by_name = ?, assigned_at = ? WHERE case_id = ?',
-    args: [target.email, target.name, req.user.name, now, req.params.id],
-  })
+  const now = await assignCase(req.params.id, target.email, target.name, req.user.name)
 
   const patient  = JSON.parse(row.patient_input)
   const analysis = JSON.parse(row.analysis)
@@ -732,10 +783,6 @@ app.post('/api/cases/:id/assign', auth, requireAdmin, async (req, res) => {
     complaint: analysis?.presenting_complaint,
   })).catch(() => {})
 
-  await logUpdate('case_assigned', `Case ${req.params.id.slice(0, 8)} assigned to ${target.name} by ${req.user.name}`, {
-    case_id: req.params.id, assigned_to: target.email, assigned_by: req.user.name,
-  })
-
   res.json({ ok: true, assigned_to: target.email, assigned_to_name: target.name, assigned_at: now })
 })
 
@@ -743,6 +790,20 @@ app.post('/api/cases/:id/assign', auth, requireAdmin, async (req, res) => {
 app.patch('/api/cases/:id/review', auth, async (req, res) => {
   const row = await getCaseForKey(req.params.id, req.apiKey, req.keyRole)
   if (!row) return res.status(404).json({ error: 'Not found or access denied' })
+
+  // A doctor reviewing a case nobody has claimed yet automatically becomes the
+  // assigned reviewing doctor ("assistant") on it — no superadmin has to run
+  // POST /api/cases/:id/assign first. getCaseForKey already lets any doctor open
+  // an unassigned case; this is where that pickup turns into a real assignment.
+  let autoAssigned = false
+  if (!row.assigned_to && row.owner_key !== req.apiKey && req.keyRole !== 'superadmin') {
+    const claimedAt = await assignCase(req.params.id, req.apiKey, req.keyLabel, 'Auto-assigned (self-claimed on review)')
+    row.assigned_to = req.apiKey
+    row.assigned_to_name = req.keyLabel
+    row.assigned_by_name = 'Auto-assigned (self-claimed on review)'
+    row.assigned_at = claimedAt
+    autoAssigned = true
+  }
 
   const analysis = JSON.parse(row.analysis)
   const { doctor_notes, final_approved_cure, approved, reviewed_by, follow_up_date } = req.body
@@ -803,7 +864,12 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
     created_at:     row.created_at,
     patient_input:  patient,
     analysis,
-    follow_up_date: follow_up_date || row.follow_up_date || null,
+    follow_up_date:   follow_up_date || row.follow_up_date || null,
+    assigned_to:      row.assigned_to || null,
+    assigned_to_name: row.assigned_to_name || null,
+    assigned_by_name: row.assigned_by_name || null,
+    assigned_at:      row.assigned_at || null,
+    auto_assigned:    autoAssigned,
   })
 })
 
@@ -1935,16 +2001,28 @@ app.delete('/api/gen-patients/:id', auth, async (req, res) => {
 })
 
 // ── RPM routes ─────────────────────────────────────────────────────────────────
+// Left-joined against gen_patients (via gen_patient_id) so the RPM roster carries full
+// demographics/conditions/medications/allergies, not just name + a free-text condition.
 app.get('/api/rpm/patients', auth, async (req, res) => {
-  const rows = (await db.execute({ sql: 'SELECT * FROM rpm_patients WHERE owner_email = ? ORDER BY name', args: [req.apiKey] })).rows
+  const rows = (await db.execute({
+    sql: `SELECT r.*, gp.sex AS sex, gp.mrn AS mrn, gp.phone AS phone, gp.email AS email, gp.address AS address,
+                 gp.language AS language, gp.conditions AS conditions, gp.medications AS medications,
+                 gp.allergies AS allergies, gp.fhir_vitals AS fhir_vitals, gp.notes AS notes
+          FROM rpm_patients r LEFT JOIN gen_patients gp ON CAST(r.gen_patient_id AS TEXT) = CAST(gp.id AS TEXT)
+          WHERE r.owner_email = ? ORDER BY r.name`,
+    args: [req.apiKey],
+  })).rows
   res.json({ patients: rows })
 })
 
 app.post('/api/rpm/patients', auth, async (req, res) => {
-  const { name, dob, condition } = req.body
+  const { name, dob, condition, gen_patient_id } = req.body
   if (!name) return res.status(400).json({ error: 'name required' })
   const id = randomUUID()
-  await db.execute({ sql: 'INSERT INTO rpm_patients (id, owner_email, name, dob, condition, created_at) VALUES (?,?,?,?,?,?)', args: [id, req.apiKey, name, dob || null, condition || null, new Date().toISOString()] })
+  await db.execute({
+    sql: 'INSERT INTO rpm_patients (id, owner_email, name, dob, condition, gen_patient_id, created_at) VALUES (?,?,?,?,?,?,?)',
+    args: [id, req.apiKey, name, dob || null, condition || null, gen_patient_id || null, new Date().toISOString()],
+  })
   res.json({ id })
 })
 
@@ -2021,12 +2099,12 @@ app.get('/api/ccm/patients', auth, async (req, res) => {
 
 app.post('/api/ccm/patients', auth, async (req, res) => {
   try {
-    const { name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method } = req.body
+    const { name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method, gen_patient_id } = req.body
     if (!name) return res.status(400).json({ error: 'name required' })
     const id = randomUUID()
     await db.execute({
-      sql: `INSERT INTO ccm_patients (id, owner_email, name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      args: [id, req.apiKey, name, dob || null, phone || null, condition || null, insurance || null, care_manager || null, conditions || null, medications || null, allergies || null, consent_date || null, consent_method || null, new Date().toISOString()]
+      sql: `INSERT INTO ccm_patients (id, owner_email, name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method, gen_patient_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [id, req.apiKey, name, dob || null, phone || null, condition || null, insurance || null, care_manager || null, conditions || null, medications || null, allergies || null, consent_date || null, consent_method || null, gen_patient_id || null, new Date().toISOString()]
     })
     res.json({ id })
   } catch (e) { res.status(500).json({ error: 'Failed to enroll patient', detail: e.message }) }
@@ -2089,14 +2167,40 @@ app.get('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
 
 app.post('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
   try {
-    if (!(await loadOwnedCcmPatient(req.params.pid, req.apiKey))) return res.status(404).json({ error: 'Patient not found' })
-    const { minutes, notes, barriers, plan_update } = req.body
+    const ccmPatient = await loadOwnedCcmPatient(req.params.pid, req.apiKey)
+    if (!ccmPatient) return res.status(404).json({ error: 'Patient not found' })
+    const { minutes, notes, barriers, plan_update, call_id } = req.body
+    // A check-in can be logged straight from a completed call (patient<->doctor or
+    // family<->doctor). call_requests.patient_id refers to the gen_patients roster id,
+    // not this CCM enrollment's own id, so match through gen_patient_id — and verify it
+    // belongs to this patient before linking so a stray/foreign call_id can't be
+    // attached to someone else's check-in.
+    let linkedCallId = null
+    if (call_id && ccmPatient.gen_patient_id) {
+      const call = (await db.execute({ sql: 'SELECT id FROM call_requests WHERE id = ? AND patient_id = ?', args: [call_id, ccmPatient.gen_patient_id] })).rows[0]
+      linkedCallId = call ? call.id : null
+    }
     await db.execute({
-      sql: `INSERT INTO ccm_checkins (patient_id, owner_key, minutes, notes, barriers, plan_update, created_at) VALUES (?,?,?,?,?,?,?)`,
-      args: [req.params.pid, req.apiKey, minutes || 0, notes || null, barriers || null, plan_update || null, new Date().toISOString()]
+      sql: `INSERT INTO ccm_checkins (patient_id, owner_key, minutes, notes, barriers, plan_update, call_id, created_at) VALUES (?,?,?,?,?,?,?,?)`,
+      args: [req.params.pid, req.apiKey, minutes || 0, notes || null, barriers || null, plan_update || null, linkedCallId, new Date().toISOString()]
     })
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: 'Failed to save check-in', detail: e.message }) }
+})
+
+// Candidate calls a check-in can be linked to — resolves this CCM enrollment's
+// gen_patient_id under the hood so the client never has to know about that mapping.
+app.get('/api/ccm/patients/:pid/calls', auth, async (req, res) => {
+  try {
+    const ccmPatient = await loadOwnedCcmPatient(req.params.pid, req.apiKey)
+    if (!ccmPatient) return res.status(404).json({ error: 'Patient not found' })
+    if (!ccmPatient.gen_patient_id) return res.json({ calls: [] })
+    const rows = (await db.execute({
+      sql: 'SELECT * FROM call_requests WHERE patient_id = ? AND (target_doctor_email = ? OR owner_email = ?) ORDER BY created_at DESC',
+      args: [ccmPatient.gen_patient_id, req.apiKey, req.apiKey],
+    })).rows
+    res.json({ calls: rows })
+  } catch (e) { res.status(500).json({ error: 'Failed to load calls', detail: e.message }) }
 })
 
 // AI-assisted check-in — drafts a clinically-reasonable note + minute estimate
@@ -5278,24 +5382,29 @@ app.post('/api/voice-calls/:id/end', auth, async (req, res) => {
 
 // ── Patient callback requests ──────────────────────────────────────────────────
 app.post('/api/call-requests', auth, async (req, res) => {
-  const { patient_id, patient_name, patient_phone, target_doctor_email, reason } = req.body
+  const { patient_id, patient_name, patient_phone, target_doctor_email, reason, caller_role, family_member_name } = req.body
   if (!patient_id || !patient_name || !target_doctor_email) return res.status(400).json({ error: 'patient_id, patient_name and target_doctor_email required' })
   const doctor = (await db.execute({ sql: 'SELECT name FROM users WHERE email = ? AND active = 1', args: [target_doctor_email] })).rows[0]
   if (!doctor) return res.status(404).json({ error: 'Target doctor not found' })
+  const role = caller_role === 'family' ? 'family' : 'patient'
   const id = randomUUID()
   const now = new Date().toISOString()
   await db.execute({
-    sql: `INSERT INTO call_requests (id, patient_id, patient_name, patient_phone, owner_email, owner_name, target_doctor_email, target_doctor_name, reason, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)`,
-    args: [id, patient_id, patient_name, sanitise(patient_phone, 40) || '', req.apiKey, req.user?.name || req.apiKey, target_doctor_email, doctor.name, sanitise(reason, 500) || '', now],
+    sql: `INSERT INTO call_requests (id, patient_id, patient_name, patient_phone, owner_email, owner_name, target_doctor_email, target_doctor_name, reason, caller_role, family_member_name, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?)`,
+    args: [id, patient_id, patient_name, sanitise(patient_phone, 40) || '', req.apiKey, req.user?.name || req.apiKey, target_doctor_email, doctor.name, sanitise(reason, 500) || '', role, role === 'family' ? sanitise(family_member_name, 120) || '' : '', now],
   })
   notifyUsers([target_doctor_email], tplIncomingCallRequest({ patientName: patient_name, requestedBy: req.user?.name || req.apiKey, reason, patientPhone: patient_phone })).catch(() => {})
   res.json({ id, status: 'pending', created_at: now })
 })
 
 app.get('/api/call-requests', auth, async (req, res) => {
-  const rows = req.keyRole === 'superadmin'
-    ? (await db.execute({ sql: 'SELECT * FROM call_requests ORDER BY created_at DESC', args: [] })).rows
-    : (await db.execute({ sql: 'SELECT * FROM call_requests WHERE target_doctor_email = ? OR owner_email = ? ORDER BY created_at DESC', args: [req.apiKey, req.apiKey] })).rows
+  const { patient_id } = req.query
+  const base = req.keyRole === 'superadmin'
+    ? { sql: 'SELECT * FROM call_requests', args: [] }
+    : { sql: 'SELECT * FROM call_requests WHERE (target_doctor_email = ? OR owner_email = ?)', args: [req.apiKey, req.apiKey] }
+  const sql  = patient_id ? `${base.sql}${base.args.length ? ' AND' : ' WHERE'} patient_id = ? ORDER BY created_at DESC` : `${base.sql} ORDER BY created_at DESC`
+  const args = patient_id ? [...base.args, patient_id] : base.args
+  const rows = (await db.execute({ sql, args })).rows
   res.json({ requests: rows })
 })
 

@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { PlusCircle, Search, ShieldAlert, AlertTriangle, CheckCircle, Clock, KeyRound, X } from 'lucide-react'
+import { PlusCircle, Search, ShieldAlert, AlertTriangle, CheckCircle, Clock, KeyRound, X, Inbox, UserCheck } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 export default function Cases() {
   const navigate = useNavigate()
-  const { key, role } = useKey()
+  const { key, role, email } = useKey()
   const isSuperAdmin = role === 'superadmin'
+  const [view, setView] = useState('mine') // 'mine' | 'queue'
   const [cases, setCases] = useState([])
+  const [queue, setQueue] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -20,13 +22,20 @@ export default function Cases() {
 
   function loadCases() {
     if (!key) { setLoading(false); return }
-    fetch('/api/cases', { headers: { 'x-api-key': key } })
-      .then(r => r.json())
-      .then(data => { setCases(Array.isArray(data) ? data : []); setLoading(false) })
+    setLoading(true)
+    Promise.all([
+      fetch('/api/cases', { headers: { 'x-api-key': key } }).then(r => r.json()),
+      isSuperAdmin ? Promise.resolve([]) : fetch('/api/cases/queue', { headers: { 'x-api-key': key } }).then(r => r.json()),
+    ])
+      .then(([mine, unclaimed]) => {
+        setCases(Array.isArray(mine) ? mine : [])
+        setQueue(Array.isArray(unclaimed) ? unclaimed : [])
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }
 
-  useEffect(() => { loadCases() }, [key])
+  useEffect(() => { loadCases() }, [key, isSuperAdmin])
 
   useEffect(() => {
     if (!key || !isSuperAdmin) return
@@ -63,7 +72,8 @@ export default function Cases() {
     return 'pending'
   }
 
-  const filtered = cases.filter(c => {
+  const sourceList = (view === 'queue' && !isSuperAdmin) ? queue : cases
+  const filtered = sourceList.filter(c => {
     const q = search.toLowerCase()
     if (q && !(
       c.presenting_complaint?.toLowerCase().includes(q) ||
@@ -107,10 +117,35 @@ export default function Cases() {
       </div>
 
       <div style={{ padding: '24px 32px' }}>
+        {!isSuperAdmin && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <button
+              className={`btn btn-sm ${view === 'mine' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setView('mine')}
+            >
+              My Cases ({cases.length})
+            </button>
+            <button
+              className={`btn btn-sm ${view === 'queue' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setView('queue')}
+            >
+              <Inbox size={13} /> Unclaimed Queue ({queue.length})
+            </button>
+          </div>
+        )}
+        {view === 'queue' && !isSuperAdmin && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '10px 14px',
+            background: 'var(--primary-light)', color: 'var(--primary-dark)', borderRadius: 10, fontSize: 12.5, fontWeight: 500,
+          }}>
+            <UserCheck size={14} /> These cases have no reviewing doctor yet. Open one and save a review — you'll
+            automatically become the assigned doctor on it, no admin action needed.
+          </div>
+        )}
         <div className="card">
           <div className="card-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <span className="card-title">Showing {filtered.length} of {cases.length} cases</span>
+              <span className="card-title">Showing {filtered.length} of {sourceList.length} cases</span>
               {hasActiveFilters && (
                 <button className="btn btn-secondary btn-sm" onClick={clearFilters}>
                   <X size={13} /> Clear filters
@@ -176,7 +211,7 @@ export default function Cases() {
                     <th>Confidence</th>
                     <th>Status</th>
                     <th>Date</th>
-                    {isSuperAdmin && <th>Assigned To</th>}
+                    <th>Assigned To</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -196,7 +231,7 @@ export default function Cases() {
                       <td><ConfBadge val={c.confidence_level} /></td>
                       <td><StatusBadge c={c} /></td>
                       <td style={{ color: 'var(--text2)' }}>{new Date(c.created_at).toLocaleDateString()}</td>
-                      {isSuperAdmin && (
+                      {isSuperAdmin ? (
                         <td>
                           <select
                             className="form-input"
@@ -210,6 +245,12 @@ export default function Cases() {
                               <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                           </select>
+                        </td>
+                      ) : (
+                        <td style={{ fontSize: 12.5 }}>
+                          {c.assigned_to === email
+                            ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>You</span>
+                            : c.assigned_to_name || <span style={{ color: 'var(--text3)' }}>Unassigned</span>}
                         </td>
                       )}
                       <td>

@@ -7,6 +7,7 @@ import {
 import { useKey } from '../context/KeyContext.jsx'
 import toast from 'react-hot-toast'
 import SummaryActions from '../components/SummaryActions.jsx'
+import PatientSnapshot from '../components/PatientSnapshot.jsx'
 
 /* ── tiny helpers ── */
 const fmtDate = str => {
@@ -458,6 +459,8 @@ export default function Discharge() {
           </select>
         </div>
       )}
+
+      {filterPatient && <PatientSnapshot patient={patients.find(p => String(p.id) === filterPatient)} />}
 
       {/* records */}
       {loading ? (

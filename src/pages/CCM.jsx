@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, User, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus, Timer, Pause, Play, Wand2, Users, DollarSign } from 'lucide-react'
+import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus, Timer, Pause, Play, Wand2, Users, DollarSign } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
+import PatientSnapshot from '../components/PatientSnapshot.jsx'
 
 const QUICK_MINUTES = [5, 10, 15, 20, 30]
 const NOTE_TEMPLATES = [
@@ -69,7 +70,8 @@ export default function CCM() {
   const [newPt, setNewPt]           = useState({ conditions: [], conditionInput: '', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
   const [enrolling, setEnrolling]   = useState(false)
   const [enrollError, setEnrollError] = useState('')
-  const [checkinForm, setCheckinForm] = useState({ minutes: '', notes: '', barriers: '', plan_update: '' })
+  const [checkinForm, setCheckinForm] = useState({ minutes: '', notes: '', barriers: '', plan_update: '', call_id: '' })
+  const [relatedCalls, setRelatedCalls] = useState([])
   const [planTasks, setPlanTasks]   = useState([])
   const [planGoals, setPlanGoals]   = useState([])
   const [careTeam, setCareTeam]     = useState([])
@@ -92,6 +94,7 @@ export default function CCM() {
     if (selected) {
       loadPlan(selected.id)
       loadCheckins(selected.id)
+      loadRelatedCalls(selected.id)
       setTimerRunning(false)
       setTimerSeconds(0)
     }
@@ -169,6 +172,16 @@ export default function CCM() {
     } catch {}
   }
 
+  // Calls (patient<->doctor or family<->doctor) tied to this patient, so a check-in
+  // logged right after a call can be linked to exactly which conversation it came from.
+  async function loadRelatedCalls(pid) {
+    try {
+      const r = await fetch(`/api/ccm/patients/${pid}/calls`, { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setRelatedCalls(d.calls || [])
+    } catch { setRelatedCalls([]) }
+  }
+
   // Enrollment now pulls demographics straight from the existing Patients
   // roster (gen_patients) instead of retyping name/DOB/phone by hand —
   // only the CCM-specific fields (condition, insurance, care manager) are entered here.
@@ -221,6 +234,7 @@ export default function CCM() {
           care_manager: newPt.care_manager,
           consent_date: newPt.consent_date,
           consent_method: newPt.consent_method,
+          gen_patient_id: pickedPatient.id,
         })
       })
       if (!r.ok) {
@@ -246,7 +260,7 @@ export default function CCM() {
         body: JSON.stringify(checkinForm)
       })
       setShowCheckin(false)
-      setCheckinForm({ minutes: '', notes: '', barriers: '', plan_update: '' })
+      setCheckinForm({ minutes: '', notes: '', barriers: '', plan_update: '', call_id: '' })
       setTimerSeconds(0)
       loadCheckins(selected.id)
     } finally { setSaving(false) }
@@ -499,8 +513,7 @@ export default function CCM() {
                       <div>
                         <div style={{ fontWeight: 800, fontSize: 19, color: 'var(--text)' }}>{selected.name}</div>
                         <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 4, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                          {selected.dob && <span><User size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} />DOB: {selected.dob}</span>}
-                          {selected.phone && <span><Phone size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} />{selected.phone}</span>}
+                          {/* DOB/phone shown once, in the PatientSnapshot card below — not repeated here */}
                           <span style={{ background: '#f5f3ff', color: '#7c3aed', padding: '1px 8px', borderRadius: 99, fontWeight: 600 }}>{selected.condition}</span>
                           {selected.consent_date && (
                             <span style={{ color: 'var(--success)', fontWeight: 600 }}>
@@ -560,6 +573,8 @@ export default function CCM() {
                     </div>
                   </div>
                 </div>
+
+                <PatientSnapshot patient={selected} compact />
 
                 {/* Care plan */}
                 <div className="card" style={{ padding: '22px 26px', marginBottom: 18 }}>
@@ -696,6 +711,11 @@ export default function CCM() {
                               {new Date(c.created_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })}
                             </span>
                             <span style={{ background: '#ede9fe', color: '#7c3aed', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 99 }}>{c.minutes} min</span>
+                            {c.call_id && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'var(--primary-light)', color: 'var(--primary-dark)', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 99 }}>
+                                <Phone size={10} /> From call
+                              </span>
+                            )}
                           </div>
                           {expanded[c.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </button>
@@ -903,6 +923,20 @@ export default function CCM() {
                   style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
                 <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>Need ≥ 20 min/month for CPT 99490 billing</div>
               </div>
+              {relatedCalls.length > 0 && (
+                <div style={{ marginBottom: 13 }}>
+                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 5 }}>Related Call (optional)</label>
+                  <select value={checkinForm.call_id} onChange={e => setCheckinForm(f => ({ ...f, call_id: e.target.value }))}
+                    style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13 }}>
+                    <option value="">Not tied to a call</option>
+                    {relatedCalls.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.caller_role === 'family' ? `Family (${c.family_member_name || 'unnamed'})` : 'Patient'} call · {new Date(c.created_at).toLocaleDateString()} · {c.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div style={{ marginBottom: 13 }}>
                 <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 5 }}>Quick-fill Clinical Notes</label>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

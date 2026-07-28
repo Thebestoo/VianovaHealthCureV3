@@ -5,6 +5,8 @@ import {
   FileText, Users, Shield, Eye, EyeOff, Download, X
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import { toArr } from '../utils/patientUtils.js'
+import PatientSnapshot from '../components/PatientSnapshot.jsx'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const inputStyle = {
@@ -344,10 +346,36 @@ function NoteCard({ note, onSelect, selected }) {
 }
 
 // ── Process New Note Modal ────────────────────────────────────────────────────
+// Draft a starting point for the note from the patient's known history, so the
+// doctor edits/corrects existing context instead of transcribing it from scratch.
+function historyDraft(patient) {
+  if (!patient) return ''
+  const lines = []
+  const conditions  = toArr(patient.conditions)
+  const medications = toArr(patient.medications)
+  const allergies   = toArr(patient.allergies)
+  if (conditions.length)  lines.push(`Known conditions: ${conditions.join(', ')}`)
+  if (medications.length) lines.push(`Current medications: ${medications.join(', ')}`)
+  if (allergies.length)   lines.push(`Allergies: ${allergies.join(', ')}`)
+  if (patient.notes?.trim()) lines.push(`Prior history notes: ${patient.notes.trim()}`)
+  return lines.length ? lines.join('\n') + '\n\n' : ''
+}
+
 function ProcessModal({ patients, onClose, onSuccess, apiKey }) {
   const [form, setForm] = useState({ patient_id: '', note_type: 'soap', note_title: '', note_text: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Auto-fill note text from the selected patient's history — only while the
+  // field is still untouched, so we never clobber what the doctor has typed.
+  function selectPatient(patientId) {
+    const patient = patients.find(p => p.id === patientId)
+    setForm(f => ({
+      ...f,
+      patient_id: patientId,
+      note_text: f.note_text.trim() ? f.note_text : historyDraft(patient),
+    }))
+  }
 
   async function submit() {
     if (!form.patient_id || !form.note_text.trim()) return setError('Patient and note text required.')
@@ -374,11 +402,12 @@ function ProcessModal({ patients, onClose, onSuccess, apiKey }) {
         {error && <div style={{ padding: '10px 14px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, color: '#b91c1c', fontSize: 13, marginBottom: 14 }}>{error}</div>}
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Patient *</label>
-          <select value={form.patient_id} onChange={e => setForm(f => ({ ...f, patient_id: e.target.value }))} style={inputStyle}>
+          <select value={form.patient_id} onChange={e => selectPatient(e.target.value)} style={inputStyle}>
             <option value="">— Select patient —</option>
             {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
+        {form.patient_id && <PatientSnapshot patient={patients.find(p => p.id === form.patient_id)} compact />}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div>
             <label style={labelStyle}>Note Type</label>
@@ -393,7 +422,7 @@ function ProcessModal({ patients, onClose, onSuccess, apiKey }) {
         </div>
         <div style={{ marginBottom: 20 }}>
           <label style={labelStyle}>Note Text *</label>
-          <textarea value={form.note_text} onChange={e => setForm(f => ({ ...f, note_text: e.target.value }))} rows={12} placeholder="Paste clinical note here…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6, fontSize: 13 }} />
+          <textarea value={form.note_text} onChange={e => setForm(f => ({ ...f, note_text: e.target.value }))} rows={12} placeholder="Select a patient to pre-fill known history, or paste a clinical note here…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6, fontSize: 13 }} />
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#374151' }}>Cancel</button>

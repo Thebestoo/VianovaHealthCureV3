@@ -103,9 +103,10 @@ export function parseCSV(text) {
   return { headers, rows }
 }
 
-// ── Internal helpers ─────────────────────────────────────────────────────────
-
-function toArr(v) {
+/** Safely coerce a patients-table array field (JSON string, JS array, or comma
+ *  list) into a plain string array — conditions/medications/allergies are
+ *  stored as JSON text but not always parsed before reaching the UI. */
+export function toArr(v) {
   if (!v) return []
   try {
     const r = typeof v === 'string' ? JSON.parse(v) : v
