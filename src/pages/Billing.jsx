@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Receipt, DollarSign, FileCheck, AlertTriangle, CheckCircle2,
   ChevronDown, ChevronUp, Copy, Check, Loader2, RefreshCw,
@@ -6,6 +6,32 @@ import {
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import SummaryActions from '../components/SummaryActions.jsx'
+import { patientHistoryDraft } from '../utils/patientUtils.js'
+
+// Draft additional note content from a fetched case's real encounter data —
+// merged after the patient history draft when a specific case is selected.
+function caseEncounterDraft(caseDetail) {
+  if (!caseDetail) return ''
+  const lines = []
+  const analysis = caseDetail.analysis || {}
+  if (analysis.presenting_complaint) lines.push(`Presenting complaint: ${analysis.presenting_complaint}`)
+  const symptoms = analysis.structured_symptoms
+  if (symptoms) {
+    const parts = []
+    if (symptoms.onset)    parts.push(`onset ${symptoms.onset}`)
+    if (symptoms.duration) parts.push(`duration ${symptoms.duration}`)
+    if (symptoms.severity) parts.push(`severity ${symptoms.severity}`)
+    if (parts.length) lines.push(`Symptom details: ${parts.join(', ')}`)
+  }
+  const differentials = Array.isArray(analysis.differential_assessment) ? analysis.differential_assessment : []
+  if (differentials.length) {
+    lines.push(`Differential assessment: ${differentials.slice(0, 3).map(d => d.condition).filter(Boolean).join(', ')}`)
+  }
+  const review = analysis.doctor_review
+  if (review?.final_approved_cure) lines.push(`Approved treatment: ${review.final_approved_cure}`)
+  if (review?.doctor_notes) lines.push(`Doctor's notes: ${review.doctor_notes}`)
+  return lines.length ? lines.join('\n') + '\n\n' : ''
+}
 
 const API = (path, opts = {}) => {
   const key = typeof opts.key !== 'undefined' ? opts.key : undefined
@@ -456,6 +482,11 @@ export default function Billing() {
   const [suggesting, setSuggesting] = useState(false)
   const [suggestion, setSuggestion] = useState(null)
   const [sugError, setSugError] = useState('')
+  // Tracks the last auto-generated note text so we can tell "auto-filled, still
+  // untouched" apart from "user has genuinely typed/edited this" — a plain
+  // emptiness check isn't enough since selecting a case after a patient needs to
+  // enrich an already auto-filled (but untouched) note.
+  const autoNoteRef = useRef('')
 
   const fetchClaims = useCallback(async () => {
     setLoading(true)
@@ -480,10 +511,30 @@ export default function Billing() {
   useEffect(() => {
     if (sugPatient) {
       API(`/cases/by-patient/${sugPatient}`, { key }).then(d => setCases(Array.isArray(d) ? d : []))
+      const patient = patients.find(p => p.id === sugPatient)
+      const draft = patientHistoryDraft(patient)
+      setSugNote(note => (note === autoNoteRef.current) ? draft : note)
+      autoNoteRef.current = draft
     } else {
       setCases([])
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sugPatient, key])
+
+  // When a specific case is selected, fetch its full record and enrich the
+  // draft with the real encounter data — only while the note is still untouched.
+  useEffect(() => {
+    if (!sugCase) return
+    let cancelled = false
+    API(`/cases/${sugCase}`, { key }).then(caseDetail => {
+      if (cancelled || caseDetail?.error) return
+      const patient = patients.find(p => p.id === sugPatient)
+      const draft = patientHistoryDraft(patient) + caseEncounterDraft(caseDetail)
+      setSugNote(note => (note === autoNoteRef.current) ? draft : note)
+      autoNoteRef.current = draft
+    })
+    return () => { cancelled = true }
+  }, [sugCase, sugPatient, key, patients])
 
   async function handleSuggest() {
     if (!sugPatient || !sugNote) { setSugError('Please select a patient and enter a clinical note.'); return }

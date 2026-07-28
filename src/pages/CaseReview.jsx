@@ -12,6 +12,14 @@ import SummaryActions from '../components/SummaryActions.jsx'
 import { calcNEWS2, flagVitals } from '../utils/news2.js'
 import { suggestICD10 } from '../utils/icd10.js'
 
+// Shown when the AI didn't return per-case disclaimers (current schema doesn't
+// generate any) — standard compliance boilerplate, not case-specific content.
+const DEFAULT_DISCLAIMERS = [
+  'This is an AI-generated draft for physician review only — not a diagnosis or prescription.',
+  'All pharmacological suggestions require physician verification of dose, contraindications, and interactions.',
+  'Based on patient/FHIR-reported information — verify against the full medical record before treatment decisions.',
+]
+
 export default function CaseReview() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -177,7 +185,28 @@ export default function CaseReview() {
   const vitals  = record.patient_input?.vitals || []
   const news2   = calcNEWS2(vitals)
   const vFlags  = flagVitals(vitals)
-  const icdSuggestions = suggestICD10((a?.differential_assessment || []).map(d => d.possibility))
+
+  // The AI's JSON schema (SYSTEM_PROMPT in server/index.js) has changed field names
+  // over time — read the current names but fall back to older ones so older stored
+  // cases still render real content instead of blank boxes.
+  const confidenceLevel   = a?.confidence?.level ?? a?.confidence_level
+  const emergencyDetected = a?.red_flags?.emergency_escalation_required ?? a?.red_flags?.emergency_detected
+  const diffs             = a?.differential_assessment || []
+  const symptoms          = !Array.isArray(a?.structured_symptoms) ? a?.structured_symptoms : null
+  const legacySymptoms    = Array.isArray(a?.structured_symptoms) ? a.structured_symptoms : []
+  const missingInfo       = a?.patient_snapshot?.missing_critical_info ?? a?.data_completeness?.missing_critical_info ?? []
+  const retestRequired    = a?.retest_required || []
+  const investigationsRaw = a?.recommended_investigations
+  const investigations    = Array.isArray(investigationsRaw)
+    ? { urgent: [], routine: investigationsRaw, rationale: '' }
+    : (investigationsRaw || { urgent: [], routine: [], rationale: '' })
+  const pharmacological   = a?.draft_treatment_plan?.pharmacological ?? a?.draft_treatment_plan?.pharmacological_suggestions ?? []
+  const lifestyleList     = a?.draft_treatment_plan?.lifestyle_and_followup || []
+  const allergyConflicts  = a?.allergy_interaction_check?.conflicts ?? a?.allergy_interaction_check?.potential_conflicts ?? []
+  const interactionRisks  = a?.allergy_interaction_check?.interaction_risks || []
+  const summaryDraftText  = a?.patient_plain_language_summary || a?.patient_summary_draft?.text || ''
+
+  const icdSuggestions = suggestICD10(diffs.map(d => d.condition ?? d.possibility))
   const hasPatientId = !!(record.patient_input?.patient_name || record.patient_input?.mrn)
 
   return (
@@ -201,10 +230,10 @@ export default function CaseReview() {
               <Share2 size={13} /> {sharing ? 'Sharing…' : 'Share'}
             </button>
           )}
-          {a?.red_flags?.emergency_detected && <span className="badge badge-danger" style={{ display:'inline-flex',alignItems:'center',gap:4 }}><ShieldAlert size={11} /> Emergency</span>}
-          {a?.requires_urgent_review && !a?.red_flags?.emergency_detected && <span className="badge badge-danger">Urgent Review</span>}
+          {emergencyDetected && <span className="badge badge-danger" style={{ display:'inline-flex',alignItems:'center',gap:4 }}><ShieldAlert size={11} /> Emergency</span>}
+          {a?.requires_urgent_review && !emergencyDetected && <span className="badge badge-danger">Urgent Review</span>}
           {a?.doctor_review?.approved && <span className="badge badge-success" style={{ display:'inline-flex',alignItems:'center',gap:4 }}><CheckCircle size={11} /> Approved</span>}
-          {!a?.doctor_review?.approved && !a?.requires_urgent_review && !a?.red_flags?.emergency_detected && (
+          {!a?.doctor_review?.approved && !a?.requires_urgent_review && !emergencyDetected && (
             <span className="badge badge-warning">Pending Review</span>
           )}
         </div>
@@ -214,15 +243,15 @@ export default function CaseReview() {
         {/* ── left: analysis ── */}
         <div>
           {/* emergency banner */}
-          {a?.red_flags?.emergency_detected && (
+          {emergencyDetected && (
             <div className="emergency-banner">
               <ShieldAlert size={20} />
               <div>
                 <h3>EMERGENCY DETECTED — Immediate Action Required</h3>
-                <p>{a.red_flags.recommended_immediate_action || 'Direct patient to emergency services immediately.'}</p>
-                {a.red_flags.indicators?.length > 0 && (
+                <p>{a.red_flags.escalation_reason || a.red_flags.recommended_immediate_action || 'Direct patient to emergency services immediately.'}</p>
+                {(a.red_flags.items || a.red_flags.indicators || []).length > 0 && (
                   <div className="pill-row mt-2">
-                    {a.red_flags.indicators.map((ind, i) => (
+                    {(a.red_flags.items || a.red_flags.indicators).map((ind, i) => (
                       <span key={i} style={{ background: 'rgba(255,255,255,.2)', color: '#fff', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>{ind}</span>
                     ))}
                   </div>
@@ -231,11 +260,25 @@ export default function CaseReview() {
             </div>
           )}
 
-          {/* status note */}
-          <div style={{ padding: '10px 14px', background: 'var(--warning-light)', borderRadius: 8, fontSize: 12.5, color: 'var(--warning)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <AlertTriangle size={14} />
-            {a?.status_note}
-          </div>
+          {/* red flags noted, but not a full emergency escalation */}
+          {!emergencyDetected && a?.red_flags?.present && a.red_flags.items?.length > 0 && (
+            <div style={{ padding: '10px 14px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: '#9a3412', fontSize: 13, marginBottom: 8 }}>
+                <TriangleAlert size={14} /> Red Flags Noted
+              </div>
+              <div className="pill-row">
+                {a.red_flags.items.map((it, i) => <span key={i} className="pill" style={{ color: '#9a3412', borderColor: '#fed7aa' }}>{it}</span>)}
+              </div>
+            </div>
+          )}
+
+          {/* status note — data quality / staleness callout from the AI's confidence assessment */}
+          {(a?.status_note || a?.confidence?.data_quality_notes) && (
+            <div style={{ padding: '10px 14px', background: 'var(--warning-light)', borderRadius: 8, fontSize: 12.5, color: 'var(--warning)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertTriangle size={14} />
+              {a?.status_note || a.confidence.data_quality_notes}
+            </div>
+          )}
 
           {/* NEWS2 score + vital flags */}
           {news2 && (
@@ -313,17 +356,17 @@ export default function CaseReview() {
               <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <UserRound size={15} /> Patient Snapshot
               </span>
-              <ConfBadge val={a?.confidence_level} />
+              <ConfBadge val={confidenceLevel} score={a?.confidence?.score} />
             </div>
             <div className="card-body">
               <div className="info-grid mb-4">
                 <dl className="info-item"><dt>Age</dt><dd>{a?.patient_snapshot?.age ?? '—'}</dd></dl>
                 <dl className="info-item"><dt>Sex</dt><dd>{a?.patient_snapshot?.sex ?? '—'}</dd></dl>
               </div>
-              {a?.patient_snapshot?.known_allergies?.length > 0 && (
+              {(a?.patient_snapshot?.allergies ?? a?.patient_snapshot?.known_allergies ?? []).length > 0 && (
                 <div className="mb-4">
                   <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Known Allergies</dt>
-                  <div className="pill-row">{a.patient_snapshot.known_allergies.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--danger)', borderColor: '#fca5a5' }}>{v}</span>)}</div>
+                  <div className="pill-row">{(a.patient_snapshot.allergies ?? a.patient_snapshot.known_allergies).map((v, i) => <span key={i} className="pill" style={{ color: 'var(--danger)', borderColor: '#fca5a5' }}>{v}</span>)}</div>
                 </div>
               )}
               {a?.patient_snapshot?.current_medications?.length > 0 && (
@@ -332,10 +375,16 @@ export default function CaseReview() {
                   <div className="pill-row">{a.patient_snapshot.current_medications.map((v, i) => <span key={i} className="pill">{v}</span>)}</div>
                 </div>
               )}
-              {a?.patient_snapshot?.relevant_history?.length > 0 && (
+              {(a?.patient_snapshot?.known_conditions ?? a?.patient_snapshot?.relevant_history ?? []).length > 0 && (
+                <div className="mb-4">
+                  <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Known Conditions / Relevant History</dt>
+                  <div className="pill-row">{(a.patient_snapshot.known_conditions ?? a.patient_snapshot.relevant_history).map((v, i) => <span key={i} className="pill">{v}</span>)}</div>
+                </div>
+              )}
+              {a?.patient_snapshot?.special_population_flags?.length > 0 && (
                 <div>
-                  <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Relevant History</dt>
-                  <div className="pill-row">{a.patient_snapshot.relevant_history.map((v, i) => <span key={i} className="pill">{v}</span>)}</div>
+                  <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Special Population Flags</dt>
+                  <div className="pill-row">{a.patient_snapshot.special_population_flags.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--warning)', borderColor: '#fcd34d' }}>{v}</span>)}</div>
                 </div>
               )}
             </div>
@@ -410,12 +459,13 @@ export default function CaseReview() {
             </div>
             <div className="card-body">
               <p style={{ fontWeight: 500, marginBottom: 14 }}>{a?.presenting_complaint || '—'}</p>
-              {a?.structured_symptoms?.length > 0 && (
+
+              {legacySymptoms.length > 0 && (
                 <>
                   <div className="symptom-row" style={{ fontWeight: 600, color: 'var(--text3)', fontSize: 11, paddingTop: 0 }}>
                     <div>Symptom</div><div>Onset / Duration</div><div>Severity</div><div>Location</div>
                   </div>
-                  {a.structured_symptoms.map((s, i) => (
+                  {legacySymptoms.map((s, i) => (
                     <div key={i} className="symptom-row">
                       <div style={{ fontWeight: 500 }}>{s.symptom}</div>
                       <div style={{ color: 'var(--text2)' }}>{[s.onset, s.duration].filter(Boolean).join(' · ') || '—'}</div>
@@ -425,11 +475,39 @@ export default function CaseReview() {
                   ))}
                 </>
               )}
+
+              {symptoms && (symptoms.primary || symptoms.onset || symptoms.duration || symptoms.severity) && (
+                <div className="info-grid mb-4">
+                  <dl className="info-item"><dt>Primary Symptom</dt><dd>{symptoms.primary || '—'}</dd></dl>
+                  <dl className="info-item"><dt>Onset</dt><dd>{symptoms.onset || '—'}</dd></dl>
+                  <dl className="info-item"><dt>Duration</dt><dd>{symptoms.duration || '—'}</dd></dl>
+                  <dl className="info-item"><dt>Severity</dt><dd>{symptoms.severity || '—'}</dd></dl>
+                  {symptoms.character && <dl className="info-item"><dt>Character</dt><dd>{symptoms.character}</dd></dl>}
+                </div>
+              )}
+              {symptoms?.associated?.length > 0 && (
+                <div className="mb-4">
+                  <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Associated Symptoms</dt>
+                  <div className="pill-row">{symptoms.associated.map((v, i) => <span key={i} className="pill">{v}</span>)}</div>
+                </div>
+              )}
+              {symptoms?.aggravating_factors?.length > 0 && (
+                <div className="mb-4">
+                  <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Aggravating Factors</dt>
+                  <div className="pill-row">{symptoms.aggravating_factors.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--warning)', borderColor: '#fcd34d' }}>{v}</span>)}</div>
+                </div>
+              )}
+              {symptoms?.relieving_factors?.length > 0 && (
+                <div>
+                  <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Relieving Factors</dt>
+                  <div className="pill-row">{symptoms.relieving_factors.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--success)', borderColor: '#bbf7d0' }}>{v}</span>)}</div>
+                </div>
+              )}
             </div>
           </div>
 
           {/* missing info */}
-          {a?.data_completeness?.missing_critical_info?.length > 0 && (
+          {missingInfo.length > 0 && (
             <div className="card mb-4">
               <div className="card-header">
                 <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--warning)' }}>
@@ -437,10 +515,40 @@ export default function CaseReview() {
                 </span>
               </div>
               <div className="card-body">
-                {a.data_completeness.missing_critical_info.map((m, i) => (
+                {missingInfo.map((m, i) => (
                   <div key={i} className="missing-item"><AlertTriangle size={12} />{m}</div>
                 ))}
-                {a.data_completeness.notes && <p style={{ marginTop: 10, fontSize: 12.5, color: 'var(--text2)' }}>{a.data_completeness.notes}</p>}
+                {a?.data_completeness?.notes && <p style={{ marginTop: 10, fontSize: 12.5, color: 'var(--text2)' }}>{a.data_completeness.notes}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* repeat testing required — stale/outdated/undated findings the AI flagged */}
+          {retestRequired.length > 0 && (
+            <div className="card mb-4">
+              <div className="card-header">
+                <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--warning)' }}>
+                  <FlaskConical size={15} /> Repeat Testing Required (Stale Data)
+                </span>
+              </div>
+              <div className="card-body">
+                {retestRequired.map((t, i) => (
+                  <div key={i} style={{
+                    padding: '8px 12px', borderRadius: 7, marginBottom: 7,
+                    background: t.priority === 'urgent' ? '#fee2e2' : '#fff7ed',
+                    border: `1px solid ${t.priority === 'urgent' ? '#fecaca' : '#fed7aa'}`,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: 13, color: '#0f172a' }}>{t.test}</strong>
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 99, background: t.priority === 'urgent' ? '#dc2626' : '#d97706', color: '#fff' }}>{t.priority || 'routine'}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>
+                      {t.reason_stale}
+                      {t.last_value ? ` · last value: ${t.last_value}` : ''}
+                      {t.last_date ? ` (${t.last_date})` : ''}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -451,18 +559,24 @@ export default function CaseReview() {
               <span className="card-title">Differential Assessment</span>
             </div>
             <div className="card-body">
-              {a?.differential_assessment?.map((d, i) => (
-                <div key={i} className="diff-item">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <h4 style={{ margin: 0 }}>{d.possibility}</h4>
-                    <LikelihoodBadge val={d.likelihood} />
+              {diffs.map((d, i) => {
+                const condition  = d.condition ?? d.possibility
+                const supporting = d.supporting_evidence ?? d.supporting_findings ?? []
+                const against    = d.against_evidence ?? d.findings_against ?? []
+                return (
+                  <div key={i} className="diff-item">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <h4 style={{ margin: 0 }}>{condition}</h4>
+                      <LikelihoodBadge val={d.likelihood} />
+                      {d.based_on_stale_data && <span className="badge badge-warning" style={{ fontSize: 10 }}>Based on stale data</span>}
+                    </div>
+                    <div className="findings">
+                      {supporting.map((f, j) => <span key={j} className="finding-tag finding-for">+ {f}</span>)}
+                      {against.map((f, j) => <span key={j} className="finding-tag finding-against">− {f}</span>)}
+                    </div>
                   </div>
-                  <div className="findings">
-                    {d.supporting_findings?.map((f, j) => <span key={j} className="finding-tag finding-for">+ {f}</span>)}
-                    {d.findings_against?.map((f, j) => <span key={j} className="finding-tag finding-against">− {f}</span>)}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
@@ -539,7 +653,7 @@ export default function CaseReview() {
           </div>
 
           {/* investigations */}
-          {a?.recommended_investigations?.length > 0 && (
+          {(investigations.urgent.length > 0 || investigations.routine.length > 0) && (
             <div className="card mb-4">
               <div className="card-header">
                 <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -547,9 +661,19 @@ export default function CaseReview() {
                 </span>
               </div>
               <div className="card-body">
-                <ul className="list-bullets">
-                  {a.recommended_investigations.map((inv, i) => <li key={i}>{inv}</li>)}
-                </ul>
+                {investigations.urgent.length > 0 && (
+                  <div className="mb-4">
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 5 }}>Urgent</div>
+                    <ul className="list-bullets">{investigations.urgent.map((inv, i) => <li key={i}>{inv}</li>)}</ul>
+                  </div>
+                )}
+                {investigations.routine.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 5 }}>Routine</div>
+                    <ul className="list-bullets">{investigations.routine.map((inv, i) => <li key={i}>{inv}</li>)}</ul>
+                  </div>
+                )}
+                {investigations.rationale && <p style={{ marginTop: 10, fontSize: 12.5, color: 'var(--text2)' }}>{investigations.rationale}</p>}
               </div>
             </div>
           )}
@@ -570,47 +694,54 @@ export default function CaseReview() {
                   </ul>
                 </div>
               )}
-              {a?.draft_treatment_plan?.pharmacological_suggestions?.length > 0 && (
+              {pharmacological.length > 0 && (
                 <div className="analysis-section">
                   <h3>Pharmacological Suggestions (physician verification required)</h3>
-                  {a.draft_treatment_plan.pharmacological_suggestions.map((d, i) => (
-                    <div key={i} className="drug-card">
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <h4>{d.option}</h4>
-                        <span className="badge badge-warning" style={{ fontSize: 11 }}>Rx Verification Required</span>
+                  {pharmacological.map((d, i) => {
+                    const drugName = d.drug ?? d.option
+                    const contraindications = d.contraindications_to_check ?? d.cautions ?? []
+                    return (
+                      <div key={i} className="drug-card">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <h4>{drugName}{d.class && <span style={{ fontWeight: 400, color: 'var(--text2)', fontSize: 12, marginLeft: 6 }}>({d.class})</span>}</h4>
+                          <span className="badge badge-warning" style={{ fontSize: 11 }}>Rx Verification Required</span>
+                        </div>
+                        <div className="drug-meta">{d.rationale}</div>
+                        {(d.caution || d.physician_dose_consideration) && (
+                          <div style={{ marginTop: 7, fontSize: 12.5, color: 'var(--text2)', background: 'var(--surface2)', padding: '6px 10px', borderRadius: 6 }}>
+                            <strong>Caution:</strong> {d.caution || d.physician_dose_consideration}
+                          </div>
+                        )}
+                        {contraindications.length > 0 && (
+                          <div style={{ marginTop: 7 }}>
+                            <div style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 600, marginBottom: 3 }}>CONTRAINDICATIONS TO CHECK</div>
+                            <div className="pill-row">
+                              {contraindications.map((c, j) => <span key={j} className="pill" style={{ color: 'var(--warning)', borderColor: '#fcd34d', fontSize: 11.5 }}>{c}</span>)}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="drug-meta">{d.rationale}</div>
-                      {d.physician_dose_consideration && (
-                        <div style={{ marginTop: 7, fontSize: 12.5, color: 'var(--text2)', background: 'var(--surface2)', padding: '6px 10px', borderRadius: 6 }}>
-                          <strong>Dose consideration:</strong> {d.physician_dose_consideration}
-                        </div>
-                      )}
-                      {d.cautions?.length > 0 && (
-                        <div style={{ marginTop: 7 }}>
-                          <div style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 600, marginBottom: 3 }}>CAUTIONS</div>
-                          <div className="pill-row">
-                            {d.cautions.map((c, j) => <span key={j} className="pill" style={{ color: 'var(--warning)', borderColor: '#fcd34d', fontSize: 11.5 }}>{c}</span>)}
-                          </div>
-                        </div>
-                      )}
-                      {d.special_population_flags?.length > 0 && (
-                        <div style={{ marginTop: 7 }}>
-                          <div style={{ fontSize: 11.5, color: 'var(--danger)', fontWeight: 600, marginBottom: 3 }}>SPECIAL POPULATIONS</div>
-                          <div className="pill-row">
-                            {d.special_population_flags.map((c, j) => <span key={j} className="pill" style={{ color: 'var(--danger)', borderColor: '#fca5a5' }}>{c}</span>)}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
-              {a?.draft_treatment_plan?.lifestyle_and_followup?.length > 0 && (
+              {(a?.draft_treatment_plan?.follow_up || lifestyleList.length > 0 || a?.draft_treatment_plan?.referral_needed) && (
                 <div className="analysis-section">
-                  <h3>Lifestyle & Follow-up</h3>
-                  <ul className="list-bullets">
-                    {a.draft_treatment_plan.lifestyle_and_followup.map((v, i) => <li key={i}>{v}</li>)}
-                  </ul>
+                  <h3>Follow-up & Referral</h3>
+                  {a?.draft_treatment_plan?.follow_up && (
+                    <p style={{ fontSize: 13.5, color: 'var(--text2)', marginBottom: lifestyleList.length ? 8 : 0 }}>{a.draft_treatment_plan.follow_up}</p>
+                  )}
+                  {lifestyleList.length > 0 && (
+                    <ul className="list-bullets">
+                      {lifestyleList.map((v, i) => <li key={i}>{v}</li>)}
+                    </ul>
+                  )}
+                  {a?.draft_treatment_plan?.referral_needed && (
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="badge badge-warning" style={{ fontSize: 11 }}>Referral Needed</span>
+                      {a.draft_treatment_plan.referral_type && <span style={{ fontSize: 12.5, color: 'var(--text2)' }}>{a.draft_treatment_plan.referral_type}</span>}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -622,9 +753,9 @@ export default function CaseReview() {
               <span className="card-title">Allergy & Interaction Check</span>
             </div>
             <div className="card-body">
-              {a?.allergy_interaction_check?.potential_conflicts?.length > 0 ? (
+              {allergyConflicts.length > 0 ? (
                 <div>
-                  {a.allergy_interaction_check.potential_conflicts.map((c, i) => (
+                  {allergyConflicts.map((c, i) => (
                     <div key={i} style={{ padding: '8px 12px', background: 'var(--danger-light)', borderRadius: 7, marginBottom: 7, fontSize: 13, color: 'var(--danger)', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                       <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />{c}
                     </div>
@@ -633,6 +764,14 @@ export default function CaseReview() {
               ) : (
                 <div style={{ color: 'var(--success)', fontSize: 13, display: 'flex', gap: 7, alignItems: 'center' }}>
                   <CheckCircle size={15} /> No immediate conflicts detected based on patient-reported data.
+                </div>
+              )}
+              {interactionRisks.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text3)', marginBottom: 5 }}>INTERACTION RISKS</div>
+                  {interactionRisks.map((r, i) => (
+                    <div key={i} style={{ padding: '8px 12px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 7, marginBottom: 6, fontSize: 13, color: '#9a3412' }}>{r}</div>
+                  ))}
                 </div>
               )}
               {a?.allergy_interaction_check?.notes && (
@@ -647,7 +786,7 @@ export default function CaseReview() {
               <span className="card-title">AI Reasoning for Doctor</span>
             </div>
             <div className="card-body">
-              <p style={{ fontSize: 13.5, color: 'var(--text2)', lineHeight: 1.7 }}>{a?.reasoning_for_doctor}</p>
+              <p style={{ fontSize: 13.5, color: 'var(--text2)', lineHeight: 1.7 }}>{a?.reasoning_for_doctor || a?.confidence?.reasoning || '—'}</p>
             </div>
           </div>
 
@@ -656,32 +795,29 @@ export default function CaseReview() {
             <div className="card-header">
               <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <FileText size={15} /> Patient Summary Draft
-                {a?.patient_summary_draft?.language && (
-                  <span className="badge badge-info" style={{ marginLeft: 6 }}>{a.patient_summary_draft.language}</span>
-                )}
               </span>
               <span className="badge badge-warning" style={{ fontSize: 11 }}>Draft — not yet approved</span>
             </div>
             <div className="card-body">
-              {a?.patient_summary_draft?.text && (
+              {summaryDraftText && (
                 <div style={{ marginBottom: 10 }}>
                   <SummaryActions
                     compact
                     title="Patient Summary Draft"
                     filename="patient-summary-draft.txt"
-                    text={a.patient_summary_draft.text}
+                    text={summaryDraftText}
                   />
                 </div>
               )}
               <p style={{ fontSize: 13.5, lineHeight: 1.8, color: 'var(--text)', background: 'var(--surface2)', padding: '14px 16px', borderRadius: 8 }}>
-                {a?.patient_summary_draft?.text || '—'}
+                {summaryDraftText || '—'}
               </p>
             </div>
           </div>
 
           {/* disclaimers */}
           <div style={{ fontSize: 11.5, color: 'var(--text3)', lineHeight: 1.7 }}>
-            {a?.disclaimers?.map((d, i) => <div key={i} style={{ display:'flex',alignItems:'flex-start',gap:6 }}><AlertTriangle size={12} style={{ flexShrink:0,marginTop:2,color:'var(--warning)' }} />{d}</div>)}
+            {(a?.disclaimers?.length ? a.disclaimers : DEFAULT_DISCLAIMERS).map((d, i) => <div key={i} style={{ display:'flex',alignItems:'flex-start',gap:6 }}><AlertTriangle size={12} style={{ flexShrink:0,marginTop:2,color:'var(--warning)' }} />{d}</div>)}
           </div>
         </div>
 
@@ -808,10 +944,14 @@ export default function CaseReview() {
   )
 }
 
-function ConfBadge({ val }) {
+function ConfBadge({ val, score }) {
   if (!val) return null
   const map = { high: 'badge-success', moderate: 'badge-warning', low: 'badge-danger' }
-  return <span className={`badge ${map[val] || 'badge-neutral'}`}>Confidence: {val}</span>
+  return (
+    <span className={`badge ${map[val] || 'badge-neutral'}`}>
+      Confidence: {val}{typeof score === 'number' ? ` (${Math.round(score * 100)}%)` : ''}
+    </span>
+  )
 }
 
 function LikelihoodBadge({ val }) {

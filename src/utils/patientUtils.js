@@ -113,3 +113,20 @@ export function toArr(v) {
     return Array.isArray(r) ? r.filter(Boolean) : r ? [String(r)] : []
   } catch { return String(v).split(',').map(s => s.trim()).filter(Boolean) }
 }
+
+/** Draft a starting point for a clinical note textarea from a patient's known
+ *  history, so the user edits/corrects real context instead of transcribing it
+ *  from scratch. Used anywhere a "Clinical/Progress Note" field should be
+ *  pre-filled with real patient data. */
+export function patientHistoryDraft(patient) {
+  if (!patient) return ''
+  const lines = []
+  const conditions  = toArr(patient.conditions)
+  const medications = toArr(patient.medications)
+  const allergies   = toArr(patient.allergies)
+  if (conditions.length)  lines.push(`Known conditions: ${conditions.join(', ')}`)
+  if (medications.length) lines.push(`Current medications: ${medications.join(', ')}`)
+  if (allergies.length)   lines.push(`Allergies: ${allergies.join(', ')}`)
+  if (patient.notes?.trim()) lines.push(`Prior history notes: ${patient.notes.trim()}`)
+  return lines.length ? lines.join('\n') + '\n\n' : ''
+}

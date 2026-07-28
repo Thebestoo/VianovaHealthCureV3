@@ -5,7 +5,7 @@ import {
   FileText, Users, Shield, Eye, EyeOff, Download, X
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
-import { toArr } from '../utils/patientUtils.js'
+import { patientHistoryDraft } from '../utils/patientUtils.js'
 import PatientSnapshot from '../components/PatientSnapshot.jsx'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -346,20 +346,6 @@ function NoteCard({ note, onSelect, selected }) {
 }
 
 // ── Process New Note Modal ────────────────────────────────────────────────────
-// Draft a starting point for the note from the patient's known history, so the
-// doctor edits/corrects existing context instead of transcribing it from scratch.
-function historyDraft(patient) {
-  if (!patient) return ''
-  const lines = []
-  const conditions  = toArr(patient.conditions)
-  const medications = toArr(patient.medications)
-  const allergies   = toArr(patient.allergies)
-  if (conditions.length)  lines.push(`Known conditions: ${conditions.join(', ')}`)
-  if (medications.length) lines.push(`Current medications: ${medications.join(', ')}`)
-  if (allergies.length)   lines.push(`Allergies: ${allergies.join(', ')}`)
-  if (patient.notes?.trim()) lines.push(`Prior history notes: ${patient.notes.trim()}`)
-  return lines.length ? lines.join('\n') + '\n\n' : ''
-}
 
 function ProcessModal({ patients, onClose, onSuccess, apiKey }) {
   const [form, setForm] = useState({ patient_id: '', note_type: 'soap', note_title: '', note_text: '' })
@@ -373,7 +359,7 @@ function ProcessModal({ patients, onClose, onSuccess, apiKey }) {
     setForm(f => ({
       ...f,
       patient_id: patientId,
-      note_text: f.note_text.trim() ? f.note_text : historyDraft(patient),
+      note_text: f.note_text.trim() ? f.note_text : patientHistoryDraft(patient),
     }))
   }
 
