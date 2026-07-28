@@ -23,7 +23,7 @@ const DEFAULT_DISCLAIMERS = [
 export default function CaseReview() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { key } = useKey()
+  const { key, label } = useKey()
   const [record, setRecord] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -33,7 +33,6 @@ export default function CaseReview() {
   const [finalCure, setFinalCure] = useState('')
   const [approve, setApprove] = useState(false)
   const [followUpDate, setFollowUpDate] = useState('')
-  const [reviewedBy, setReviewedBy] = useState('')
 
   const [interactions, setInteractions] = useState({ loading: false, checked: false, flagged: [], drugs: [], error: null })
   const [timeline, setTimeline] = useState({ loading: false, items: [] })
@@ -52,7 +51,6 @@ export default function CaseReview() {
         setDoctorNotes(dr?.doctor_notes || '')
         setFinalCure(dr?.final_approved_cure || '')
         setApprove(dr?.approved || false)
-        setReviewedBy(dr?.reviewed_by || '')
         setFollowUpDate(data.follow_up_date || '')
         setLoading(false)
       })
@@ -156,7 +154,6 @@ export default function CaseReview() {
         doctor_notes: doctorNotes,
         final_approved_cure: finalCure || null,
         approved: approve,
-        reviewed_by: reviewedBy,
         follow_up_date: followUpDate || null,
       }),
     })
@@ -846,7 +843,9 @@ export default function CaseReview() {
 
               <div className="form-group">
                 <label className="form-label">Reviewed by</label>
-                <input className="form-input" placeholder="Dr. Name" value={reviewedBy} onChange={e => setReviewedBy(e.target.value)} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: 'var(--bg2)', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'var(--text2)' }}>
+                  <UserRound size={13} /> {label} <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(recorded automatically as you)</span>
+                </div>
               </div>
 
               <div className="form-group">

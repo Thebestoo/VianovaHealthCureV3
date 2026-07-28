@@ -252,7 +252,7 @@ function AppointmentCalendar({
 const EMPTY_FORM = { patient_id: '', appointment_type: '', appointment_date: '', duration_minutes: '30', provider: '', location: '', notes: '' }
 
 export default function Appointments() {
-  const { key, role } = useKey()
+  const { key, role, label } = useKey()
   const isSuperadmin = role === 'superadmin'
   const [appts, setAppts]         = useState([])
   const [patients, setPatients]   = useState([])
@@ -385,7 +385,7 @@ export default function Appointments() {
     <div>
       <div className="topbar">
         <span className="topbar-title">Appointments</span>
-        <button className="btn btn-primary btn-sm" onClick={() => { setShowModal(true); setForm(EMPTY_FORM); setSuggestion(null) }}>
+        <button className="btn btn-primary btn-sm" onClick={() => { setShowModal(true); setForm({ ...EMPTY_FORM, provider: isSuperadmin ? '' : label }); setSuggestion(null) }}>
           <Plus size={14} /> New Appointment
         </button>
       </div>

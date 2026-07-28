@@ -949,7 +949,11 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
   }
 
   const analysis = JSON.parse(row.analysis)
-  const { doctor_notes, final_approved_cure, approved, reviewed_by, follow_up_date } = req.body
+  const { doctor_notes, final_approved_cure, approved, follow_up_date } = req.body
+  // reviewed_by is always the authenticated caller's own name — never taken from
+  // the request body — so it can't be left blank, mistyped, or spoofed as
+  // someone else's name. This also removes a manual field from the review form.
+  const reviewed_by = req.keyLabel
 
   analysis.doctor_review = {
     status: approved ? 'APPROVED' : 'REVIEWED_NOT_APPROVED',
@@ -957,7 +961,7 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
     edited_by_doctor: true,
     doctor_notes: doctor_notes ?? analysis.doctor_review.doctor_notes,
     final_approved_cure: final_approved_cure ?? analysis.doctor_review.final_approved_cure,
-    reviewed_by: reviewed_by ?? 'Dr. (name pending)',
+    reviewed_by,
     reviewed_at: new Date().toISOString()
   }
 
@@ -969,7 +973,7 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
   await db.execute({ sql: 'UPDATE cases SET analysis = ?, follow_up_date = ? WHERE case_id = ?', args: [JSON.stringify(analysis), follow_up_date || row.follow_up_date || null, req.params.id] })
 
   if (approved) {
-    await logUpdate('case_approved', `Case ${req.params.id.slice(0,8)} approved by ${reviewed_by || req.keyLabel}`, {
+    await logUpdate('case_approved', `Case ${req.params.id.slice(0,8)} approved by ${reviewed_by}`, {
       case_id: req.params.id, label: req.keyLabel, reviewed_by,
       age: patient.age, sex: patient.sex,
       treatment: final_approved_cure,
@@ -979,7 +983,7 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
       label: req.keyLabel,
       age: patient.age, sex: patient.sex,
       complaint: analysis.presenting_complaint,
-      approvedBy: reviewed_by || req.keyLabel,
+      approvedBy: reviewed_by,
       treatment: final_approved_cure,
       avatarUrl: req.user?.avatar || '',
     }), { skipEmail: req.apiKey })
