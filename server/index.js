@@ -1904,14 +1904,28 @@ app.post('/api/cases', auth, async (req, res) => {
 
     const caseId = randomUUID()
     const now = new Date().toISOString()
-    // Use exact same INSERT as /api/analyze — no extra columns
+    const specialty = inferSpecialty(analysis, patientData)
     await db.execute({
-      sql: 'INSERT INTO cases (case_id, created_at, patient_input, analysis, owner_key) VALUES (?, ?, ?, ?, ?)',
-      args: [caseId, now, JSON.stringify(patientData), JSON.stringify(analysis), req.apiKey]
+      sql: 'INSERT INTO cases (case_id, created_at, patient_input, analysis, owner_key, specialty) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [caseId, now, JSON.stringify(patientData), JSON.stringify(analysis), req.apiKey, specialty]
     })
 
     const isEmergency = analysis.red_flags?.emergency_escalation_required ?? analysis.red_flags?.emergency_detected
     const confidence  = analysis.confidence?.level ?? analysis.confidence_level
+
+    // Auto-route to a doctor of the matching specialty — same as /api/analyze —
+    // so cases created via this endpoint don't require a superadmin to manually
+    // assign them.
+    let autoAssigned = null
+    try {
+      autoAssigned = await findDoctorForCase(specialty, req.apiKey)
+      if (autoAssigned) {
+        await assignCase(caseId, autoAssigned.email, autoAssigned.name, 'Auto-assigned by specialty match', true)
+        await notify(autoAssigned.email, tplNewCase({ caseId, label: req.keyLabel, age: patientData.age, sex: patientData.sex, complaint: analysis.presenting_complaint, confidence, emergency: isEmergency }))
+      }
+    } catch (e) {
+      logError('auto_assign_failed', e.message, 'POST /api/cases', e.stack, { case_id: caseId, specialty })
+    }
 
     await logUpdate('case_submitted', `New case submitted by ${req.keyLabel} (${patientData.age || '?'}y ${patientData.sex || '?'})${isEmergency ? ' — EMERGENCY' : ''}`, {
       case_id: caseId, label: req.keyLabel, confidence, emergency: isEmergency,
@@ -1924,7 +1938,7 @@ app.post('/api/cases', auth, async (req, res) => {
       if (isEmergency) await notify(a.email, tplEmergencyAlert({ caseId, label: req.keyLabel, age: patientData.age, sex: patientData.sex, complaint: analysis.presenting_complaint, redFlags: analysis.red_flags?.flags }))
     }
 
-    res.json({ case_id: caseId, analysis })
+    res.json({ case_id: caseId, analysis, specialty, assigned_to_name: autoAssigned?.name || null })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
