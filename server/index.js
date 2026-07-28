@@ -898,13 +898,20 @@ app.get('/api/cases/:id', auth, async (req, res) => {
 })
 
 // ── POST /api/cases/:id/assign — superadmin assigns a case to a doctor ─────────
+// A superadmin can only pick a doctor whose specialty matches the case's own
+// specialty rule (the same rule findDoctorForCase uses for auto-routing) — this
+// is a manual override of WHICH matching doctor gets it, not a way to route a
+// case outside its specialty or hand it to a non-doctor (e.g. another admin).
 app.post('/api/cases/:id/assign', auth, requireAdmin, async (req, res) => {
   const { userId } = req.body
   if (!userId) return res.status(400).json({ error: 'userId required' })
   const row = (await db.execute({ sql: 'SELECT * FROM cases WHERE case_id = ?', args: [req.params.id] })).rows[0]
   if (!row) return res.status(404).json({ error: 'Case not found' })
-  const target = (await db.execute({ sql: 'SELECT * FROM users WHERE id = ? AND active = 1', args: [userId] })).rows[0]
-  if (!target) return res.status(404).json({ error: 'User not found or inactive' })
+  const target = (await db.execute({ sql: "SELECT * FROM users WHERE id = ? AND active = 1 AND role = 'doctor'", args: [userId] })).rows[0]
+  if (!target) return res.status(404).json({ error: 'Doctor not found or inactive' })
+  if (row.specialty && target.specialty !== row.specialty) {
+    return res.status(400).json({ error: `This case requires a ${row.specialty} doctor — ${target.name} is ${target.specialty || 'unspecialized'}.` })
+  }
 
   const now = await assignCase(req.params.id, target.email, target.name, req.user.name)
 

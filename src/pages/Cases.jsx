@@ -41,7 +41,7 @@ export default function Cases() {
     if (!key || !isSuperAdmin) return
     fetch('/api/admin/users', { headers: { 'x-api-key': key } })
       .then(r => r.json())
-      .then(data => setDoctors((data.users || []).filter(u => u.active)))
+      .then(data => setDoctors((data.users || []).filter(u => u.active && u.role === 'doctor')))
       .catch(() => {})
   }, [key, isSuperAdmin])
 
@@ -239,11 +239,14 @@ export default function Cases() {
                             value={c.assigned_to || ''}
                             disabled={assigningId === c.case_id}
                             onChange={e => assignCase(c.case_id, e.target.value)}
+                            title={c.specialty ? `Only ${c.specialty} doctors can be assigned to this case` : ''}
                           >
                             <option value="">{c.assigned_to_name ? c.assigned_to_name : 'Unassigned'}</option>
-                            {doctors.filter(d => d.email !== c.assigned_to).map(d => (
-                              <option key={d.id} value={d.id}>{d.name}</option>
-                            ))}
+                            {doctors
+                              .filter(d => d.email !== c.assigned_to && (!c.specialty || d.specialty === c.specialty))
+                              .map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                              ))}
                           </select>
                         </td>
                       ) : (
