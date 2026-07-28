@@ -223,6 +223,23 @@ async function initDB() {
     // to the gen_patients roster so the RPM page can show full demographics/conditions/
     // meds/allergies instead of just a name and a single free-text condition string.
     `ALTER TABLE rpm_patients ADD COLUMN gen_patient_id TEXT`,
+    // Specialty-based case routing — doctors declare a specialty; new cases are
+    // auto-classified and auto-assigned to a matching doctor's queue (see
+    // findDoctorForCase / inferSpecialty below).
+    `ALTER TABLE users ADD COLUMN specialty TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cases ADD COLUMN specialty TEXT`,
+    // FIFO priority ordering — records the moment a case entered a doctor's queue
+    // (auto-assignment or manual assignment), separate from created_at, so re-queued/
+    // reassigned cases don't jump ahead of cases the doctor already had waiting.
+    `ALTER TABLE cases ADD COLUMN queued_at TEXT`,
+    // Explicit flag for "the system assigned this, not a human admin" — read by
+    // caseToSummary/PATCH .../review instead of pattern-matching assigned_by_name
+    // (which is otherwise just a free-text admin name and could collide).
+    `ALTER TABLE cases ADD COLUMN auto_assigned INTEGER NOT NULL DEFAULT 0`,
+    // findDoctorForCase's least-busy tiebreak runs a COUNT(*) GROUP BY assigned_to
+    // on every case submission for any specialty with 2+ doctors — index it so that
+    // stays cheap as case volume grows instead of a full table scan per submission.
+    `CREATE INDEX IF NOT EXISTS idx_cases_assigned_to ON cases(assigned_to)`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -326,6 +343,86 @@ function validEmail(e) {
 
 const client = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
+// ── specialty-based case routing ───────────────────────────────────────────────
+// Doctors declare one specialty on their account (users.specialty). New cases are
+// classified against this list from the AI analysis (keyword match against the
+// complaint/symptoms/differential text), then auto-assigned to a matching doctor
+// via findDoctorForCase — see POST /api/analyze.
+// KEEP IN SYNC with src/utils/specialties.js — there's no shared build step between
+// this Node server and the Vite frontend, so the list is hand-duplicated there for
+// the Admin.jsx specialty dropdown. This array is also the server-side allow-list
+// (POST/PATCH /api/admin/users reject any specialty not in it).
+const SPECIALTIES = [
+  'General Practice', 'Cardiology', 'Pulmonology', 'Neurology', 'Endocrinology',
+  'Gastroenterology', 'Nephrology', 'Psychiatry', 'Dermatology', 'OB/GYN',
+  'Orthopedics', 'Pediatrics', 'Emergency Medicine', 'Infectious Disease',
+  'Rheumatology', 'Urology', 'ENT', 'Ophthalmology', 'Oncology',
+]
+
+const SPECIALTY_KEYWORDS = {
+  'Cardiology':          ['heart', 'cardiac', 'chest pain', 'palpitation', 'arrhythmia', 'hypertension', 'blood pressure', 'angina', 'coronary', 'myocardial'],
+  'Pulmonology':         ['lung', 'breath', 'respiratory', 'cough', 'asthma', 'copd', 'pneumonia', 'wheez'],
+  'Neurology':           ['headache', 'migraine', 'seizure', 'numbness', 'tingling', 'stroke', 'dizziness', 'vertigo', 'neuro'],
+  'Endocrinology':       ['diabetes', 'thyroid', 'glucose', 'hormone', 'insulin'],
+  'Gastroenterology':    ['stomach', 'abdominal', 'abdomen', 'nausea', 'vomit', 'diarrhea', 'constipation', 'reflux', 'liver'],
+  'Nephrology':          ['kidney', 'renal', 'creatinine', 'dialysis'],
+  'Psychiatry':          ['anxiety', 'depression', 'mental health', 'mood', 'suicid', 'panic attack'],
+  'Dermatology':         ['skin', 'rash', 'itch', 'derma', 'acne', 'mole'],
+  'OB/GYN':              ['pregnan', 'menstrual', 'vaginal', 'gynec', 'obstetric'],
+  'Orthopedics':         ['joint', 'bone', 'fracture', 'back pain', 'knee', 'shoulder', 'sprain', 'orthoped'],
+  'Emergency Medicine':  ['emergency', 'trauma', 'severe bleeding', 'unconscious', 'unresponsive'],
+  'Infectious Disease':  ['fever', 'infection', 'flu', 'covid', 'sepsis'],
+  'Rheumatology':        ['arthritis', 'autoimmune', 'lupus'],
+  'Urology':             ['urinary', 'bladder', 'prostate'],
+  'ENT':                 ['ear pain', 'earache', 'sore throat', 'sinus', 'hearing loss', 'nasal'],
+  'Ophthalmology':       ['eye', 'vision', 'eyesight'],
+  'Oncology':            ['cancer', 'tumor', 'malignan', 'oncolog'],
+}
+
+// Best-effort classification from the AI's structured analysis — never blocks case
+// creation if it can't confidently pick a specialty (falls back to General Practice).
+function inferSpecialty(analysis, patientData) {
+  if (typeof patientData?.age === 'number' && patientData.age < 18) return 'Pediatrics'
+
+  const text = [
+    analysis?.presenting_complaint,
+    analysis?.structured_symptoms?.primary,
+    ...(analysis?.structured_symptoms?.associated || []),
+    ...(analysis?.differential_assessment || []).map(d => d?.condition),
+    patientData?.free_text,
+  ].filter(Boolean).join(' ').toLowerCase()
+
+  let best = 'General Practice', bestScore = 0
+  for (const [specialty, keywords] of Object.entries(SPECIALTY_KEYWORDS)) {
+    const score = keywords.reduce((n, kw) => n + (text.includes(kw) ? 1 : 0), 0)
+    if (score > bestScore) { bestScore = score; best = specialty }
+  }
+  return best
+}
+
+// Picks which doctor of a given specialty should get a new case: any doctor already
+// carrying cases for that specialty keeps receiving their own (so a patient's whole
+// history lands with one doctor), and ties are broken by least-busy so a queue never
+// piles up entirely on one doctor. Returns null if no active doctor has that specialty.
+async function findDoctorForCase(specialty, excludeEmail) {
+  if (!specialty) return null
+  const doctors = (await db.execute({
+    sql: "SELECT email, name FROM users WHERE role = 'doctor' AND active = 1 AND status = 'active' AND specialty = ? AND email != ?",
+    args: [specialty, excludeEmail || ''],
+  })).rows
+  if (!doctors.length) return null
+  if (doctors.length === 1) return doctors[0]
+
+  const placeholders = doctors.map(() => '?').join(',')
+  const counts = (await db.execute({
+    sql: `SELECT assigned_to, COUNT(*) as n FROM cases WHERE assigned_to IN (${placeholders}) GROUP BY assigned_to`,
+    args: doctors.map(d => d.email),
+  })).rows
+  const countByEmail = new Map(counts.map(c => [c.assigned_to, c.n]))
+  doctors.sort((a, b) => (countByEmail.get(a.email) || 0) - (countByEmail.get(b.email) || 0))
+  return doctors[0]
+}
+
 // ── ownership helpers ──────────────────────────────────────────────────────────
 // Any doctor may open a case they own, a case already assigned to them, or an
 // unassigned case still awaiting a second reviewer — that last clause is what lets
@@ -340,29 +437,43 @@ async function getCaseForKey(caseId, reqKey, reqRole) {
     args: [caseId, reqKey, reqKey],
   })).rows[0] ?? null
 }
+// Priority queue ordering: a doctor should check in with the first patient that
+// called, not the latest one, so a doctor's own cases sort oldest-queued-first
+// (FIFO). queued_at marks when a case entered *this* doctor's queue (set at
+// assignment time), falling back to created_at for cases that predate the column
+// or were never explicitly assigned (e.g. a superadmin's own submissions).
 async function listCasesForKey(reqKey, reqRole) {
   if (reqRole === 'superadmin') return (await db.execute({ sql: 'SELECT * FROM cases ORDER BY created_at DESC', args: [] })).rows
-  return (await db.execute({ sql: 'SELECT * FROM cases WHERE owner_key = ? OR assigned_to = ? ORDER BY created_at DESC', args: [reqKey, reqKey] })).rows
+  return (await db.execute({
+    sql: 'SELECT * FROM cases WHERE owner_key = ? OR assigned_to = ? ORDER BY COALESCE(queued_at, created_at) ASC',
+    args: [reqKey, reqKey],
+  })).rows
 }
 // Cases any doctor can pick up: not their own, and not yet claimed by another doctor.
-// Capped — this is fetched on every page load (to show the queue count in the tab
-// label) regardless of which tab is active, so it must stay cheap even as the
-// system-wide backlog of unclaimed cases grows.
+// Ordered oldest-first (same FIFO priority rule) so the longest-waiting patient
+// surfaces first. Capped — this is fetched on every page load (to show the queue
+// count in the tab label) regardless of which tab is active, so it must stay cheap
+// even as the system-wide backlog of unclaimed cases grows.
 async function listQueueForKey(reqKey) {
   return (await db.execute({
-    sql: 'SELECT * FROM cases WHERE owner_key != ? AND assigned_to IS NULL ORDER BY created_at DESC LIMIT 200',
+    sql: 'SELECT * FROM cases WHERE owner_key != ? AND assigned_to IS NULL ORDER BY COALESCE(queued_at, created_at) ASC LIMIT 200',
     args: [reqKey],
   })).rows
 }
 
-// Shared by the superadmin-driven POST /api/cases/:id/assign and the doctor
-// self-claim inside PATCH /api/cases/:id/review — same write, same audit log,
-// two different triggers.
-async function assignCase(caseId, assigneeEmail, assigneeName, assignedByName) {
+// Shared by the superadmin-driven POST /api/cases/:id/assign, the doctor self-claim
+// inside PATCH /api/cases/:id/review, and specialty-based auto-assignment on new
+// case submission — same write, same audit log, three different triggers.
+// queued_at is only set the *first* time a case is assigned so that a case
+// reassigned between doctors keeps its original place in line rather than jumping
+// to the back of the new doctor's queue.
+// isAuto is an explicit flag (not inferred from assignedByName, which is just a
+// free-text audit label) so callers can't accidentally be misread as automated.
+async function assignCase(caseId, assigneeEmail, assigneeName, assignedByName, isAuto = false) {
   const assignedAt = new Date().toISOString()
   await db.execute({
-    sql: 'UPDATE cases SET assigned_to = ?, assigned_to_name = ?, assigned_by_name = ?, assigned_at = ? WHERE case_id = ?',
-    args: [assigneeEmail, assigneeName, assignedByName, assignedAt, caseId],
+    sql: 'UPDATE cases SET assigned_to = ?, assigned_to_name = ?, assigned_by_name = ?, assigned_at = ?, queued_at = COALESCE(queued_at, ?), auto_assigned = ? WHERE case_id = ?',
+    args: [assigneeEmail, assigneeName, assignedByName, assignedAt, assignedAt, isAuto ? 1 : 0, caseId],
   })
   await logUpdate('case_assigned', `Case ${caseId.slice(0, 8)} assigned to ${assigneeName} by ${assignedByName}`, {
     case_id: caseId, assigned_to: assigneeEmail, assigned_by: assignedByName,
@@ -666,7 +777,28 @@ app.post('/api/analyze', auth, aiLimiter, async (req, res) => {
     }
 
     const now = new Date().toISOString()
-    await db.execute({ sql: 'INSERT INTO cases (case_id, created_at, patient_input, analysis, owner_key) VALUES (?, ?, ?, ?, ?)', args: [caseId, now, JSON.stringify(patientData), JSON.stringify(analysis), req.apiKey] })
+    const specialty = inferSpecialty(analysis, patientData)
+    await db.execute({ sql: 'INSERT INTO cases (case_id, created_at, patient_input, analysis, owner_key, specialty) VALUES (?, ?, ?, ?, ?, ?)', args: [caseId, now, JSON.stringify(patientData), JSON.stringify(analysis), req.apiKey, specialty] })
+
+    // Auto-route to a doctor of the matching specialty. If that doctor already has
+    // earlier cases queued, this one simply joins the back of their queue (FIFO
+    // ordering is handled by assignCase/listCasesForKey's queued_at column) rather
+    // than being redirected to someone else.
+    let autoAssigned = null
+    try {
+      autoAssigned = await findDoctorForCase(specialty, req.apiKey)
+      if (autoAssigned) {
+        await assignCase(caseId, autoAssigned.email, autoAssigned.name, 'Auto-assigned by specialty match', true)
+        notifyUsers([autoAssigned.email], tplNewCase({
+          caseId, label: req.keyLabel, age: patientData.age, sex: patientData.sex,
+          complaint: analysis.presenting_complaint,
+          confidence: (analysis.confidence?.level ?? analysis.confidence_level),
+          emergency: (analysis.red_flags?.emergency_escalation_required ?? analysis.red_flags?.emergency_detected),
+        }), { skipEmail: req.apiKey })
+      }
+    } catch (e) {
+      logError('auto_assign_failed', e.message, 'POST /api/analyze', e.stack, { case_id: caseId, specialty })
+    }
 
     const isEmergency = (analysis.red_flags?.emergency_escalation_required ?? analysis.red_flags?.emergency_detected) || analysis.requires_urgent_review
     await logUpdate('case_submitted', `New case submitted by ${req.keyLabel} (${patientData.age || '?'}y ${patientData.sex || '?'})${isEmergency ? ' — EMERGENCY' : ''}`, {
@@ -698,7 +830,7 @@ app.post('/api/analyze', auth, aiLimiter, async (req, res) => {
       notifyOwningAdmin(req.apiKey, tplNewCase(emailCtx), { skipEmail: req.apiKey })
     }
 
-    res.json({ case_id: caseId, analysis })
+    res.json({ case_id: caseId, analysis, specialty, assigned_to_name: autoAssigned?.name || null })
   } catch (err) {
     console.error(err)
     logError('analyze_failed', err.message, 'POST /api/analyze', err.stack)
@@ -725,9 +857,13 @@ function caseToSummary(row) {
     follow_up_date:       row.follow_up_date || null,
     vitals:               patient?.vitals || [],
     owner_key:            row.owner_key,
+    specialty:            row.specialty || null,
     assigned_to:          row.assigned_to || null,
     assigned_to_name:     row.assigned_to_name || null,
+    assigned_by_name:     row.assigned_by_name || null,
+    auto_assigned:        !!row.auto_assigned,
     assigned_at:          row.assigned_at || null,
+    queued_at:            row.queued_at || null,
   }
 }
 
@@ -797,7 +933,7 @@ app.patch('/api/cases/:id/review', auth, async (req, res) => {
   // an unassigned case; this is where that pickup turns into a real assignment.
   let autoAssigned = false
   if (!row.assigned_to && row.owner_key !== req.apiKey && req.keyRole !== 'superadmin') {
-    const claimedAt = await assignCase(req.params.id, req.apiKey, req.keyLabel, 'Auto-assigned (self-claimed on review)')
+    const claimedAt = await assignCase(req.params.id, req.apiKey, req.keyLabel, 'Auto-assigned (self-claimed on review)', true)
     row.assigned_to = req.apiKey
     row.assigned_to_name = req.keyLabel
     row.assigned_by_name = 'Auto-assigned (self-claimed on review)'
@@ -1279,7 +1415,7 @@ app.get('/api/share/:token', async (req, res) => {
 
 // ── Admin routes ───────────────────────────────────────────────────────────────
 app.get('/api/admin/users', auth, requireAdmin, async (req, res) => {
-  const users = (await db.execute({ sql: 'SELECT id, email, notify_email, name, role, active, status, avatar, password_hash, created_at FROM users ORDER BY created_at DESC', args: [] })).rows
+  const users = (await db.execute({ sql: 'SELECT id, email, notify_email, name, role, specialty, active, status, avatar, password_hash, created_at FROM users ORDER BY created_at DESC', args: [] })).rows
   res.json({
     users: users.map(u => ({
       ...u,
@@ -1290,17 +1426,18 @@ app.get('/api/admin/users', auth, requireAdmin, async (req, res) => {
 })
 
 app.post('/api/admin/users', auth, requireAdmin, async (req, res) => {
-  const { email, name, role = 'doctor', password } = req.body
+  const { email, name, role = 'doctor', password, specialty = '' } = req.body
   if (!email || !name) return res.status(400).json({ error: 'email and name required' })
+  if (specialty && !SPECIALTIES.includes(specialty)) return res.status(400).json({ error: 'Invalid specialty' })
   const normalEmail = email.toLowerCase().trim()
   const existing = (await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [normalEmail] })).rows[0]
   const passwordHash = password ? bcrypt.hashSync(password, 10) : ''
   if (existing) {
-    await db.execute({ sql: 'UPDATE users SET name = ?, role = ?, active = 1 WHERE email = ?', args: [name, role, normalEmail] })
+    await db.execute({ sql: 'UPDATE users SET name = ?, role = ?, specialty = ?, active = 1 WHERE email = ?', args: [name, role, specialty, normalEmail] })
     res.json({ id: existing.id })
   } else {
     const id = randomUUID()
-    await db.execute({ sql: 'INSERT INTO users (id, email, name, role, active, status, password_hash, added_by_email, created_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)', args: [id, normalEmail, name, role, 'pending', passwordHash, req.user?.email || '', new Date().toISOString()] })
+    await db.execute({ sql: 'INSERT INTO users (id, email, name, role, specialty, active, status, password_hash, added_by_email, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)', args: [id, normalEmail, name, role, specialty, 'pending', passwordHash, req.user?.email || '', new Date().toISOString()] })
     res.json({ id })
     // send welcome email (fire-and-forget, don't block response)
     if (password) {
@@ -1321,17 +1458,19 @@ app.post('/api/admin/users', auth, requireAdmin, async (req, res) => {
 })
 
 app.patch('/api/admin/users/:id', auth, requireAdmin, async (req, res) => {
-  const { active, name, role, notify_email, password, status } = req.body
+  const { active, name, role, notify_email, password, status, specialty } = req.body
+  if (specialty !== undefined && specialty && !SPECIALTIES.includes(specialty)) return res.status(400).json({ error: 'Invalid specialty' })
   const user = (await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [req.params.id] })).rows[0]
   if (!user) return res.status(404).json({ error: 'User not found' })
   const newName        = name         !== undefined ? name         : user.name
   const newRole        = role         !== undefined ? role         : user.role
+  const newSpecialty   = specialty    !== undefined ? specialty    : (user.specialty || '')
   const newActive      = active       !== undefined ? (active ? 1 : 0) : user.active
   const newNotifyEmail = notify_email !== undefined ? notify_email.toLowerCase().trim() : (user.notify_email || '')
   const newStatus      = status       !== undefined ? status       : (user.status || 'active')
   const newPasswordHash = password    !== undefined ? bcrypt.hashSync(password, 10) : user.password_hash
 
-  await db.execute({ sql: 'UPDATE users SET name = ?, role = ?, active = ?, notify_email = ?, status = ?, password_hash = ? WHERE id = ?', args: [newName, newRole, newActive, newNotifyEmail, newStatus, newPasswordHash, req.params.id] })
+  await db.execute({ sql: 'UPDATE users SET name = ?, role = ?, specialty = ?, active = ?, notify_email = ?, status = ?, password_hash = ? WHERE id = ?', args: [newName, newRole, newSpecialty, newActive, newNotifyEmail, newStatus, newPasswordHash, req.params.id] })
 
   // Deactivation: if active changed from 1 to 0, export CSV and notify
   if (user.active === 1 && newActive === 0) {
@@ -5262,10 +5401,12 @@ app.post('/api/chat/sessions/:id/messages', auth, async (req, res) => {
 // places the call using the phone number on file.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Lightweight, non-admin-gated doctor directory for call-target pickers.
+// Lightweight, non-admin-gated doctor directory — used for call-target pickers and
+// the CCM care-plan "Care Team" doctor picker (specialty included so a care-team
+// row can show what the doctor specializes in without a second lookup).
 app.get('/api/doctors', auth, async (req, res) => {
   const doctors = (await db.execute({
-    sql: `SELECT id, email, name, role FROM users WHERE active = 1 AND email != ? ORDER BY name ASC`,
+    sql: `SELECT id, email, name, role, specialty FROM users WHERE active = 1 AND email != ? ORDER BY name ASC`,
     args: [req.apiKey],
   })).rows
   res.json({ doctors })

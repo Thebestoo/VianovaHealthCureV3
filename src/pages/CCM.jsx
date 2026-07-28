@@ -87,8 +87,10 @@ export default function CCM() {
   const [planHistory, setPlanHistory] = useState([])
   const [historyExpanded, setHistoryExpanded] = useState({})
   const [aiDrafting, setAiDrafting] = useState(false)
+  const [doctorDirectory, setDoctorDirectory] = useState([]) // platform doctors, for the Care Team "select a doctor" picker
 
   useEffect(() => { if (key) loadPatients() }, [key])
+  useEffect(() => { if (key) loadDoctorDirectory() }, [key])
   useEffect(() => { if (key && showAddPt) loadRoster() }, [key, showAddPt])
   useEffect(() => {
     if (selected) {
@@ -140,6 +142,14 @@ export default function CCM() {
       } catch { return [p.id, 0] }
     }))
     setRosterMinutes(Object.fromEntries(entries))
+  }
+
+  async function loadDoctorDirectory() {
+    try {
+      const r = await fetch('/api/doctors', { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setDoctorDirectory((d.doctors || []).filter(u => u.role === 'doctor'))
+    } catch {}
   }
 
   async function loadPlan(pid) {
@@ -1061,19 +1071,46 @@ export default function CCM() {
                 <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Care Team</label>
                 {careTeam.map((m, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                    <input placeholder="Name" value={m.name || ''}
-                      onChange={e => setCareTeam(ct => ct.map((cm, j) => j === i ? { ...cm, name: e.target.value } : cm))}
-                      style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13 }} />
-                    <input placeholder="Role" value={m.role || ''}
+                    <select value={m.type === 'doctor' ? 'doctor' : 'other'}
+                      onChange={e => {
+                        const type = e.target.value
+                        setCareTeam(ct => ct.map((cm, j) => j === i
+                          ? (type === 'doctor' ? { type, doctor_email: '', name: '', role: '' } : { type, name: cm.name || '', role: cm.role || '' })
+                          : cm))
+                      }}
+                      style={{ width: 110, flexShrink: 0, border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 8px', fontSize: 13, background: 'var(--surface)', color: 'var(--text)' }}>
+                      <option value="other">Care Team</option>
+                      <option value="doctor">Doctor</option>
+                    </select>
+                    {m.type === 'doctor' ? (
+                      <select value={m.doctor_email || ''}
+                        onChange={e => {
+                          const doc = doctorDirectory.find(d => d.email === e.target.value)
+                          setCareTeam(ct => ct.map((cm, j) => j === i ? {
+                            ...cm, doctor_email: doc?.email || '', name: doc?.name || '', role: doc?.specialty || 'Doctor',
+                          } : cm))
+                        }}
+                        style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, background: 'var(--surface)', color: 'var(--text)' }}>
+                        <option value="">Select a doctor…</option>
+                        {doctorDirectory.map(d => (
+                          <option key={d.email} value={d.email}>{d.name}{d.specialty ? ` — ${d.specialty}` : ''}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input placeholder="Name" value={m.name || ''}
+                        onChange={e => setCareTeam(ct => ct.map((cm, j) => j === i ? { ...cm, name: e.target.value } : cm))}
+                        style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13 }} />
+                    )}
+                    <input placeholder="Role" value={m.role || ''} disabled={m.type === 'doctor'}
                       onChange={e => setCareTeam(ct => ct.map((cm, j) => j === i ? { ...cm, role: e.target.value } : cm))}
-                      style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13 }} />
+                      style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, background: m.type === 'doctor' ? 'var(--surface2)' : 'var(--surface)' }} />
                     <button type="button" onClick={() => setCareTeam(ct => ct.filter((_, j) => j !== i))}
                       style={{ background: 'var(--danger-light)', border: 'none', borderRadius: 7, width: 30, height: 30, cursor: 'pointer', color: 'var(--danger)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <X size={14} />
                     </button>
                   </div>
                 ))}
-                <button type="button" onClick={() => setCareTeam(ct => [...ct, { name: '', role: '' }])}
+                <button type="button" onClick={() => setCareTeam(ct => [...ct, { type: 'other', name: '', role: '' }])}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#faf9ff', border: '1.5px dashed #ddd6fe', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#7c3aed', width: '100%', fontWeight: 600 }}>
                   <Plus size={13} /> Add team member
                 </button>

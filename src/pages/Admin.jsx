@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { ShieldCheck, Plus, Trash2, X, Loader2, ToggleLeft, ToggleRight, Mail, Edit3, Save, Lock, CheckCircle, XCircle, Users, Search, UserPlus, Stethoscope, Check, ClipboardList } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import { SPECIALTIES } from '../utils/specialties.js'
 
-const EMPTY_FORM = { name: '', email: '', role: 'doctor', password: '' }
+const EMPTY_FORM = { name: '', email: '', role: 'doctor', password: '', specialty: '' }
 
 const AVATAR_PALETTE = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#6366f1', '#ef4444', '#14b8a6']
 
@@ -56,6 +57,10 @@ export default function Admin() {
   const [savingPassword, setSavingPassword] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [tab, setTab] = useState('users')
+  // inline specialty editing
+  const [editSpecialty, setEditSpecialty] = useState(null)
+  const [specialtyVal, setSpecialtyVal]   = useState('')
+  const [savingSpecialty, setSavingSpecialty] = useState(null)
 
   async function load() {
     setLoading(true)
@@ -130,6 +135,20 @@ export default function Admin() {
       setEditNotify(null)
     } catch {}
     setSavingNotify(null)
+  }
+
+  async function saveSpecialty(userId) {
+    setSavingSpecialty(userId)
+    try {
+      await fetch(`/api/admin/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({ specialty: specialtyVal }),
+      })
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, specialty: specialtyVal } : u))
+      setEditSpecialty(null)
+    } catch {}
+    setSavingSpecialty(null)
   }
 
   async function savePassword(userId) {
@@ -316,14 +335,14 @@ export default function Admin() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                    {['Name', 'Login Email', 'Notification Email', 'Role', 'Password', 'Status', 'Actions'].map(h => (
+                    {['Name', 'Login Email', 'Notification Email', 'Role', 'Specialty', 'Password', 'Status', 'Actions'].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredActiveUsers.length === 0 && (
-                    <tr><td colSpan={7} style={{ padding: '32px 14px', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>No users match your search or filter.</td></tr>
+                    <tr><td colSpan={8} style={{ padding: '32px 14px', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>No users match your search or filter.</td></tr>
                   )}
                   {filteredActiveUsers.map((u, i) => (
                     <tr key={u.id} className="followup-row" style={{ borderBottom: i < filteredActiveUsers.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background .15s ease' }}>
@@ -374,6 +393,45 @@ export default function Admin() {
                       </td>
 
                       <td style={{ padding: '12px 14px' }}>{roleBadge(u.role)}</td>
+
+                      {/* Specialty — inline editable, doctors only */}
+                      <td style={{ padding: '10px 14px', minWidth: 170 }}>
+                        {u.role !== 'doctor' ? (
+                          <span style={{ fontSize: 12, color: 'var(--text3)' }}>—</span>
+                        ) : editSpecialty === u.id ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <select
+                              value={specialtyVal}
+                              onChange={e => setSpecialtyVal(e.target.value)}
+                              autoFocus
+                              style={{ flex: 1, padding: '5px 8px', border: '1.5px solid var(--primary)', borderRadius: 6, fontSize: 12, outline: 'none', background: 'var(--surface)', color: 'var(--text)' }}>
+                              <option value="">None</option>
+                              {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            <button onClick={() => saveSpecialty(u.id)} disabled={savingSpecialty === u.id}
+                              style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: 'var(--primary)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
+                              {savingSpecialty === u.id ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={11} />}
+                            </button>
+                            <button onClick={() => setEditSpecialty(null)}
+                              style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: 'var(--surface2)', cursor: 'pointer' }}>
+                              <X size={11} color="var(--text2)" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {u.specialty ? (
+                              <span style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>{u.specialty}</span>
+                            ) : (
+                              <span style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>none</span>
+                            )}
+                            <button onClick={() => { setEditSpecialty(u.id); setSpecialtyVal(u.specialty || '') }}
+                              title="Edit specialty"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text3)', display: 'flex' }}>
+                              <Edit3 size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
 
                       {/* Password column */}
                       <td style={{ padding: '10px 14px', minWidth: 160 }}>
@@ -608,6 +666,18 @@ export default function Admin() {
                   ))}
                 </div>
               </div>
+              {form.role === 'doctor' && (
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text)', marginBottom: 5 }}>
+                    Specialty <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(routes matching new cases to this doctor)</span>
+                  </label>
+                  <select value={form.specialty || ''} onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))}
+                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--surface)', color: 'var(--text)' }}>
+                    <option value="">No specialty (manual assignment only)</option>
+                    {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
               {error && (
                 <div style={{ background: 'var(--danger-light)', border: '1px solid var(--danger-light)', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: 'var(--danger)', marginBottom: 14 }}>{error}</div>
               )}
