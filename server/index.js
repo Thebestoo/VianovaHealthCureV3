@@ -240,6 +240,19 @@ async function initDB() {
     // on every case submission for any specialty with 2+ doctors — index it so that
     // stays cheap as case volume grows instead of a full table scan per submission.
     `CREATE INDEX IF NOT EXISTS idx_cases_assigned_to ON cases(assigned_to)`,
+    // Fix: these columns were already referenced by the CCM check-in INSERT below but
+    // never had a migration — a fresh database would throw "no such column" on every
+    // check-in save. Adding them here so any environment (not just whatever DB this
+    // happened to be patched onto by hand) has them.
+    `ALTER TABLE ccm_checkins ADD COLUMN owner_key TEXT`,
+    `ALTER TABLE ccm_checkins ADD COLUMN barriers TEXT`,
+    `ALTER TABLE ccm_checkins ADD COLUMN plan_update TEXT`,
+    `ALTER TABLE rpm_readings ADD COLUMN owner_key TEXT`,
+    // RPM interactive-communication time (CPT 99457/99458 require ≥20 min/month of
+    // monitoring-related communication) — captured the same way CCM minutes are,
+    // optionally linked to the call it was logged from.
+    `ALTER TABLE rpm_readings ADD COLUMN minutes INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE rpm_readings ADD COLUMN call_id TEXT`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -2190,6 +2203,25 @@ app.post('/api/rpm/patients', auth, async (req, res) => {
   res.json({ id })
 })
 
+async function loadOwnedRpmPatient(pid, ownerEmail) {
+  return (await db.execute({ sql: 'SELECT * FROM rpm_patients WHERE id = ? AND owner_email = ?', args: [pid, ownerEmail] })).rows[0] || null
+}
+
+// Candidate calls a reading's monitoring time can be linked to — mirrors the
+// equivalent CCM endpoint below.
+app.get('/api/rpm/patients/:pid/calls', auth, async (req, res) => {
+  try {
+    const rpmPatient = await loadOwnedRpmPatient(req.params.pid, req.apiKey)
+    if (!rpmPatient) return res.status(404).json({ error: 'Patient not found' })
+    if (!rpmPatient.gen_patient_id) return res.json({ calls: [] })
+    const rows = (await db.execute({
+      sql: 'SELECT * FROM call_requests WHERE patient_id = ? AND (target_doctor_email = ? OR owner_email = ?) ORDER BY created_at DESC',
+      args: [rpmPatient.gen_patient_id, req.apiKey, req.apiKey],
+    })).rows
+    res.json({ calls: rows })
+  } catch (e) { res.status(500).json({ error: 'Failed to load calls', detail: e.message }) }
+})
+
 app.get('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 0, 500)
   const sql = limit > 0
@@ -2200,12 +2232,46 @@ app.get('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
 })
 
 app.post('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
-  const { heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note } = req.body
+  const { heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note, minutes, call_id } = req.body
+  const rpmPatient = await loadOwnedRpmPatient(req.params.pid, req.apiKey)
+  if (!rpmPatient) return res.status(404).json({ error: 'Patient not found' })
+
+  // Same call-linking rule as CCM check-ins: call_requests.patient_id is the
+  // gen_patients roster id, not this RPM enrollment's own id, and the call must
+  // actually belong to this patient before it can be linked.
+  let linkedCallId = null
+  if (call_id && rpmPatient.gen_patient_id) {
+    const call = (await db.execute({ sql: 'SELECT id FROM call_requests WHERE id = ? AND patient_id = ?', args: [call_id, rpmPatient.gen_patient_id] })).rows[0]
+    linkedCallId = call ? call.id : null
+  }
+
   await db.execute({
-    sql: `INSERT INTO rpm_readings (patient_id, owner_key, heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note, recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    args: [req.params.pid, req.apiKey, heart_rate || null, spo2 || null, systolic_bp || null, diastolic_bp || null, temperature || null, resp_rate || null, note || null, new Date().toISOString()]
+    sql: `INSERT INTO rpm_readings (patient_id, owner_key, heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note, minutes, call_id, recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [req.params.pid, req.apiKey, heart_rate || null, spo2 || null, systolic_bp || null, diastolic_bp || null, temperature || null, resp_rate || null, note || null, minutes || 0, linkedCallId, new Date().toISOString()]
   })
-  res.json({ ok: true })
+
+  // Same 20-min/month threshold as CCM, but for RPM's interactive-communication
+  // time code (99457) — only relevant when this reading actually logged minutes.
+  let autoBilled = null
+  if ((minutes || 0) > 0) {
+    const monthPrefix = new Date().toISOString().slice(0, 7)
+    const sum = (await db.execute({
+      sql: `SELECT COALESCE(SUM(minutes), 0) AS total FROM rpm_readings WHERE patient_id = ? AND recorded_at LIKE ?`,
+      args: [req.params.pid, `${monthPrefix}%`],
+    })).rows[0]?.total || 0
+    if (sum >= MONTHLY_TIME_THRESHOLD_MIN) {
+      try {
+        autoBilled = await autoBillMonthlyTimeCode({
+          genPatientId: rpmPatient.gen_patient_id, ownerEmail: req.apiKey,
+          cptCode: '99457', cptDescription: 'Remote Physiologic Monitoring treatment management, first 20 min/month', monthPrefix,
+        })
+      } catch (e) {
+        logError('rpm_auto_bill_failed', e.message, 'POST /api/rpm/patients/:pid/readings', e.stack, { patient_id: req.params.pid })
+      }
+    }
+  }
+
+  res.json({ ok: true, auto_billed: !!autoBilled })
 })
 
 // AI-assisted reading note — summarizes whether the just-entered vitals are in range
@@ -2245,6 +2311,43 @@ app.delete('/api/rpm/patients/:pid', auth, async (req, res) => {
   await db.execute({ sql: 'DELETE FROM rpm_patients WHERE id = ? AND owner_email = ?', args: [req.params.pid, req.apiKey] })
   res.json({ ok: true })
 })
+
+// ── Auto-billing for CCM/RPM time-based CPT codes ───────────────────────────
+// CCM (99490) and RPM (99457) both require ≥20 minutes of qualifying care time
+// in a calendar month. That threshold is deterministic — a rule, not something
+// an LLM should be guessing — so this writes straight into billing_claims as a
+// 'draft' rather than routing through the AI /api/billing/suggest endpoint.
+// Landing as a draft (not auto-submitted) means a human still reviews/confirms
+// the charge amount and submits it in the Billing page — this only removes the
+// step of a human having to notice the threshold was hit and create the claim.
+const MONTHLY_TIME_THRESHOLD_MIN = 20
+
+async function autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptDescription, monthPrefix }) {
+  if (!genPatientId) return null // no linked roster patient to attach the claim to
+  const already = (await db.execute({
+    sql: `SELECT id FROM billing_claims WHERE patient_id = ? AND encounter_date LIKE ? AND cpt_codes LIKE ?`,
+    args: [genPatientId, `${monthPrefix}%`, `%${cptCode}%`],
+  })).rows[0]
+  if (already) return null // already drafted this month for this code — don't duplicate
+
+  const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ?', args: [genPatientId] })).rows[0]
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  const cptCodes = [{ code: cptCode, description: cptDescription, unit_price: 0 }]
+  const fhirClaim = buildFhirClaim({ id, patient_id: genPatientId, owner_email: ownerEmail, created_at: now, icd_codes: '[]', cpt_codes: JSON.stringify(cptCodes), total_charges: 0 }, patient)
+
+  await db.execute({
+    sql: `INSERT INTO billing_claims (id, patient_id, owner_email, case_id, encounter_date, status, icd_codes, cpt_codes, hcpcs_codes, total_charges, confidence_scores, coding_queries, compliance_flags, claim_notes, fhir_claim, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [id, genPatientId, ownerEmail, null, `${monthPrefix}-01`, 'draft',
+      '[]', JSON.stringify(cptCodes), '[]', 0,
+      JSON.stringify({ overall: 'Rule-based — time threshold met, not AI-generated. Verify charge amount before submitting.' }),
+      '[]', '[]',
+      `Auto-drafted: ${MONTHLY_TIME_THRESHOLD_MIN}+ min of care logged for ${monthPrefix} (CPT ${cptCode}).`,
+      JSON.stringify(fhirClaim), now]
+  })
+  notify(ownerEmail, tplBillingClaimSubmitted({ claimId: id, patientName: patient?.name, cptCount: 1, totalCharges: 0, complianceFlags: 0 })).catch(() => {})
+  return { id, cptCode }
+}
 
 // ── CCM routes ─────────────────────────────────────────────────────────────────
 // Every :pid route below must confirm the patient belongs to the caller before
@@ -2348,7 +2451,28 @@ app.post('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
       sql: `INSERT INTO ccm_checkins (patient_id, owner_key, minutes, notes, barriers, plan_update, call_id, created_at) VALUES (?,?,?,?,?,?,?,?)`,
       args: [req.params.pid, req.apiKey, minutes || 0, notes || null, barriers || null, plan_update || null, linkedCallId, new Date().toISOString()]
     })
-    res.json({ ok: true })
+
+    // If this check-in pushed the patient's monthly CCM time over the 20-min
+    // billing threshold, auto-draft the claim instead of leaving it for someone
+    // to notice and enter manually in Billing.
+    let autoBilled = null
+    const monthPrefix = new Date().toISOString().slice(0, 7)
+    const sum = (await db.execute({
+      sql: `SELECT COALESCE(SUM(minutes), 0) AS total FROM ccm_checkins WHERE patient_id = ? AND created_at LIKE ?`,
+      args: [req.params.pid, `${monthPrefix}%`],
+    })).rows[0]?.total || 0
+    if (sum >= MONTHLY_TIME_THRESHOLD_MIN) {
+      try {
+        autoBilled = await autoBillMonthlyTimeCode({
+          genPatientId: ccmPatient.gen_patient_id, ownerEmail: req.apiKey,
+          cptCode: '99490', cptDescription: 'Chronic Care Management, first 20 min/month', monthPrefix,
+        })
+      } catch (e) {
+        logError('ccm_auto_bill_failed', e.message, 'POST /api/ccm/patients/:pid/checkins', e.stack, { patient_id: req.params.pid })
+      }
+    }
+
+    res.json({ ok: true, auto_billed: !!autoBilled })
   } catch (e) { res.status(500).json({ error: 'Failed to save check-in', detail: e.message }) }
 })
 

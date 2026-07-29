@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, AlertCircle, Plus, RefreshCw, Users, Search, UserMinus, Wand2, X, Clock } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
@@ -101,9 +102,10 @@ export default function RPM() {
   const [readings, setReadings] = useState([])
   const [readingSearch, setReadingSearch] = useState('')
   const [patientLatest, setPatientLatest] = useState({}) // { [patientId]: latestReading } — roster-wide vitals awareness
-  const [form, setForm] = useState({ patient_id: '', heart_rate: '', spo2: '', systolic_bp: '', diastolic_bp: '', temperature: '', resp_rate: '', note: '' })
+  const [form, setForm] = useState({ patient_id: '', heart_rate: '', spo2: '', systolic_bp: '', diastolic_bp: '', temperature: '', resp_rate: '', note: '', minutes: '', call_id: '' })
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [relatedCalls, setRelatedCalls] = useState([])
   const [showAddPatient, setShowAddPatient] = useState(false)
   const [newPatient, setNewPatient] = useState({ condition: '' })
   const [roster, setRoster] = useState([])
@@ -114,7 +116,7 @@ export default function RPM() {
   const [aiSuggesting, setAiSuggesting] = useState(false)
 
   useEffect(() => { if (key) loadPatients() }, [key])
-  useEffect(() => { if (selected) loadReadings(selected.id) }, [selected])
+  useEffect(() => { if (selected) { loadReadings(selected.id); loadRelatedCalls(selected.id) } }, [selected])
   useEffect(() => { if (key && showAddPatient) loadRoster() }, [key, showAddPatient])
 
   // Enrollment pulls demographics from the existing Patients roster
@@ -164,17 +166,29 @@ export default function RPM() {
     } catch {}
   }
 
+  // Calls (patient<->doctor or family<->doctor) tied to this patient, so
+  // monitoring time logged right after a call can be linked to it — mirrors CCM.
+  async function loadRelatedCalls(pid) {
+    try {
+      const r = await fetch(`/api/rpm/patients/${pid}/calls`, { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setRelatedCalls(d.calls || [])
+    } catch { setRelatedCalls([]) }
+  }
+
   async function saveReading(e) {
     e.preventDefault()
     setSaving(true)
     try {
-      await fetch(`/api/rpm/patients/${form.patient_id}/readings`, {
+      const r = await fetch(`/api/rpm/patients/${form.patient_id}/readings`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
         body: JSON.stringify(form)
       })
+      const d = await r.json().catch(() => ({}))
+      if (d.auto_billed) toast.success('20+ min of monitoring time this month — CPT 99457 auto-drafted in Billing')
       setAdding(false)
-      setForm({ patient_id: '', heart_rate: '', spo2: '', systolic_bp: '', diastolic_bp: '', temperature: '', resp_rate: '', note: '' })
+      setForm({ patient_id: '', heart_rate: '', spo2: '', systolic_bp: '', diastolic_bp: '', temperature: '', resp_rate: '', note: '', minutes: '', call_id: '' })
       if (selected) loadReadings(selected.id)
     } finally { setSaving(false) }
   }
@@ -587,6 +601,27 @@ export default function RPM() {
                   {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
+              <div style={{ marginBottom: 15 }}>
+                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 4 }}>Interactive Communication Time (minutes, optional)</label>
+                <input type="number" min="0" value={form.minutes} onChange={e => setForm(f => ({ ...f, minutes: e.target.value }))}
+                  placeholder="e.g. 20"
+                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>Need ≥ 20 min/month for CPT 99457 billing</div>
+              </div>
+              {relatedCalls.length > 0 && (
+                <div style={{ marginBottom: 15 }}>
+                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 4 }}>Related Call (optional)</label>
+                  <select value={form.call_id} onChange={e => setForm(f => ({ ...f, call_id: e.target.value }))}
+                    style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13 }}>
+                    <option value="">Not tied to a call</option>
+                    {relatedCalls.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.caller_role === 'family' ? `Family (${c.family_member_name || 'unnamed'})` : 'Patient'} call · {new Date(c.created_at).toLocaleDateString()} · {c.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 15 }}>
                 {VITALS_CONFIG.map(cfg => (
                   <div key={cfg.key}>

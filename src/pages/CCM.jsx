@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus, Timer, Pause, Play, Wand2, Users, DollarSign } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
@@ -264,11 +265,13 @@ export default function CCM() {
     e.preventDefault()
     setSaving(true)
     try {
-      await fetch(`/api/ccm/patients/${selected.id}/checkins`, {
+      const r = await fetch(`/api/ccm/patients/${selected.id}/checkins`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
         body: JSON.stringify(checkinForm)
       })
+      const d = await r.json().catch(() => ({}))
+      if (d.auto_billed) toast.success('20+ min this month — CPT 99490 auto-drafted in Billing')
       setShowCheckin(false)
       setCheckinForm({ minutes: '', notes: '', barriers: '', plan_update: '', call_id: '' })
       setTimerSeconds(0)
