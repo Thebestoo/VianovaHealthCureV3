@@ -2004,17 +2004,19 @@ function computeQuality(p) {
 }
 
 // ── gen_patients routes ────────────────────────────────────────────────────────
-// Doctors only ever see their own roster (owner_email = their account) — the
-// platform-wide view is reserved for superadmin, same role-gated pattern already
-// used by /api/patients and keyStats(). This is what backs the Patients page's
-// "All Patients" tab: for a doctor it's identical to "My Patients" (they can't
-// see other accounts' patients either way); for superadmin it's the full roster.
+// Default stays owner-scoped — this endpoint is reused as a patient picker across
+// a dozen other pages (New Case, Consent, Labs, Billing, Chronic Disease, etc.)
+// that have no business seeing another account's patients. Only the Patients
+// page's "All Patients" tab needs the cross-account view (e.g. a case auto-assigned
+// to a doctor for a patient another account enrolled still needs to resolve to a
+// real patient record for "My Caseload" to find it), so that's opted into
+// explicitly via ?scope=all rather than changing the default for every consumer.
 app.get('/api/gen-patients', auth, async (req, res) => {
   const rows = (await db.execute({
-    sql: req.keyRole === 'superadmin'
+    sql: req.query.scope === 'all'
       ? 'SELECT * FROM gen_patients ORDER BY name'
       : 'SELECT * FROM gen_patients WHERE owner_email = ? ORDER BY name',
-    args: req.keyRole === 'superadmin' ? [] : [req.apiKey]
+    args: req.query.scope === 'all' ? [] : [req.apiKey]
   })).rows
   res.json({ patients: rows })
 })

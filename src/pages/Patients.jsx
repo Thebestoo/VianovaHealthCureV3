@@ -65,13 +65,14 @@ function tryParse(v)    { try { return typeof v === 'string' ? JSON.parse(v) : v
 
 const EMPTY = { name: '', dob: '', sex: '', mrn: '', phone: '', email: '', address: '', language: '', conditions: '', medications: '', allergies: '', notes: '' }
 
-// Sidebar sub-nav lands here with ?view=. "all" is whatever GET /api/gen-patients
-// returns — this account's own roster for a doctor, the full platform roster for
-// superadmin (server-side role check, not a client-side filter — a doctor's list
-// never includes another account's patients). "mine" narrows that down to patients
-// this account itself owns (owner_email), which only differs from "all" for
-// superadmin. "caseload" comes from case assignment (cases.assigned_to), "call-list"
-// from upcoming appointments.
+// Sidebar sub-nav lands here with ?view=. "all" is every patient across every
+// account (this page fetches GET /api/gen-patients?scope=all — every other page
+// using that endpoint keeps the owner-scoped default). "mine" narrows that down
+// client-side to patients this account itself owns (owner_email === you).
+// "caseload" comes from case assignment (cases.assigned_to) rather than
+// ownership — a case can be assigned to you for a patient another account
+// enrolled, so it needs the full "all" list (not just "mine") to resolve against.
+// "call-list" comes from upcoming appointments.
 const VIEW_TABS = [
   { key: 'all',       label: 'All Patients'  },
   { key: 'mine',      label: 'My Patients'   },
@@ -182,7 +183,11 @@ export default function Patients() {
   async function load() {
     setLoading(true)
     try {
-      const r = await fetch('/api/gen-patients', { headers: { 'x-api-key': key } })
+      // scope=all: this page needs the cross-account roster for "All Patients" and
+      // for "My Caseload" to resolve patients another account enrolled but whose
+      // case was assigned to you — every other page using this endpoint keeps the
+      // owner-scoped default.
+      const r = await fetch('/api/gen-patients?scope=all', { headers: { 'x-api-key': key } })
       const d = await r.json()
       setPatients(d.patients || [])
     } catch {}
