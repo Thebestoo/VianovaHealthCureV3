@@ -53,7 +53,7 @@ function sumMinutesThisMonth(checkins) {
 }
 
 export default function CCM() {
-  const { key } = useKey()
+  const { key, label } = useKey()
   const [patients, setPatients]     = useState([])
   const [search, setSearch]         = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -67,7 +67,7 @@ export default function CCM() {
   const [roster, setRoster]         = useState([])
   const [rosterSearch, setRosterSearch] = useState('')
   const [pickedPatient, setPickedPatient] = useState(null)
-  const [newPt, setNewPt]           = useState({ conditions: [], conditionInput: '', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
+  const [newPt, setNewPt]           = useState({ conditions: [], conditionInput: '', insurance: '', care_manager: label || '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
   const [enrolling, setEnrolling]   = useState(false)
   const [enrollError, setEnrollError] = useState('')
   const [checkinForm, setCheckinForm] = useState({ minutes: '', notes: '', barriers: '', plan_update: '', call_id: '' })
@@ -208,7 +208,7 @@ export default function CCM() {
     setPickedPatient(null)
     setRosterSearch('')
     setEnrollError('')
-    setNewPt({ conditions: [], conditionInput: '', insurance: '', care_manager: '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
+    setNewPt({ conditions: [], conditionInput: '', insurance: '', care_manager: label || '', consent_date: new Date().toISOString().slice(0, 10), consent_method: 'verbal' })
   }
 
   function addCondition(raw) {

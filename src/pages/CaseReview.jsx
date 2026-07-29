@@ -20,6 +20,41 @@ const DEFAULT_DISCLAIMERS = [
   'Based on patient/FHIR-reported information — verify against the full medical record before treatment decisions.',
 ]
 
+// Turns the AI's structured draft_treatment_plan into an editable starting point
+// for "Final Approved Cure", so the doctor edits/verifies the AI's own draft
+// instead of retyping the whole plan from scratch on every case.
+function draftTreatmentPlanText(a) {
+  const plan = a?.draft_treatment_plan
+  if (!plan) return ''
+  const lines = []
+  if (plan.non_pharmacological?.length) {
+    lines.push('Non-pharmacological:')
+    plan.non_pharmacological.forEach(v => lines.push(`- ${v}`))
+  }
+  const pharma = plan.pharmacological ?? plan.pharmacological_suggestions ?? []
+  if (pharma.length) {
+    if (lines.length) lines.push('')
+    lines.push('Pharmacological (verify dose, contraindications, and interactions before prescribing):')
+    pharma.forEach(d => {
+      const name = d.drug ?? d.option
+      const caution = d.caution ?? d.physician_dose_consideration
+      lines.push(`- ${name}${d.class ? ` (${d.class})` : ''}${d.rationale ? ` — ${d.rationale}` : ''}${caution ? ` [Caution: ${caution}]` : ''}`)
+    })
+  }
+  const lifestyle = plan.lifestyle_and_followup || []
+  if (plan.follow_up || lifestyle.length) {
+    if (lines.length) lines.push('')
+    lines.push('Follow-up:')
+    if (plan.follow_up) lines.push(plan.follow_up)
+    lifestyle.forEach(v => lines.push(`- ${v}`))
+  }
+  if (plan.referral_needed) {
+    if (lines.length) lines.push('')
+    lines.push(`Referral needed${plan.referral_type ? `: ${plan.referral_type}` : ''}`)
+  }
+  return lines.join('\n')
+}
+
 export default function CaseReview() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -49,7 +84,10 @@ export default function CaseReview() {
         setRecord(data)
         const dr = data.analysis?.doctor_review
         setDoctorNotes(dr?.doctor_notes || '')
-        setFinalCure(dr?.final_approved_cure || '')
+        // Pre-fill with the AI's own draft treatment plan (not yet reviewed) so the
+        // doctor edits/verifies it instead of retyping the whole plan from scratch —
+        // never overwrite a plan the doctor already saved.
+        setFinalCure(dr?.final_approved_cure || draftTreatmentPlanText(data.analysis))
         setApprove(dr?.approved || false)
         setFollowUpDate(data.follow_up_date || '')
         setLoading(false)
@@ -856,6 +894,9 @@ export default function CaseReview() {
 
               <div className="form-group">
                 <label className="form-label">Final Approved Cure (edited plan)</label>
+                <div style={{ fontSize: 11.5, color: 'var(--text3)', marginBottom: 5 }}>
+                  Pre-filled from the AI's draft plan — review and edit before approving; this is what's communicated to the patient.
+                </div>
                 <textarea className="form-textarea" rows={6}
                   placeholder="Write the approved treatment plan here. This is what will be communicated to the patient after approval."
                   value={finalCure} onChange={e => setFinalCure(e.target.value)} />
