@@ -65,9 +65,13 @@ function tryParse(v)    { try { return typeof v === 'string' ? JSON.parse(v) : v
 
 const EMPTY = { name: '', dob: '', sex: '', mrn: '', phone: '', email: '', address: '', language: '', conditions: '', medications: '', allergies: '', notes: '' }
 
-// Sidebar sub-nav lands here with ?view=, each backed by real assignment data
-// (not just relabeled copies of the same list): "mine"/"caseload" come from case
-// assignment (cases.assigned_to), "call-list" from upcoming appointments.
+// Sidebar sub-nav lands here with ?view=. "all" is whatever GET /api/gen-patients
+// returns — this account's own roster for a doctor, the full platform roster for
+// superadmin (server-side role check, not a client-side filter — a doctor's list
+// never includes another account's patients). "mine" narrows that down to patients
+// this account itself owns (owner_email), which only differs from "all" for
+// superadmin. "caseload" comes from case assignment (cases.assigned_to), "call-list"
+// from upcoming appointments.
 const VIEW_TABS = [
   { key: 'all',       label: 'All Patients'  },
   { key: 'mine',      label: 'My Patients'   },
@@ -353,9 +357,11 @@ export default function Patients() {
     return map
   }, [allCases])
 
+  // Ownership, not case assignment — "My Patients" is this account's own roster
+  // (owner_email), distinct from "My Caseload" below which is assignment-based.
   const mineIds = useMemo(() => new Set(
-    Object.entries(casesByPatient).filter(([, cs]) => cs.some(c => c.assigned_to === email)).map(([pid]) => pid)
-  ), [casesByPatient, email])
+    patients.filter(p => p.owner_email === email).map(p => String(p.id))
+  ), [patients, email])
 
   const caseloadIds = useMemo(() => new Set(
     Object.entries(casesByPatient).filter(([, cs]) => cs.some(c => c.assigned_to === email && !c.approved)).map(([pid]) => pid)

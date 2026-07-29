@@ -2004,8 +2004,18 @@ function computeQuality(p) {
 }
 
 // ── gen_patients routes ────────────────────────────────────────────────────────
+// Doctors only ever see their own roster (owner_email = their account) — the
+// platform-wide view is reserved for superadmin, same role-gated pattern already
+// used by /api/patients and keyStats(). This is what backs the Patients page's
+// "All Patients" tab: for a doctor it's identical to "My Patients" (they can't
+// see other accounts' patients either way); for superadmin it's the full roster.
 app.get('/api/gen-patients', auth, async (req, res) => {
-  const rows = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE owner_email = ? ORDER BY name', args: [req.apiKey] })).rows
+  const rows = (await db.execute({
+    sql: req.keyRole === 'superadmin'
+      ? 'SELECT * FROM gen_patients ORDER BY name'
+      : 'SELECT * FROM gen_patients WHERE owner_email = ? ORDER BY name',
+    args: req.keyRole === 'superadmin' ? [] : [req.apiKey]
+  })).rows
   res.json({ patients: rows })
 })
 
