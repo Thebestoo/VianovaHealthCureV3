@@ -2208,6 +2208,27 @@ app.delete('/api/gen-patients/:id', auth, async (req, res) => {
   res.json({ ok: true })
 })
 
+// Shared by every "calls for this patient" lookup below (roster-level, RPM, CCM) —
+// call_requests.patient_id is always the gen_patients roster id, so every variant
+// resolves to this same query once it has that id in hand.
+async function queryCallsForGenPatient(genPatientId, ownerEmail) {
+  return (await db.execute({
+    sql: 'SELECT * FROM call_requests WHERE patient_id = ? AND (target_doctor_email = ? OR owner_email = ?) ORDER BY created_at DESC',
+    args: [genPatientId, ownerEmail, ownerEmail],
+  })).rows
+}
+
+// Candidate calls for a gen_patients roster patient who isn't enrolled in CCM/RPM
+// yet — the enrollment modals use this (keyed off the picked roster patient's id)
+// so an already-completed intake/consent call can be linked and billed right at
+// enrollment, before a ccm_patients/rpm_patients row exists to hang the usual
+// :pid/calls lookup off of.
+app.get('/api/patients/:id/calls', auth, async (req, res) => {
+  try {
+    res.json({ calls: await queryCallsForGenPatient(req.params.id, req.apiKey) })
+  } catch (e) { res.status(500).json({ error: 'Failed to load calls', detail: e.message }) }
+})
+
 // ── RPM routes ─────────────────────────────────────────────────────────────────
 // Left-joined against gen_patients (via gen_patient_id) so the RPM roster carries full
 // demographics/conditions/medications/allergies, not just name + a free-text condition.
@@ -2224,14 +2245,53 @@ app.get('/api/rpm/patients', auth, async (req, res) => {
 })
 
 app.post('/api/rpm/patients', auth, async (req, res) => {
-  const { name, dob, condition, gen_patient_id } = req.body
+  const { name, dob, condition, gen_patient_id, call_id } = req.body
   if (!name) return res.status(400).json({ error: 'name required' })
   const id = randomUUID()
+  const now = new Date().toISOString()
   await db.execute({
     sql: 'INSERT INTO rpm_patients (id, owner_email, name, dob, condition, gen_patient_id, created_at) VALUES (?,?,?,?,?,?,?)',
-    args: [id, req.apiKey, name, dob || null, condition || null, gen_patient_id || null, new Date().toISOString()],
+    args: [id, req.apiKey, name, dob || null, condition || null, gen_patient_id || null, now],
   })
-  res.json({ id })
+
+  // CPT 99453 ("Remote physiologic monitoring initial setup and patient education")
+  // is RPM's one-time enrollment code, mirroring G0506 for CCM — billed once per
+  // patient regardless of whether a call is linked, since setup/education happens
+  // at enrollment either way. A failure here must not fail enrollment.
+  let setupBilled = false
+  if (gen_patient_id) {
+    try {
+      setupBilled = !!(await autoBillOneTimeCode({
+        genPatientId: gen_patient_id, ownerEmail: req.apiKey, code: '99453',
+        description: 'Remote physiologic monitoring initial setup and patient education',
+        notes: 'Auto-drafted at RPM enrollment — one-time initial setup/education code (99453).',
+      }))
+    } catch (e) {
+      logError('rpm_auto_99453_failed', e.message, 'POST /api/rpm/patients', e.stack, { patient_id: id })
+    }
+  }
+
+  // Same call-linking as CCM enrollment — a completed setup/education call before
+  // enrollment counts toward the 20-min/month 99457 threshold right away.
+  let callLinked = false
+  let timeAutoBilled = false
+  if (call_id && gen_patient_id) {
+    try {
+      const result = await linkEnrollmentCall({
+        callId: call_id, genPatientId: gen_patient_id, ownerEmail: req.apiKey, table: 'rpm_readings', pid: id, cpt: CPT_RPM_TIME,
+        insertEntry: call => db.execute({
+          sql: `INSERT INTO rpm_readings (patient_id, owner_key, heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note, minutes, call_id, recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          args: [id, req.apiKey, null, null, null, null, null, null, 'Initial RPM enrollment / patient education call.', call.duration_minutes || 0, call.id, now]
+        }),
+      })
+      callLinked = result.linked
+      timeAutoBilled = result.timeAutoBilled
+    } catch (e) {
+      logError('rpm_enroll_call_link_failed', e.message, 'POST /api/rpm/patients', e.stack, { patient_id: id, call_id })
+    }
+  }
+
+  res.json({ id, setup_billed: setupBilled, call_linked: callLinked, time_auto_billed: timeAutoBilled })
 })
 
 async function loadOwnedRpmPatient(pid, ownerEmail) {
@@ -2245,11 +2305,7 @@ app.get('/api/rpm/patients/:pid/calls', auth, async (req, res) => {
     const rpmPatient = await loadOwnedRpmPatient(req.params.pid, req.apiKey)
     if (!rpmPatient) return res.status(404).json({ error: 'Patient not found' })
     if (!rpmPatient.gen_patient_id) return res.json({ calls: [] })
-    const rows = (await db.execute({
-      sql: 'SELECT * FROM call_requests WHERE patient_id = ? AND (target_doctor_email = ? OR owner_email = ?) ORDER BY created_at DESC',
-      args: [rpmPatient.gen_patient_id, req.apiKey, req.apiKey],
-    })).rows
-    res.json({ calls: rows })
+    res.json({ calls: await queryCallsForGenPatient(rpmPatient.gen_patient_id, req.apiKey) })
   } catch (e) { res.status(500).json({ error: 'Failed to load calls', detail: e.message }) }
 })
 
@@ -2285,21 +2341,10 @@ app.post('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
   // time code (99457) — only relevant when this reading actually logged minutes.
   let autoBilled = null
   if ((minutes || 0) > 0) {
-    const monthPrefix = new Date().toISOString().slice(0, 7)
-    const sum = (await db.execute({
-      sql: `SELECT COALESCE(SUM(minutes), 0) AS total FROM rpm_readings WHERE patient_id = ? AND recorded_at LIKE ?`,
-      args: [req.params.pid, `${monthPrefix}%`],
-    })).rows[0]?.total || 0
-    if (sum >= MONTHLY_TIME_THRESHOLD_MIN) {
-      try {
-        autoBilled = await autoBillMonthlyTimeCode({
-          genPatientId: rpmPatient.gen_patient_id, ownerEmail: req.apiKey,
-          cptCode: '99457', cptDescription: 'Remote Physiologic Monitoring treatment management, first 20 min/month', monthPrefix,
-        })
-      } catch (e) {
-        logError('rpm_auto_bill_failed', e.message, 'POST /api/rpm/patients/:pid/readings', e.stack, { patient_id: req.params.pid })
-      }
-    }
+    autoBilled = await checkMonthlyTimeThreshold({
+      table: 'rpm_readings', pid: req.params.pid, genPatientId: rpmPatient.gen_patient_id, ownerEmail: req.apiKey,
+      cptCode: CPT_RPM_TIME.code, cptDescription: CPT_RPM_TIME.description,
+    })
   }
 
   res.json({ ok: true, auto_billed: !!autoBilled })
@@ -2353,6 +2398,12 @@ app.delete('/api/rpm/patients/:pid', auth, async (req, res) => {
 // step of a human having to notice the threshold was hit and create the claim.
 const MONTHLY_TIME_THRESHOLD_MIN = 20
 
+// CPT/HCPCS code + description kept paired here so every billing call site (check-ins,
+// readings, enrollment call-linking) cites the exact same wording — previously each
+// site respelled the description inline, risking drift between e.g. two 99490 claims.
+const CPT_CCM_TIME = { code: '99490', description: 'Chronic Care Management, first 20 min/month' }
+const CPT_RPM_TIME = { code: '99457', description: 'Remote Physiologic Monitoring treatment management, first 20 min/month' }
+
 async function autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptDescription, monthPrefix }) {
   if (!genPatientId) return null // no linked roster patient to attach the claim to
   const already = (await db.execute({
@@ -2378,6 +2429,41 @@ async function autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptD
   })
   notify(ownerEmail, tplBillingClaimSubmitted({ claimId: id, patientName: patient?.name, cptCount: 1, totalCharges: 0, complianceFlags: 0 })).catch(() => {})
   return { id, cptCode }
+}
+
+// Sums a patient's logged care-time minutes for the current calendar month from
+// either ccm_checkins or rpm_readings and, once the 20-min threshold is crossed,
+// auto-drafts the matching time-based CPT claim. Shared by every place minutes get
+// logged — check-ins, readings, and a call linked at enrollment — so the threshold
+// is only ever evaluated one way instead of re-implemented per call site.
+async function checkMonthlyTimeThreshold({ table, pid, genPatientId, ownerEmail, cptCode, cptDescription }) {
+  const monthPrefix = new Date().toISOString().slice(0, 7)
+  const dateCol = table === 'ccm_checkins' ? 'created_at' : 'recorded_at'
+  const sum = (await db.execute({
+    sql: `SELECT COALESCE(SUM(minutes), 0) AS total FROM ${table} WHERE patient_id = ? AND ${dateCol} LIKE ?`,
+    args: [pid, `${monthPrefix}%`],
+  })).rows[0]?.total || 0
+  if (sum < MONTHLY_TIME_THRESHOLD_MIN) return null
+  try {
+    return await autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptDescription, monthPrefix })
+  } catch (e) {
+    logError('auto_bill_failed', e.message, `monthly time threshold (${table})`, e.stack, { patient_id: pid })
+    return null
+  }
+}
+
+// Links a call_requests row to a freshly-enrolled CCM/RPM patient as their first
+// billable time entry. Shared by both enrollment endpoints, which otherwise
+// duplicated the same validate-call → insert-time-entry → check-threshold sequence
+// with only the target table/columns differing — `insertEntry` is the one part
+// that's genuinely table-specific (ccm_checkins vs rpm_readings have different
+// columns), so it stays a caller-supplied callback rather than being inlined here.
+async function linkEnrollmentCall({ callId, genPatientId, ownerEmail, table, pid, cpt, insertEntry }) {
+  const call = (await db.execute({ sql: 'SELECT * FROM call_requests WHERE id = ? AND patient_id = ?', args: [callId, genPatientId] })).rows[0]
+  if (!call) return { linked: false, timeAutoBilled: false }
+  await insertEntry(call)
+  const autoBilled = await checkMonthlyTimeThreshold({ table, pid, genPatientId, ownerEmail, cptCode: cpt.code, cptDescription: cpt.description })
+  return { linked: true, timeAutoBilled: !!autoBilled }
 }
 
 // One-time (not monthly) CMS codes — e.g. G0506, billed once at CCM initiation, never
@@ -2423,17 +2509,15 @@ async function loadOwnedCcmPatient(pid, ownerEmail) {
 // manually later. Throws on failure; callers decide whether that should fail the
 // whole request (manual draft) or just skip silently (auto-draft at enroll).
 async function draftCarePlanForPatient(pid, patient) {
-  let vitalsRows = []
-  try { vitalsRows = (await db.execute({ sql: 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 3', args: [pid] })).rows } catch {}
-
-  let labRows = []
-  try { labRows = (await db.execute({ sql: 'SELECT test_name, value, unit, interpretation FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 5', args: [pid] })).rows } catch {}
-
-  let gapRows = []
-  try { gapRows = (await db.execute({ sql: "SELECT gap_type, description, priority FROM care_gaps WHERE patient_id = ? AND status = 'open' LIMIT 5", args: [pid] })).rows } catch {}
-
-  let barrierRows = []
-  try { barrierRows = (await db.execute({ sql: 'SELECT barriers, created_at FROM ccm_checkins WHERE patient_id = ? AND barriers IS NOT NULL ORDER BY created_at DESC LIMIT 3', args: [pid] })).rows } catch {}
+  // Four independent lookups against different tables — run concurrently instead
+  // of one round trip after another (this runs inline during enrollment, so its
+  // latency is directly in the way of the response).
+  const [vitalsRows, labRows, gapRows, barrierRows] = await Promise.all([
+    db.execute({ sql: 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 3', args: [pid] }).then(r => r.rows).catch(() => []),
+    db.execute({ sql: 'SELECT test_name, value, unit, interpretation FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 5', args: [pid] }).then(r => r.rows).catch(() => []),
+    db.execute({ sql: "SELECT gap_type, description, priority FROM care_gaps WHERE patient_id = ? AND status = 'open' LIMIT 5", args: [pid] }).then(r => r.rows).catch(() => []),
+    db.execute({ sql: 'SELECT barriers, created_at FROM ccm_checkins WHERE patient_id = ? AND barriers IS NOT NULL ORDER BY created_at DESC LIMIT 3', args: [pid] }).then(r => r.rows).catch(() => []),
+  ])
 
   let conds = []; let meds = []; let allgs = []
   try { conds = JSON.parse(patient.conditions || '[]') } catch { conds = patient.conditions ? [patient.conditions] : [] }
@@ -2491,7 +2575,7 @@ app.get('/api/ccm/patients', auth, async (req, res) => {
 // the care plan), so it needs the same per-minute cap as every other AI endpoint.
 app.post('/api/ccm/patients', auth, aiLimiter, async (req, res) => {
   try {
-    const { name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method, gen_patient_id } = req.body
+    const { name, dob, phone, condition, insurance, care_manager, conditions, medications, allergies, consent_date, consent_method, gen_patient_id, call_id } = req.body
     if (!name) return res.status(400).json({ error: 'name required' })
     const id = randomUUID()
     const now = new Date().toISOString()
@@ -2510,8 +2594,9 @@ app.post('/api/ccm/patients', auth, aiLimiter, async (req, res) => {
     // fallback either way.
     let carePlanDrafted = false
     try {
-      const enrolledPatient = await loadOwnedCcmPatient(id, req.apiKey)
-      const draft = await draftCarePlanForPatient(id, enrolledPatient)
+      // Built from the fields just inserted above rather than re-querying
+      // ccm_patients — the row can't have changed in the microseconds since.
+      const draft = await draftCarePlanForPatient(id, { name, condition, conditions, medications, allergies })
       await db.execute({
         sql: `INSERT INTO ccm_care_plans (patient_id, owner_key, template, tasks, goals, care_team, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
         args: [id, req.apiKey, condition ? `AI-drafted at enrollment — ${condition}` : 'AI-drafted at enrollment',
@@ -2541,7 +2626,31 @@ app.post('/api/ccm/patients', auth, aiLimiter, async (req, res) => {
       }
     }
 
-    res.json({ id, care_plan_drafted: carePlanDrafted, g0506_billed: g0506Billed })
+    // A consent/intake call already completed before enrollment (e.g. the doctor
+    // walked the patient through CCM enrollment on the phone) can be linked here so
+    // its time counts toward the 20-min/month 99490 threshold immediately, instead
+    // of requiring a separate check-in to be logged after the fact. Same ownership
+    // check as the manual check-in endpoint — call_requests.patient_id is the
+    // gen_patients roster id, so this only works when gen_patient_id is set.
+    let callLinked = false
+    let timeAutoBilled = false
+    if (call_id && gen_patient_id) {
+      try {
+        const result = await linkEnrollmentCall({
+          callId: call_id, genPatientId: gen_patient_id, ownerEmail: req.apiKey, table: 'ccm_checkins', pid: id, cpt: CPT_CCM_TIME,
+          insertEntry: call => db.execute({
+            sql: `INSERT INTO ccm_checkins (patient_id, owner_key, minutes, notes, barriers, plan_update, call_id, created_at) VALUES (?,?,?,?,?,?,?,?)`,
+            args: [id, req.apiKey, call.duration_minutes || 0, 'Initial CCM enrollment/consent call.', null, null, call.id, now]
+          }),
+        })
+        callLinked = result.linked
+        timeAutoBilled = result.timeAutoBilled
+      } catch (e) {
+        logError('ccm_enroll_call_link_failed', e.message, 'POST /api/ccm/patients', e.stack, { patient_id: id, call_id })
+      }
+    }
+
+    res.json({ id, care_plan_drafted: carePlanDrafted, g0506_billed: g0506Billed, call_linked: callLinked, time_auto_billed: timeAutoBilled })
   } catch (e) { res.status(500).json({ error: 'Failed to enroll patient', detail: e.message }) }
 })
 
@@ -2628,22 +2737,10 @@ app.post('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
     // If this check-in pushed the patient's monthly CCM time over the 20-min
     // billing threshold, auto-draft the claim instead of leaving it for someone
     // to notice and enter manually in Billing.
-    let autoBilled = null
-    const monthPrefix = new Date().toISOString().slice(0, 7)
-    const sum = (await db.execute({
-      sql: `SELECT COALESCE(SUM(minutes), 0) AS total FROM ccm_checkins WHERE patient_id = ? AND created_at LIKE ?`,
-      args: [req.params.pid, `${monthPrefix}%`],
-    })).rows[0]?.total || 0
-    if (sum >= MONTHLY_TIME_THRESHOLD_MIN) {
-      try {
-        autoBilled = await autoBillMonthlyTimeCode({
-          genPatientId: ccmPatient.gen_patient_id, ownerEmail: req.apiKey,
-          cptCode: '99490', cptDescription: 'Chronic Care Management, first 20 min/month', monthPrefix,
-        })
-      } catch (e) {
-        logError('ccm_auto_bill_failed', e.message, 'POST /api/ccm/patients/:pid/checkins', e.stack, { patient_id: req.params.pid })
-      }
-    }
+    const autoBilled = await checkMonthlyTimeThreshold({
+      table: 'ccm_checkins', pid: req.params.pid, genPatientId: ccmPatient.gen_patient_id, ownerEmail: req.apiKey,
+      cptCode: CPT_CCM_TIME.code, cptDescription: CPT_CCM_TIME.description,
+    })
 
     res.json({ ok: true, auto_billed: !!autoBilled })
   } catch (e) { res.status(500).json({ error: 'Failed to save check-in', detail: e.message }) }
@@ -2656,11 +2753,7 @@ app.get('/api/ccm/patients/:pid/calls', auth, async (req, res) => {
     const ccmPatient = await loadOwnedCcmPatient(req.params.pid, req.apiKey)
     if (!ccmPatient) return res.status(404).json({ error: 'Patient not found' })
     if (!ccmPatient.gen_patient_id) return res.json({ calls: [] })
-    const rows = (await db.execute({
-      sql: 'SELECT * FROM call_requests WHERE patient_id = ? AND (target_doctor_email = ? OR owner_email = ?) ORDER BY created_at DESC',
-      args: [ccmPatient.gen_patient_id, req.apiKey, req.apiKey],
-    })).rows
-    res.json({ calls: rows })
+    res.json({ calls: await queryCallsForGenPatient(ccmPatient.gen_patient_id, req.apiKey) })
   } catch (e) { res.status(500).json({ error: 'Failed to load calls', detail: e.message }) }
 })
 

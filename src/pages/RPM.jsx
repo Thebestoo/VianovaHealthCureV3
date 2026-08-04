@@ -4,6 +4,7 @@ import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, AlertCircl
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
 import PatientSnapshot from '../components/PatientSnapshot.jsx'
+import EmptyState from '../components/EmptyState.jsx'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts'
@@ -93,6 +94,7 @@ function VitalsTrendTooltip({ active, payload, label }) {
   )
 }
 
+
 export default function RPM() {
   const { key } = useKey()
   const [patients, setPatients] = useState([])
@@ -107,7 +109,11 @@ export default function RPM() {
   const [saving, setSaving] = useState(false)
   const [relatedCalls, setRelatedCalls] = useState([])
   const [showAddPatient, setShowAddPatient] = useState(false)
-  const [newPatient, setNewPatient] = useState({ condition: '' })
+  const [newPatient, setNewPatient] = useState({ condition: '', call_id: '' })
+  // Calls tied to the picked roster patient, offered as a "Related Call" at
+  // enrollment time — mirrors CCM's enrollCalls, looked up by gen_patients id
+  // before an RPM enrollment row exists.
+  const [enrollCalls, setEnrollCalls] = useState([])
   const [roster, setRoster] = useState([])
   const [rosterSearch, setRosterSearch] = useState('')
   const [pickedPatient, setPickedPatient] = useState(null)
@@ -176,6 +182,17 @@ export default function RPM() {
     } catch { setRelatedCalls([]) }
   }
 
+  // Calls already logged for this roster patient before RPM enrollment exists —
+  // e.g. the setup/education call itself — so it can be linked right at
+  // enrollment instead of requiring a separate reading afterward.
+  async function loadEnrollCalls(genPatientId) {
+    try {
+      const r = await fetch(`/api/patients/${genPatientId}/calls`, { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setEnrollCalls(d.calls || [])
+    } catch { setEnrollCalls([]) }
+  }
+
   async function saveReading(e) {
     e.preventDefault()
     setSaving(true)
@@ -205,12 +222,14 @@ export default function RPM() {
           dob: pickedPatient.dob,
           condition: newPatient.condition || pickedPatient.conditions || '',
           gen_patient_id: pickedPatient.id,
+          call_id: newPatient.call_id || undefined,
         })
       })
       setShowAddPatient(false)
       setPickedPatient(null)
       setRosterSearch('')
-      setNewPatient({ condition: '' })
+      setEnrollCalls([])
+      setNewPatient({ condition: '', call_id: '' })
       loadPatients()
     } catch {}
   }
@@ -253,6 +272,14 @@ export default function RPM() {
       const d = await r.json()
       if (d.note) setForm(f => ({ ...f, note: d.note }))
     } catch {} finally { setAiSuggesting(false) }
+  }
+
+  function closeAddPatient() {
+    setShowAddPatient(false)
+    setPickedPatient(null)
+    setRosterSearch('')
+    setEnrollCalls([])
+    setNewPatient({ condition: '', call_id: '' })
   }
 
   async function disenrollPatient() {
@@ -327,24 +354,26 @@ export default function RPM() {
         ))}
       </div>
 
-      {!key && (
-        <div style={{ margin: '20px 32px 0', background: 'var(--warning-light)', border: '1px solid var(--warning-light)', borderRadius: 'var(--radius)', padding: '16px 20px', color: 'var(--warning)' }}>
-          Connect with your doctor key (Logs page) to access RPM features.
-        </div>
-      )}
+      <div style={{ padding: '24px 32px 40px', maxWidth: 1280, margin: '0 auto' }}>
 
-      <div className="list-detail-layout">
+        {!key && (
+          <div style={{ marginBottom: 20, background: 'var(--warning-light)', border: '1px solid var(--warning-light)', borderRadius: 'var(--radius)', padding: '14px 20px', color: 'var(--warning)', fontSize: 13, fontWeight: 600 }}>
+            Connect with your doctor key (Logs page) to access RPM features.
+          </div>
+        )}
+
+        <div className="list-detail-layout">
         {/* Patient List */}
         <div>
           <div className="card">
-            <div className="card-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+            <div className="card-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
               <span className="card-title">
-                Enrolled Patients <span style={{ color: 'var(--primary)' }}>({patients.length})</span>
+                Enrolled Patients <span style={{ color: 'var(--text3)', fontWeight: 500 }}>({patients.length})</span>
               </span>
               <div style={{ position: 'relative' }}>
-                <Search size={13} color="var(--text3)" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
+                <Search size={13} color="var(--text3)" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patients or condition…"
-                  style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px 7px 28px', fontSize: 12.5, boxSizing: 'border-box', outline: 'none' }} />
+                  className="form-input" style={{ paddingLeft: 30, padding: '8px 12px 8px 30px', fontSize: 13 }} />
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {[
@@ -354,10 +383,10 @@ export default function RPM() {
                 ].map(f => (
                   <button key={f.key} type="button" onClick={() => setStatusFilter(s => s === f.key ? 'all' : f.key)}
                     style={{
-                      padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                      padding: '5px 12px', borderRadius: 99, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
                       border: `1px solid ${statusFilter === f.key ? f.color : 'var(--border)'}`,
-                      background: statusFilter === f.key ? f.color : 'var(--surface)',
-                      color: statusFilter === f.key ? '#fff' : f.color,
+                      background: statusFilter === f.key ? f.color : '#fff',
+                      color: statusFilter === f.key ? '#fff' : f.color, whiteSpace: 'nowrap',
                     }}>
                     {f.label}
                   </button>
@@ -366,29 +395,28 @@ export default function RPM() {
             </div>
             <div style={{ maxHeight: 560, overflowY: 'auto' }}>
               {filteredPatients.length === 0 && (
-                <div className="empty-state" style={{ padding: '24px 16px' }}>
-                  <p>{patients.length === 0 ? <>No patients found.<br />Click "Add Patient" to start.</> : 'No patients match this filter.'}</p>
-                </div>
+                <EmptyState icon={Users} title="No patients found"
+                  hint={patients.length === 0 ? 'Click "Add Patient" to enroll someone in RPM.' : 'Try a different search term or status filter.'} />
               )}
               {filteredPatients.map(p => (
                 <button
                   key={p.id}
                   onClick={() => setSelected(p)}
                   style={{
-                    width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', borderBottom: '1px solid var(--border)',
+                    width: '100%', textAlign: 'left', padding: '13px 16px', border: 'none', borderBottom: '1px solid var(--border)',
                     background: selected?.id === p.id ? 'linear-gradient(90deg, var(--primary-light), var(--surface))' : 'var(--surface)',
                     borderLeft: selected?.id === p.id ? '3px solid var(--primary)' : '3px solid transparent',
-                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'background .15s'
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, transition: 'background .15s'
                   }}
                   onMouseEnter={e => { if (selected?.id !== p.id) e.currentTarget.style.background = 'var(--surface2)' }}
                   onMouseLeave={e => { if (selected?.id !== p.id) e.currentTarget.style.background = 'var(--surface)' }}
                 >
-                  <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontSize: 12, fontWeight: 700 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontSize: 12.5, fontWeight: 700 }}>
                     {initials(p.name)}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 1 }}>{p.condition || 'No condition set'}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.condition || 'No condition set'}</div>
                   </div>
                   {rosterStatus[p.id] !== 'none' && (
                     <span title={rosterStatus[p.id] === 'critical' ? 'Critical vitals' : rosterStatus[p.id] === 'warning' ? 'Out of range' : 'Vitals normal'}
@@ -403,42 +431,53 @@ export default function RPM() {
         {/* Right panel */}
         <div>
           {!selected ? (
-            <div className="card empty-state" style={{ padding: '56px 28px' }}>
+            <div className="card" style={{ padding: '64px 28px', textAlign: 'center', color: 'var(--text3)' }}>
               <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                 <Activity size={28} color="var(--primary)" />
               </div>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6, color: 'var(--text)' }}>Select a patient</div>
-              <p style={{ fontSize: 13.5 }}>Choose a patient from the list to view their vitals and trends.</p>
+              <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>Choose a patient from the list to view their vitals and trends.</div>
             </div>
           ) : (
             <>
-              {/* Vitals cards */}
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 11, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 800 }}>
+              {/* Patient header */}
+              <div className="card" style={{ padding: '24px 28px', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 19, fontWeight: 800, flexShrink: 0 }}>
                       {initials(selected.name)}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--text)' }}>{selected.name}</div>
+                      <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--text)', letterSpacing: '-.01em' }}>{selected.name}</div>
                       {readings.length > 0 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text3)', marginTop: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
                           <Clock size={11} /> Vitals updated {timeAgo(latest.recorded_at)}
                         </div>
                       )}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                     <button className="btn btn-secondary btn-sm" onClick={() => loadReadings(selected.id)}>
-                      <RefreshCw size={12} /> Refresh
+                      <RefreshCw size={14} /> Refresh
                     </button>
                     <button className="btn btn-secondary btn-sm" onClick={() => setShowDisenroll(true)} title="Disenroll from RPM"
                       style={{ color: 'var(--danger)' }}>
-                      <UserMinus size={12} /> Disenroll
+                      <UserMinus size={14} /> Disenroll
                     </button>
                   </div>
                 </div>
-                <PatientSnapshot patient={selected} compact />
+              </div>
+
+              <PatientSnapshot patient={selected} compact />
+
+              {/* Vitals cards */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Activity size={16} color="var(--primary)" />
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', letterSpacing: '-.01em' }}>Latest Vitals</span>
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16 }}>
                   {VITALS_CONFIG.map(cfg => {
                     const val = latest[cfg.key]
@@ -522,16 +561,16 @@ export default function RPM() {
                   <span className="card-title">Reading History <span style={{ color: 'var(--text3)', fontWeight: 500 }}>({filteredReadings.length}{filteredReadings.length !== readings.length ? ` of ${readings.length}` : ''})</span></span>
                   {readings.length > 0 && (
                     <div style={{ position: 'relative', width: 200, maxWidth: '45%' }}>
-                      <Search size={12} color="var(--text3)" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)' }} />
+                      <Search size={12} color="var(--text3)" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
                       <input value={readingSearch} onChange={e => setReadingSearch(e.target.value)} placeholder="Search date or note…"
-                        style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 9px 6px 26px', fontSize: 12, boxSizing: 'border-box', outline: 'none' }} />
+                        className="form-input" style={{ paddingLeft: 28, padding: '6px 10px 6px 28px', fontSize: 12.5 }} />
                     </div>
                   )}
                 </div>
                 {readings.length === 0 ? (
-                  <div className="empty-state"><p>No readings logged yet.</p></div>
+                  <EmptyState icon={Activity} title="No readings logged yet" hint="Log a reading to start tracking this patient's vitals." />
                 ) : filteredReadings.length === 0 ? (
-                  <div className="empty-state"><p>No readings match "{readingSearch}".</p></div>
+                  <EmptyState icon={Search} title="No readings match your search" hint={`No results for "${readingSearch}".`} />
                 ) : (
                   <div className="table-wrap">
                     <table>
@@ -562,24 +601,28 @@ export default function RPM() {
             </>
           )}
         </div>
+        </div>
       </div>
 
       {/* Add Reading Modal */}
       {adding && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
           onClick={e => e.target === e.currentTarget && setAdding(false)}>
-          <form onSubmit={saveReading} className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Activity size={17} color="var(--primary)" />
+          <form onSubmit={saveReading} className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 16, width: 560, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.24)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Activity size={18} color="var(--primary)" />
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Log Vital Reading</div>
+                <div>
+                  <div style={{ fontSize: 16.5, fontWeight: 700, color: 'var(--text)', letterSpacing: '-.01em' }}>Log Vital Reading</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 1 }}>Record a new set of vitals for this patient.</div>
+                </div>
               </div>
-              <button type="button" onClick={() => setAdding(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}><X size={18} /></button>
+              <button type="button" onClick={() => setAdding(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)', flexShrink: 0 }}><X size={18} /></button>
             </div>
-            <div style={{ padding: '20px 24px' }}>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+            <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button type="button" onClick={autofillFromLast} disabled={!readings.length}
                   style={{ padding: '5px 11px', borderRadius: 8, border: '1px dashed var(--primary-light)', background: readings.length ? 'var(--primary-light)' : 'var(--surface2)', color: readings.length ? 'var(--primary-dark)' : 'var(--text3)', fontSize: 11.5, fontWeight: 600, cursor: readings.length ? 'pointer' : 'default' }}>
                   Copy Last Reading
@@ -593,24 +636,24 @@ export default function RPM() {
                   <Wand2 size={12} /> {aiSuggesting ? 'Drafting…' : 'AI Suggest Note'}
                 </button>
               </div>
-              <div style={{ marginBottom: 15 }}>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 5 }}>Patient</label>
+              <div>
+                <label className="form-label">Patient</label>
                 <select value={form.patient_id} onChange={e => setForm(f => ({ ...f, patient_id: e.target.value }))} required
-                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }}>
+                  className="form-select">
                   <option value="">— select —</option>
                   {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-              <div style={{ marginBottom: 15 }}>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 4 }}>Interactive Communication Time (minutes, optional)</label>
+              <div>
+                <label className="form-label">Interactive Communication Time (minutes, optional)</label>
                 <input type="number" min="0" value={form.minutes} onChange={e => setForm(f => ({ ...f, minutes: e.target.value }))}
                   placeholder="e.g. 20"
-                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
-                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>Need ≥ 20 min/month for CPT 99457 billing</div>
+                  className="form-input" />
+                <div className="form-hint">Need ≥ 20 min/month for CPT 99457 billing</div>
               </div>
               {relatedCalls.length > 0 && (
-                <div style={{ marginBottom: 15 }}>
-                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 4 }}>Related Call (optional)</label>
+                <div>
+                  <label className="form-label">Related Call <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(optional)</span></label>
                   <select value={form.call_id} onChange={e => {
                     const callId = e.target.value
                     // Real captured call duration auto-fills minutes instead of retyping
@@ -618,7 +661,7 @@ export default function RPM() {
                     const call = relatedCalls.find(c => String(c.id) === callId)
                     setForm(f => ({ ...f, call_id: callId, minutes: call?.duration_minutes != null ? String(call.duration_minutes) : f.minutes }))
                   }}
-                    style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13 }}>
+                    className="form-select">
                     <option value="">Not tied to a call</option>
                     {relatedCalls.map(c => (
                       <option key={c.id} value={c.id}>
@@ -628,23 +671,26 @@ export default function RPM() {
                   </select>
                 </div>
               )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 15 }}>
-                {VITALS_CONFIG.map(cfg => (
-                  <div key={cfg.key}>
-                    <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 4 }}>{cfg.label} ({cfg.unit})</label>
-                    <input type="number" step="any" value={form[cfg.key]} onChange={e => setForm(f => ({ ...f, [cfg.key]: e.target.value }))}
-                      placeholder={`${cfg.normal[0]}–${cfg.normal[1]}`}
-                      style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
-                  </div>
-                ))}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.04em' }}>Vitals</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {VITALS_CONFIG.map(cfg => (
+                    <div key={cfg.key}>
+                      <label className="form-label" style={{ fontSize: 12 }}>{cfg.label} ({cfg.unit})</label>
+                      <input type="number" step="any" value={form[cfg.key]} onChange={e => setForm(f => ({ ...f, [cfg.key]: e.target.value }))}
+                        placeholder={`${cfg.normal[0]}–${cfg.normal[1]}`}
+                        className="form-input" />
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div style={{ marginBottom: 6 }}>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 4 }}>Note (optional)</label>
+              <div>
+                <label className="form-label">Note (optional)</label>
                 <textarea value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} rows={2}
-                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
+                  className="form-textarea" style={{ minHeight: 60 }} />
               </div>
             </div>
-            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <div style={{ padding: '16px 28px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
               <button type="button" onClick={() => setAdding(false)} className="btn btn-secondary btn-sm">Cancel</button>
               <button type="submit" disabled={saving} className="btn btn-primary btn-sm">
                 {saving ? 'Saving…' : 'Save Reading'}
@@ -657,76 +703,98 @@ export default function RPM() {
       {/* Enroll Patient Modal — picks from the existing Patients roster instead of manual entry */}
       {showAddPatient && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
-          onClick={e => { if (e.target === e.currentTarget) { setShowAddPatient(false); setPickedPatient(null); setRosterSearch('') } }}>
-          <form onSubmit={addPatient} className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Users size={17} color="var(--primary)" />
+          onClick={e => { if (e.target === e.currentTarget) closeAddPatient() }}>
+          <form onSubmit={addPatient} className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 16, width: 480, maxWidth: '95vw', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.24)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Users size={18} color="var(--primary)" />
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Enroll in RPM</div>
+                <div>
+                  <div style={{ fontSize: 16.5, fontWeight: 700, color: 'var(--text)', letterSpacing: '-.01em' }}>Enroll in RPM</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 1 }}>Demographics are pulled in from the Patients list automatically.</div>
+                </div>
               </div>
-              <button type="button" onClick={() => { setShowAddPatient(false); setPickedPatient(null); setRosterSearch('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}><X size={18} /></button>
+              <button type="button" onClick={closeAddPatient} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)', flexShrink: 0 }}><X size={18} /></button>
             </div>
-            <div style={{ padding: '20px 24px' }}>
-              <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--text2)' }}>Select an existing patient from your Patients list — demographics are pulled in automatically.</p>
+            <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div>
+                <label className="form-label" style={{ marginBottom: 8 }}>Patient</label>
+                {!pickedPatient ? (
+                  <>
+                    <div style={{ position: 'relative', marginBottom: 10 }}>
+                      <Search size={13} color="var(--text3)" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
+                      <input value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} placeholder="Search patients by name…" autoFocus
+                        className="form-input" style={{ paddingLeft: 30 }} />
+                    </div>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 10, maxHeight: 240, overflowY: 'auto' }}>
+                      {roster.filter(p => p.name?.toLowerCase().includes(rosterSearch.toLowerCase()) && !patients.some(rp => rp.name === p.name && rp.dob === p.dob)).length === 0 ? (
+                        <EmptyState icon={Search}
+                          title={roster.length === 0 ? 'No patients found' : 'No matches'}
+                          hint={roster.length === 0 ? 'Add a patient in the Patients page first.' : 'Try a different name, or this patient may already be enrolled.'}
+                          compact />
+                      ) : (
+                        roster
+                          .filter(p => p.name?.toLowerCase().includes(rosterSearch.toLowerCase()) && !patients.some(rp => rp.name === p.name && rp.dob === p.dob))
+                          .slice(0, 30)
+                          .map(p => (
+                            <button key={p.id} type="button" onClick={() => { setPickedPatient(p); loadEnrollCalls(p.id) }}
+                              style={{ width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'var(--surface)'}>
+                              <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                                {initials(p.name)}
+                              </div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{p.name}</div>
+                                <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 1 }}>{p.dob || 'DOB unknown'}{p.conditions ? ` · ${p.conditions}` : ''}</div>
+                              </div>
+                            </button>
+                          ))
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--primary-light)', border: '1px solid var(--primary)', borderRadius: 10, padding: '11px 14px' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
+                      {initials(pickedPatient.name)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>{pickedPatient.name}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 1 }}>{pickedPatient.dob || 'DOB unknown'}</div>
+                    </div>
+                    <button type="button" onClick={() => { setPickedPatient(null); setEnrollCalls([]); setNewPatient(p => ({ ...p, call_id: '' })) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-dark)', fontSize: 11.5, fontWeight: 700, flexShrink: 0 }}>Change</button>
+                  </div>
+                )}
+              </div>
 
-              {!pickedPatient ? (
-                <>
-                  <div style={{ position: 'relative', marginBottom: 10 }}>
-                    <Search size={13} color="var(--text3)" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
-                    <input value={rosterSearch} onChange={e => setRosterSearch(e.target.value)} placeholder="Search patients by name…" autoFocus
-                      style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px 8px 30px', fontSize: 13, boxSizing: 'border-box' }} />
-                  </div>
-                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, maxHeight: 260, overflowY: 'auto', marginBottom: 16 }}>
-                    {roster.filter(p => p.name?.toLowerCase().includes(rosterSearch.toLowerCase()) && !patients.some(rp => rp.name === p.name && rp.dob === p.dob)).length === 0 ? (
-                      <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', fontSize: 12.5 }}>
-                        {roster.length === 0 ? 'No patients found — add one in the Patients page first.' : 'No matches (or already enrolled).'}
-                      </div>
-                    ) : (
-                      roster
-                        .filter(p => p.name?.toLowerCase().includes(rosterSearch.toLowerCase()) && !patients.some(rp => rp.name === p.name && rp.dob === p.dob))
-                        .slice(0, 30)
-                        .map(p => (
-                          <button key={p.id} type="button" onClick={() => setPickedPatient(p)}
-                            style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'var(--surface)'}>
-                            <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                              {initials(p.name)}
-                            </div>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{p.name}</div>
-                              <div style={{ fontSize: 11, color: 'var(--text2)' }}>{p.dob || 'DOB unknown'}{p.conditions ? ` · ${p.conditions}` : ''}</div>
-                            </div>
-                          </button>
-                        ))
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--primary-light)', border: '1px solid var(--primary-light)', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                    {initials(pickedPatient.name)}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>{pickedPatient.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text2)' }}>{pickedPatient.dob || 'DOB unknown'}</div>
-                  </div>
-                  <button type="button" onClick={() => setPickedPatient(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: 11.5, fontWeight: 700 }}>Change</button>
-                </div>
-              )}
-
-              <div style={{ marginBottom: 4 }}>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 5 }}>Primary Condition</label>
+              <div>
+                <label className="form-label">Primary Condition</label>
                 <input type="text" value={newPatient.condition}
                   placeholder={pickedPatient?.conditions || 'e.g. Hypertension'}
                   onChange={e => setNewPatient(p => ({ ...p, condition: e.target.value }))}
-                  style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                  className="form-input" />
               </div>
+
+              {pickedPatient && enrollCalls.length > 0 && (
+                <div>
+                  <label className="form-label">
+                    Related Call <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(optional — links a completed setup/education call for billing)</span>
+                  </label>
+                  <select value={newPatient.call_id} onChange={e => setNewPatient(p => ({ ...p, call_id: e.target.value }))}
+                    className="form-select">
+                    <option value="">None</option>
+                    {enrollCalls.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.caller_role === 'family' ? `Family (${c.family_member_name || 'unnamed'})` : c.caller_role === 'doctor' ? 'Outbound' : 'Patient'} call · {new Date(c.created_at).toLocaleDateString()} · {c.duration_minutes != null ? `${c.duration_minutes} min` : c.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
-            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => { setShowAddPatient(false); setPickedPatient(null); setRosterSearch('') }} className="btn btn-secondary btn-sm">Cancel</button>
+            <div style={{ padding: '16px 28px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
+              <button type="button" onClick={closeAddPatient} className="btn btn-secondary btn-sm">Cancel</button>
               <button type="submit" disabled={!pickedPatient} className="btn btn-primary btn-sm">Enroll</button>
             </div>
           </form>
@@ -737,12 +805,12 @@ export default function RPM() {
       {showDisenroll && selected && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 16 }}
           onClick={e => e.target === e.currentTarget && setShowDisenroll(false)}>
-          <div className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 400, boxShadow: '0 24px 64px rgba(0,0,0,.24)', padding: '24px 24px 20px', textAlign: 'center' }}>
+          <div className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 16, width: 420, maxWidth: '95vw', boxShadow: '0 24px 64px rgba(0,0,0,.24)', padding: '28px 28px 24px', textAlign: 'center' }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--danger-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
               <UserMinus size={24} color="var(--danger)" />
             </div>
-            <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>Disenroll {selected.name}?</h2>
-            <p style={{ fontSize: 13.5, color: 'var(--text2)', margin: '0 0 24px', lineHeight: 1.5 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8, letterSpacing: '-.01em' }}>Disenroll {selected.name}?</div>
+            <p style={{ fontSize: 13.5, color: 'var(--text2)', margin: '0 0 24px', lineHeight: 1.6 }}>
               This removes the patient from RPM along with their vitals reading history. This cannot be undone.
             </p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
