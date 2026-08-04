@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, Phone, FileText, Target, Edit3, Save, X, Sparkles, Search, UserMinus, Timer, Pause, Play, Wand2, Users, DollarSign } from 'lucide-react'
+import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, Phone, Target, Edit3, Save, X, Search, UserMinus, Timer, Pause, Play, Wand2, Users, DollarSign } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
 import PatientSnapshot from '../components/PatientSnapshot.jsx'
@@ -17,7 +17,11 @@ const STATUS_COLOR = { active: 'var(--success)', inactive: 'var(--text3)', disch
 const STATUS_BG    = { active: 'var(--success-light)', inactive: 'var(--surface2)', discharged: 'var(--danger-light)', disenrolled: 'var(--danger-light)' }
 const PLAN_STATUS_COLOR = { draft: 'var(--warning)', active: 'var(--success)', completed: '#6366f1' }
 const PLAN_STATUS_BG    = { draft: 'var(--warning-light)', active: 'var(--success-light)', completed: '#eef2ff' }
-const ACCENT = '#8b5cf6'
+// Kept as a literal hex (not a CSS var) because AiHelp concatenates alpha-suffixes
+// onto it (e.g. `${accent}cc`). Matches the app's real --primary color instead of
+// CCM's old standalone purple/violet branding, which didn't match the rest of the
+// clinical platform (RPM, Billing, etc. all use this same teal).
+const ACCENT = '#0e7490'
 
 function formatTimer(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0')
@@ -327,6 +331,21 @@ export default function CCM() {
     } finally { setSaving(false) }
   }
 
+  // Bug fix: Cancel/backdrop/X used to just hide the modal, leaving whatever was
+  // being edited (removed tasks/goals, an AI draft, etc.) sitting in planTasks/
+  // planGoals/careTeam. Those same state variables drive the read-only view AND
+  // toggleTask()'s partial save — so the very next checkbox click would silently
+  // persist the abandoned edit (including anything the user had just deleted) as
+  // if it had been saved on purpose. Closing must re-derive from the last-loaded
+  // `plan` so an unsaved edit — including a rejected AI draft — is fully discarded.
+  function closePlanEdit() {
+    setShowPlanEdit(false)
+    setPlanTasks(plan?.tasks ? JSON.parse(plan.tasks) : [])
+    try { setPlanGoals(plan?.goals ? JSON.parse(plan.goals) : []) } catch { setPlanGoals([]) }
+    try { setCareTeam(plan?.care_team ? JSON.parse(plan.care_team) : []) } catch { setCareTeam([]) }
+    setPlanStatus(plan?.status || 'active')
+  }
+
   async function toggleTask(idx) {
     const updated = planTasks.map((t, i) => i === idx ? { ...t, done: !t.done } : t)
     setPlanTasks(updated)
@@ -404,8 +423,8 @@ export default function CCM() {
 
       <div className="stats-grid">
         <div className="card stat-card">
-          <div className="stat-icon" style={{ background: '#ede9fe' }}>
-            <Users size={20} color="#7c3aed" />
+          <div className="stat-icon" style={{ background: 'var(--primary-light)' }}>
+            <Users size={20} color="var(--primary-dark)" />
           </div>
           <div className="stat-val">{patients.length}</div>
           <div className="stat-label">Enrolled Patients</div>
@@ -418,8 +437,8 @@ export default function CCM() {
           <div className="stat-label">Active</div>
         </div>
         <div className="card stat-card">
-          <div className="stat-icon" style={{ background: '#f5f3ff' }}>
-            <DollarSign size={20} color="#8b5cf6" />
+          <div className="stat-icon" style={{ background: 'var(--primary-light)' }}>
+            <DollarSign size={20} color="var(--primary)" />
           </div>
           <div className="stat-val">{billableCount}</div>
           <div className="stat-label">Billable This Month (99490)</div>
@@ -446,7 +465,7 @@ export default function CCM() {
           <div>
             <div className="card">
               <div className="card-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
-                <span className="card-title">CCM Patients <span style={{ color: '#a78bfa' }}>({patients.length})</span></span>
+                <span className="card-title">CCM Patients <span style={{ color: 'var(--text3)' }}>({patients.length})</span></span>
                 <div style={{ position: 'relative' }}>
                   <Search size={13} color="var(--text3)" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
                   <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patients…"
@@ -460,9 +479,9 @@ export default function CCM() {
                   ].map(f => (
                     <button key={f.key} onClick={() => setStatusFilter(f.key)}
                       style={{
-                        border: '1px solid ' + (statusFilter === f.key ? '#8b5cf6' : 'var(--border)'),
-                        background: statusFilter === f.key ? '#f5f3ff' : '#fff',
-                        color: statusFilter === f.key ? '#7c3aed' : 'var(--text2)',
+                        border: '1px solid ' + (statusFilter === f.key ? 'var(--primary)' : 'var(--border)'),
+                        background: statusFilter === f.key ? 'var(--primary-light)' : '#fff',
+                        color: statusFilter === f.key ? 'var(--primary-dark)' : 'var(--text2)',
                         borderRadius: 99, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
                       }}>
                       {f.label}
@@ -483,13 +502,13 @@ export default function CCM() {
                   <button key={p.id} onClick={() => setSelected(p)}
                     style={{
                       width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', borderBottom: '1px solid var(--border)',
-                      background: selected?.id === p.id ? 'linear-gradient(90deg, #f5f3ff, #fff)' : '#fff', cursor: 'pointer',
-                      borderLeft: selected?.id === p.id ? '3px solid #8b5cf6' : '3px solid transparent', transition: 'background .15s',
+                      background: selected?.id === p.id ? 'linear-gradient(90deg, var(--primary-light), #fff)' : '#fff', cursor: 'pointer',
+                      borderLeft: selected?.id === p.id ? '3px solid var(--primary)' : '3px solid transparent', transition: 'background .15s',
                     }}
                     onMouseEnter={e => { if (selected?.id !== p.id) e.currentTarget.style.background = 'var(--surface2)' }}
                     onMouseLeave={e => { if (selected?.id !== p.id) e.currentTarget.style.background = '#fff' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,#8b5cf6,#c084fc)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontSize: 12, fontWeight: 700 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontSize: 12, fontWeight: 700 }}>
                         {initials(p.name)}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -512,8 +531,8 @@ export default function CCM() {
           <div>
             {!selected ? (
               <div className="card" style={{ padding: '56px 28px', textAlign: 'center', color: 'var(--text3)' }}>
-                <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  <ClipboardList size={28} color="#a78bfa" />
+                <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <ClipboardList size={28} color="var(--primary)" />
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6, color: 'var(--text2)' }}>Select a patient</div>
                 <div style={{ fontSize: 13.5 }}>Choose a patient to view their care plan and check-in history.</div>
@@ -524,14 +543,14 @@ export default function CCM() {
                 <div className="card" style={{ padding: '22px 26px', marginBottom: 18 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg,#8b5cf6,#c084fc)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 800, flexShrink: 0 }}>
+                      <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, fontWeight: 800, flexShrink: 0 }}>
                         {initials(selected.name)}
                       </div>
                       <div>
                         <div style={{ fontWeight: 800, fontSize: 19, color: 'var(--text)' }}>{selected.name}</div>
                         <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 4, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
                           {/* DOB/phone shown once, in the PatientSnapshot card below — not repeated here */}
-                          <span style={{ background: '#f5f3ff', color: '#7c3aed', padding: '1px 8px', borderRadius: 99, fontWeight: 600 }}>{selected.condition}</span>
+                          <span style={{ background: 'var(--primary-light)', color: 'var(--primary-dark)', padding: '1px 8px', borderRadius: 99, fontWeight: 600 }}>{selected.condition}</span>
                           {selected.consent_date && (
                             <span style={{ color: 'var(--success)', fontWeight: 600 }}>
                               ✓ Consent {selected.consent_date}{selected.consent_method ? ` (${selected.consent_method})` : ''}
@@ -566,16 +585,16 @@ export default function CCM() {
                       </div>
 
                       {/* Live time-on-task tracker — auto-captures minutes instead of guessing them */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: timerRunning ? '#f5f3ff' : 'var(--surface2)', border: `1px solid ${timerRunning ? '#ddd6fe' : 'var(--border)'}`, borderRadius: 14, padding: '10px 14px' }}>
-                        <Timer size={15} color={timerRunning ? '#7c3aed' : 'var(--text3)'} />
-                        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 800, fontSize: 15, color: timerRunning ? '#7c3aed' : 'var(--text2)', minWidth: 46 }}>{formatTimer(timerSeconds)}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: timerRunning ? 'var(--primary-light)' : 'var(--surface2)', border: `1px solid ${timerRunning ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 14, padding: '10px 14px' }}>
+                        <Timer size={15} color={timerRunning ? 'var(--primary-dark)' : 'var(--text3)'} />
+                        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 800, fontSize: 15, color: timerRunning ? 'var(--primary-dark)' : 'var(--text2)', minWidth: 46 }}>{formatTimer(timerSeconds)}</span>
                         <button type="button" onClick={() => setTimerRunning(r => !r)} title={timerRunning ? 'Pause timer' : 'Start timer'}
-                          style={{ width: 26, height: 26, borderRadius: 8, border: 'none', background: timerRunning ? '#ede9fe' : '#8b5cf6', color: timerRunning ? '#7c3aed' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          style={{ width: 26, height: 26, borderRadius: 8, border: 'none', background: timerRunning ? 'var(--primary-light)' : 'var(--primary)', color: timerRunning ? 'var(--primary-dark)' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {timerRunning ? <Pause size={13} /> : <Play size={13} />}
                         </button>
                         {timerSeconds > 0 && (
                           <button type="button" onClick={openCheckinFromTimer} title="Log this time as a check-in"
-                            style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                            style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary-dark)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
                             Log time
                           </button>
                         )}
@@ -597,8 +616,8 @@ export default function CCM() {
                 <div className="card" style={{ padding: '22px 26px', marginBottom: 18 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
                     <div style={{ fontWeight: 700, fontSize: 15.5, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 9, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Target size={15} color="#8b5cf6" />
+                      <div style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Target size={15} color="var(--primary)" />
                       </div>
                       Care Plan
                       {totalTasks > 0 && <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>({doneTasks}/{totalTasks} completed)</span>}
@@ -611,7 +630,7 @@ export default function CCM() {
                         <Clock size={12} /> History
                       </button>
                       <button className="btn btn-sm" disabled={aiDrafting} onClick={aiDraftPlan}
-                        style={{ background: '#faf9ff', border: '1px solid #ddd6fe', color: '#7c3aed' }}>
+                        style={{ background: 'var(--primary-light)', border: '1px solid var(--primary)', color: 'var(--primary-dark)' }}>
                         <Wand2 size={12} /> {aiDrafting ? 'Drafting…' : 'AI Draft Care Plan'}
                       </button>
                       <button className="btn btn-secondary btn-sm" onClick={() => setShowPlanEdit(true)}>
@@ -661,7 +680,7 @@ export default function CCM() {
                   ) : (
                     <>
                       <div style={{ background: 'var(--surface2)', borderRadius: 8, height: 8, marginBottom: 16, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', background: 'linear-gradient(90deg,#8b5cf6,#c084fc)', width: `${progressPct}%`, transition: 'width .4s', borderRadius: 8 }} />
+                        <div style={{ height: '100%', background: 'linear-gradient(90deg,var(--primary),var(--accent))', width: `${progressPct}%`, transition: 'width .4s', borderRadius: 8 }} />
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {planTasks.map((t, i) => (
@@ -701,7 +720,7 @@ export default function CCM() {
                               <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>{g.description}</div>
                               {g.target && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>Target: {g.target}</div>}
                             </div>
-                            {g.due && <span style={{ fontSize: 11, color: '#8b5cf6', fontWeight: 600, flexShrink: 0 }}>Due {g.due}</span>}
+                            {g.due && <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, flexShrink: 0 }}>Due {g.due}</span>}
                           </div>
                         ))}
                       </div>
@@ -712,7 +731,7 @@ export default function CCM() {
                 {/* Check-in history */}
                 <div className="card">
                   <div className="card-header">
-                    <span className="card-title">Check-in History <span style={{ color: '#a78bfa' }}>({checkins.length})</span></span>
+                    <span className="card-title">Check-in History <span style={{ color: 'var(--text3)' }}>({checkins.length})</span></span>
                   </div>
                   {checkins.length === 0 ? (
                     <div style={{ padding: '26px', textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>No check-ins logged yet.</div>
@@ -723,11 +742,11 @@ export default function CCM() {
                           onClick={() => setExpanded(ex => ({ ...ex, [c.id]: !ex[c.id] }))}
                           style={{ width: '100%', textAlign: 'left', padding: '13px 22px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <Calendar size={13} color="#8b5cf6" />
+                            <Calendar size={13} color="var(--primary)" />
                             <span style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>
                               {new Date(c.created_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })}
                             </span>
-                            <span style={{ background: '#ede9fe', color: '#7c3aed', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 99 }}>{c.minutes} min</span>
+                            <span style={{ background: 'var(--primary-light)', color: 'var(--primary-dark)', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 99 }}>{c.minutes} min</span>
                             {c.call_id && (
                               <span style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'var(--primary-light)', color: 'var(--primary-dark)', fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 99 }}>
                                 <Phone size={10} /> From call
@@ -760,8 +779,8 @@ export default function CCM() {
           <form onSubmit={savePatient} className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: 460, maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Plus size={17} color="#8b5cf6" />
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Plus size={17} color="var(--primary)" />
                 </div>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Enroll in CCM</div>
@@ -795,9 +814,9 @@ export default function CCM() {
                             setNewPt(np => ({ ...np, conditions }))
                           }}
                             style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid var(--border)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#faf9ff'}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
                             onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                            <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#8b5cf6,#c084fc)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                            <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
                               {initials(p.name)}
                             </div>
                             <div style={{ minWidth: 0 }}>
@@ -810,15 +829,15 @@ export default function CCM() {
                   </div>
                 </>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#faf9ff', border: '1px solid #ddd6fe', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,#8b5cf6,#c084fc)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--primary-light)', border: '1px solid var(--primary)', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                     {initials(pickedPatient.name)}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>{pickedPatient.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text2)' }}>{pickedPatient.dob || 'DOB unknown'}{pickedPatient.phone ? ` · ${pickedPatient.phone}` : ''}</div>
                   </div>
-                  <button type="button" onClick={() => setPickedPatient(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7c3aed', fontSize: 11.5, fontWeight: 700 }}>Change</button>
+                  <button type="button" onClick={() => setPickedPatient(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-dark)', fontSize: 11.5, fontWeight: 700 }}>Change</button>
                 </div>
               )}
 
@@ -841,10 +860,10 @@ export default function CCM() {
                 {newPt.conditions.length > 0 && (
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                     {newPt.conditions.map((c, i) => (
-                      <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#f5f3ff', color: '#7c3aed', borderRadius: 99, padding: '4px 6px 4px 11px', fontSize: 12, fontWeight: 600 }}>
+                      <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--primary-light)', color: 'var(--primary-dark)', borderRadius: 99, padding: '4px 6px 4px 11px', fontSize: 12, fontWeight: 600 }}>
                         {c}
                         <button type="button" onClick={() => removeCondition(i)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7c3aed', display: 'flex', alignItems: 'center', padding: 2 }}>
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', padding: 2 }}>
                           <X size={11} />
                         </button>
                       </span>
@@ -858,14 +877,14 @@ export default function CCM() {
                     placeholder="e.g. Diabetes Type 2 — press Enter to add"
                     style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
                   <button type="button" onClick={() => addCondition(newPt.conditionInput)}
-                    style={{ padding: '0 14px', border: '1px solid #ddd6fe', borderRadius: 8, background: '#faf9ff', color: '#7c3aed', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Add</button>
+                    style={{ padding: '0 14px', border: '1px solid var(--primary)', borderRadius: 8, background: 'var(--primary-light)', color: 'var(--primary-dark)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Add</button>
                 </div>
                 {pickedPatient?.conditions && (
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>From patient record: {pickedPatient.conditions}</div>
                 )}
               </div>
-              <div style={{ marginBottom: 20, background: '#faf9ff', border: '1px solid #ede9fe', borderRadius: 10, padding: '12px 14px' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 10 }}>CCM Consent (required)</div>
+              <div style={{ marginBottom: 20, background: 'var(--primary-light)', border: '1px solid var(--primary-light)', borderRadius: 10, padding: '12px 14px' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)', marginBottom: 10 }}>CCM Consent (required)</div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <div style={{ flex: 1 }}>
                     <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text2)', display: 'block', marginBottom: 4 }}>Consent Date *</label>
@@ -912,14 +931,14 @@ export default function CCM() {
           <form onSubmit={saveCheckin} className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: 460, maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Clock size={17} color="#8b5cf6" />
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Clock size={17} color="var(--primary)" />
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Log CCM Check-in</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button type="button" onClick={aiSuggestCheckin} disabled={aiSuggesting}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 99, border: '1px solid #ddd6fe', background: '#faf9ff', color: '#7c3aed', fontSize: 12, fontWeight: 700, cursor: aiSuggesting ? 'default' : 'pointer', flexShrink: 0, opacity: aiSuggesting ? .6 : 1 }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 99, border: '1px solid var(--primary)', background: 'var(--primary-light)', color: 'var(--primary-dark)', fontSize: 12, fontWeight: 700, cursor: aiSuggesting ? 'default' : 'pointer', flexShrink: 0, opacity: aiSuggesting ? .6 : 1 }}>
                   <Wand2 size={13} /> {aiSuggesting ? 'Drafting…' : 'AI Suggest'}
                 </button>
                 <button type="button" onClick={() => setShowCheckin(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}><X size={18} /></button>
@@ -931,7 +950,7 @@ export default function CCM() {
                 <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                   {QUICK_MINUTES.map(m => (
                     <button key={m} type="button" onClick={() => setCheckinForm(f => ({ ...f, minutes: String(m) }))}
-                      style={{ padding: '5px 12px', borderRadius: 99, border: `1px solid ${String(m) === String(checkinForm.minutes) ? '#8b5cf6' : 'var(--border)'}`, background: String(m) === String(checkinForm.minutes) ? '#f5f3ff' : '#fff', color: String(m) === String(checkinForm.minutes) ? '#7c3aed' : 'var(--text2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      style={{ padding: '5px 12px', borderRadius: 99, border: `1px solid ${String(m) === String(checkinForm.minutes) ? 'var(--primary)' : 'var(--border)'}`, background: String(m) === String(checkinForm.minutes) ? 'var(--primary-light)' : '#fff', color: String(m) === String(checkinForm.minutes) ? 'var(--primary-dark)' : 'var(--text2)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                       {m}m
                     </button>
                   ))}
@@ -965,7 +984,7 @@ export default function CCM() {
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {NOTE_TEMPLATES.map(t => (
                     <button key={t.label} type="button" onClick={() => setCheckinForm(f => ({ ...f, notes: t.notes }))}
-                      style={{ padding: '5px 11px', borderRadius: 8, border: '1px dashed #ddd6fe', background: '#faf9ff', color: '#7c3aed', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
+                      style={{ padding: '5px 11px', borderRadius: 8, border: '1px dashed var(--primary)', background: 'var(--primary-light)', color: 'var(--primary-dark)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
                       {t.label}
                     </button>
                   ))}
@@ -996,12 +1015,12 @@ export default function CCM() {
       {/* Edit Care Plan Modal */}
       {showPlanEdit && (
         <div className="animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
-          onClick={e => e.target === e.currentTarget && setShowPlanEdit(false)}>
+          onClick={e => e.target === e.currentTarget && closePlanEdit()}>
           <form onSubmit={savePlan} className="animate-fade-up" style={{ background: 'var(--surface)', borderRadius: 14, width: 560, maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.24)' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 10, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Edit3 size={17} color="#8b5cf6" />
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Edit3 size={17} color="var(--primary)" />
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Edit Care Plan</div>
               </div>
@@ -1012,7 +1031,7 @@ export default function CCM() {
                   <option value="active">Active</option>
                   <option value="completed">Completed</option>
                 </select>
-                <button type="button" onClick={() => setShowPlanEdit(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}><X size={18} /></button>
+                <button type="button" onClick={closePlanEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}><X size={18} /></button>
               </div>
             </div>
             <div style={{ padding: '20px 24px' }}>
@@ -1039,7 +1058,7 @@ export default function CCM() {
                   </div>
                 ))}
                 <button type="button" onClick={() => setPlanTasks(tasks => [...tasks, { text: '', done: false, frequency: 'as needed', due: null }])}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#faf9ff', border: '1.5px dashed #ddd6fe', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#7c3aed', width: '100%', fontWeight: 600 }}>
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'var(--primary-light)', border: '1.5px dashed var(--primary)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--primary-dark)', width: '100%', fontWeight: 600 }}>
                   <Plus size={13} /> Add task
                 </button>
               </div>
@@ -1075,7 +1094,7 @@ export default function CCM() {
                   </div>
                 ))}
                 <button type="button" onClick={() => setPlanGoals(gs => [...gs, { description: '', target: '', due: '', status: 'not-started' }])}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#faf9ff', border: '1.5px dashed #ddd6fe', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#7c3aed', width: '100%', fontWeight: 600 }}>
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'var(--primary-light)', border: '1.5px dashed var(--primary)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--primary-dark)', width: '100%', fontWeight: 600 }}>
                   <Plus size={13} /> Add goal
                 </button>
               </div>
@@ -1124,13 +1143,13 @@ export default function CCM() {
                   </div>
                 ))}
                 <button type="button" onClick={() => setCareTeam(ct => [...ct, { type: 'other', name: '', role: '' }])}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: '#faf9ff', border: '1.5px dashed #ddd6fe', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: '#7c3aed', width: '100%', fontWeight: 600 }}>
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'var(--primary-light)', border: '1.5px dashed var(--primary)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--primary-dark)', width: '100%', fontWeight: 600 }}>
                   <Plus size={13} /> Add team member
                 </button>
               </div>
 
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-                <button type="button" onClick={() => setShowPlanEdit(false)} className="btn btn-secondary btn-sm">Cancel</button>
+                <button type="button" onClick={closePlanEdit} className="btn btn-secondary btn-sm">Cancel</button>
                 <button type="submit" disabled={saving} className="btn btn-primary btn-sm">
                   <Save size={13} /> {saving ? 'Saving…' : 'Save Plan'}
                 </button>
