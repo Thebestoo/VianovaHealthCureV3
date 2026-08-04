@@ -253,7 +253,9 @@ export default function CCM() {
         throw new Error(d.error || `Enrollment failed (${r.status})`)
       }
       const d = await r.json().catch(() => ({}))
-      if (d.care_plan_drafted) toast.success('Enrolled — AI drafted a starting care plan for review')
+      if (d.care_plan_drafted && d.g0506_billed) toast.success('Enrolled — care plan drafted and CPT G0506 auto-billed for review')
+      else if (d.care_plan_drafted) toast.success('Enrolled — AI drafted a starting care plan for review')
+      else if (d.g0506_billed) toast.success('Enrolled — CPT G0506 auto-billed for review')
       resetEnrollForm()
       loadPatients()
     } catch (err) {
@@ -941,12 +943,18 @@ export default function CCM() {
               {relatedCalls.length > 0 && (
                 <div style={{ marginBottom: 13 }}>
                   <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 5 }}>Related Call (optional)</label>
-                  <select value={checkinForm.call_id} onChange={e => setCheckinForm(f => ({ ...f, call_id: e.target.value }))}
+                  <select value={checkinForm.call_id} onChange={e => {
+                    const callId = e.target.value
+                    // Real captured call duration auto-fills minutes instead of the care
+                    // manager retyping a guess — still fully editable afterward.
+                    const call = relatedCalls.find(c => String(c.id) === callId)
+                    setCheckinForm(f => ({ ...f, call_id: callId, minutes: call?.duration_minutes != null ? String(call.duration_minutes) : f.minutes }))
+                  }}
                     style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13 }}>
                     <option value="">Not tied to a call</option>
                     {relatedCalls.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.caller_role === 'family' ? `Family (${c.family_member_name || 'unnamed'})` : 'Patient'} call · {new Date(c.created_at).toLocaleDateString()} · {c.status}
+                        {c.caller_role === 'family' ? `Family (${c.family_member_name || 'unnamed'})` : c.caller_role === 'doctor' ? 'Outbound' : 'Patient'} call · {new Date(c.created_at).toLocaleDateString()} · {c.duration_minutes != null ? `${c.duration_minutes} min` : c.status}
                       </option>
                     ))}
                   </select>

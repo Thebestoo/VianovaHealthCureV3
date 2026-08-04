@@ -511,6 +511,23 @@ function PatientCallbacksPanel({ apiKey, email }) {
     load()
   }
 
+  // Doctor-initiated outbound call — logs a real, timestamped call_requests row
+  // (caller_role: 'doctor') right as the doctor dials, so this direction gets the
+  // same real-time duration tracking as patient/family-initiated calls instead of
+  // being a bare tel: link with no record. Fires in the background so the tel:
+  // link still navigates immediately; the row then shows up below with a live timer.
+  async function startDirectCall(patient) {
+    try {
+      const r = await fetch('/api/call-requests', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body: JSON.stringify({ patient_id: patient.id, patient_name: patient.name, patient_phone: patient.phone, caller_role: 'doctor' }),
+      })
+      const d = await r.json()
+      if (d.id) await fetch(`/api/call-requests/${d.id}/start`, { method: 'POST', headers: { 'x-api-key': apiKey } })
+      load()
+    } catch {}
+  }
+
   const filteredPatients = patients.filter(p => !patientSearch || p.name?.toLowerCase().includes(patientSearch.toLowerCase()))
   const dialMatches = dialSearch.trim()
     ? patients.filter(p => p.name?.toLowerCase().includes(dialSearch.toLowerCase())).slice(0, 8)
@@ -540,7 +557,7 @@ function PatientCallbacksPanel({ apiKey, email }) {
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>{p.phone || 'No phone number on file'}</div>
                 </div>
                 {p.phone
-                  ? <a className="btn btn-primary btn-sm" href={`tel:${p.phone}`} style={{ textDecoration: 'none', flexShrink: 0 }}><Phone size={12} /> Call</a>
+                  ? <a className="btn btn-primary btn-sm" href={`tel:${p.phone}`} onClick={() => startDirectCall(p)} style={{ textDecoration: 'none', flexShrink: 0 }}><Phone size={12} /> Call</a>
                   : <span style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>Unavailable</span>}
               </div>
             ))}
@@ -626,20 +643,24 @@ function PatientCallbacksPanel({ apiKey, email }) {
           {requests.map(r => {
             const st = STATUS_STYLE[r.status] || STATUS_STYLE.pending
             const isTarget = r.target_doctor_email === email
+            const roleBadge = r.caller_role === 'family'
+              ? `Family${r.family_member_name ? `: ${r.family_member_name}` : ''}`
+              : r.caller_role === 'doctor' ? 'Outbound (you called)' : null
             return (
               <div key={r.id} className="card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
                     {r.patient_name}
-                    {r.caller_role === 'family' && (
+                    {roleBadge && (
                       <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: 'var(--primary-light)', color: 'var(--primary-dark)' }}>
-                        Family{r.family_member_name ? `: ${r.family_member_name}` : ''}
+                        {roleBadge}
                       </span>
                     )}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
-                    {isTarget ? `Requested by ${r.owner_name}` : `Routed to ${r.target_doctor_name}`}
+                    {r.caller_role === 'doctor' ? 'You called this patient' : isTarget ? `Requested by ${r.owner_name}` : `Routed to ${r.target_doctor_name}`}
                     {r.patient_phone && <> · {r.patient_phone}</>}
+                    {r.duration_minutes != null && <> · {r.duration_minutes} min</>}
                   </div>
                   {r.reason && <div style={{ fontSize: 12.5, color: '#374151', marginTop: 4 }}>{r.reason}</div>}
                 </div>
@@ -650,10 +671,25 @@ function PatientCallbacksPanel({ apiKey, email }) {
                     <button className="btn btn-primary btn-sm" onClick={() => act(r.id, 'accept')}>Accept</button>
                   </div>
                 )}
-                {isTarget && r.status === 'accepted' && r.patient_phone && (
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <a className="btn btn-sm" href={`tel:${r.patient_phone}`} style={{ background: '#dcfce7', color: '#15803d', textDecoration: 'none' }}><Phone size={12} /> Call now</a>
-                    <button className="btn btn-sm" style={{ background: '#f3f4f6', border: 'none' }} onClick={() => act(r.id, 'complete')}>Mark done</button>
+                {isTarget && r.status === 'accepted' && (
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+                    {r.patient_phone && <a className="btn btn-sm" href={`tel:${r.patient_phone}`} style={{ background: '#dcfce7', color: '#15803d', textDecoration: 'none' }}><Phone size={12} /> Call now</a>}
+                    {r.started_at ? (
+                      <>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Clock size={12} /> <CallTimer startedAt={new Date(r.started_at).getTime()} />
+                        </span>
+                        <button className="btn btn-sm" style={{ background: '#fee2e2', color: '#b91c1c', border: 'none' }} onClick={() => act(r.id, 'end')}><PhoneOff size={12} /> End call</button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="btn btn-primary btn-sm" onClick={() => act(r.id, 'start')}><PhoneCall size={12} /> Start call</button>
+                        {/* Fallback for calls placed outside the app (e.g. a personal phone) —
+                            closes the request without a fabricated duration rather than
+                            forcing the timer flow on every call. */}
+                        <button className="btn btn-sm" style={{ background: '#f3f4f6', border: 'none' }} onClick={() => act(r.id, 'complete')}>Mark done</button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

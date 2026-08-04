@@ -611,12 +611,18 @@ export default function RPM() {
               {relatedCalls.length > 0 && (
                 <div style={{ marginBottom: 15 }}>
                   <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', display: 'block', marginBottom: 4 }}>Related Call (optional)</label>
-                  <select value={form.call_id} onChange={e => setForm(f => ({ ...f, call_id: e.target.value }))}
+                  <select value={form.call_id} onChange={e => {
+                    const callId = e.target.value
+                    // Real captured call duration auto-fills minutes instead of retyping
+                    // a guess — still fully editable afterward.
+                    const call = relatedCalls.find(c => String(c.id) === callId)
+                    setForm(f => ({ ...f, call_id: callId, minutes: call?.duration_minutes != null ? String(call.duration_minutes) : f.minutes }))
+                  }}
                     style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 7, padding: '8px 10px', fontSize: 13 }}>
                     <option value="">Not tied to a call</option>
                     {relatedCalls.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.caller_role === 'family' ? `Family (${c.family_member_name || 'unnamed'})` : 'Patient'} call · {new Date(c.created_at).toLocaleDateString()} · {c.status}
+                        {c.caller_role === 'family' ? `Family (${c.family_member_name || 'unnamed'})` : c.caller_role === 'doctor' ? 'Outbound' : 'Patient'} call · {new Date(c.created_at).toLocaleDateString()} · {c.duration_minutes != null ? `${c.duration_minutes} min` : c.status}
                       </option>
                     ))}
                   </select>

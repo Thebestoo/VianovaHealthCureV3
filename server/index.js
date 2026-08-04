@@ -263,6 +263,15 @@ async function initDB() {
     `ALTER TABLE ccm_patients ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
     // ccm_care_plans.owner_key — same gap, referenced by the manual plan-save INSERT.
     `ALTER TABLE ccm_care_plans ADD COLUMN owner_key TEXT`,
+    // Real call-duration tracking for call_requests, covering all three directions
+    // (patient->doctor and family->doctor already modeled via caller_role; doctor->
+    // patient is new — see caller_role='doctor' below). started_at/ended_at capture
+    // actual call timestamps (not just the request lifecycle timestamps already on
+    // this table) so duration_minutes can be computed once and reused everywhere a
+    // call needs to feed into CCM/RPM minute totals, instead of being retyped by hand.
+    `ALTER TABLE call_requests ADD COLUMN started_at TEXT`,
+    `ALTER TABLE call_requests ADD COLUMN ended_at TEXT`,
+    `ALTER TABLE call_requests ADD COLUMN duration_minutes INTEGER`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -2371,6 +2380,35 @@ async function autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptD
   return { id, cptCode }
 }
 
+// One-time (not monthly) CMS codes — e.g. G0506, billed once at CCM initiation, never
+// repeated for the same patient. Same draft-not-submit philosophy as the monthly
+// helper above, but the dedup check has no month window: any existing claim ever
+// containing this code for this patient blocks a second one.
+async function autoBillOneTimeCode({ genPatientId, ownerEmail, code, description, notes }) {
+  if (!genPatientId) return null
+  const already = (await db.execute({
+    sql: `SELECT id FROM billing_claims WHERE patient_id = ? AND cpt_codes LIKE ?`,
+    args: [genPatientId, `%${code}%`],
+  })).rows[0]
+  if (already) return null
+
+  const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ?', args: [genPatientId] })).rows[0]
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  const cptCodes = [{ code, description, unit_price: 0 }]
+  const fhirClaim = buildFhirClaim({ id, patient_id: genPatientId, owner_email: ownerEmail, created_at: now, icd_codes: '[]', cpt_codes: JSON.stringify(cptCodes), total_charges: 0 }, patient)
+
+  await db.execute({
+    sql: `INSERT INTO billing_claims (id, patient_id, owner_email, case_id, encounter_date, status, icd_codes, cpt_codes, hcpcs_codes, total_charges, confidence_scores, coding_queries, compliance_flags, claim_notes, fhir_claim, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [id, genPatientId, ownerEmail, null, now.slice(0, 10), 'draft',
+      '[]', JSON.stringify(cptCodes), '[]', 0,
+      JSON.stringify({ overall: 'Rule-based — one-time CCM initiation code, not AI-generated. Verify charge amount before submitting.' }),
+      '[]', '[]', notes, JSON.stringify(fhirClaim), now]
+  })
+  notify(ownerEmail, tplBillingClaimSubmitted({ claimId: id, patientName: patient?.name, cptCount: 1, totalCharges: 0, complianceFlags: 0 })).catch(() => {})
+  return { id, code }
+}
+
 // ── CCM routes ─────────────────────────────────────────────────────────────────
 // Every :pid route below must confirm the patient belongs to the caller before
 // touching plan/checkin data — without this, guessing another owner's patient id
@@ -2484,7 +2522,26 @@ app.post('/api/ccm/patients', auth, aiLimiter, async (req, res) => {
       logError('ccm_auto_plan_failed', e.message, 'POST /api/ccm/patients', e.stack, { patient_id: id })
     }
 
-    res.json({ id, care_plan_drafted: carePlanDrafted })
+    // G0506 ("Comprehensive assessment of and care planning for patients requiring
+    // chronic care management services") is CMS's one-time code for the same
+    // initiating-visit work the care plan draft above just did — billed once per
+    // patient, never monthly like 99490. Only fires when this enrollment is linked
+    // to a real roster patient (gen_patient_id), same requirement as the monthly
+    // helper, and a failure here must not fail enrollment either.
+    let g0506Billed = false
+    if (gen_patient_id) {
+      try {
+        g0506Billed = !!(await autoBillOneTimeCode({
+          genPatientId: gen_patient_id, ownerEmail: req.apiKey, code: 'G0506',
+          description: 'Comprehensive assessment of and care planning for patients requiring chronic care management services',
+          notes: 'Auto-drafted at CCM enrollment — one-time initiating visit code (G0506).',
+        }))
+      } catch (e) {
+        logError('ccm_auto_g0506_failed', e.message, 'POST /api/ccm/patients', e.stack, { patient_id: id })
+      }
+    }
+
+    res.json({ id, care_plan_drafted: carePlanDrafted, g0506_billed: g0506Billed })
   } catch (e) { res.status(500).json({ error: 'Failed to enroll patient', detail: e.message }) }
 })
 
@@ -5734,12 +5791,26 @@ app.post('/api/voice-calls/:id/end', auth, async (req, res) => {
 // ── Patient callback requests ──────────────────────────────────────────────────
 app.post('/api/call-requests', auth, async (req, res) => {
   const { patient_id, patient_name, patient_phone, target_doctor_email, reason, caller_role, family_member_name } = req.body
-  if (!patient_id || !patient_name || !target_doctor_email) return res.status(400).json({ error: 'patient_id, patient_name and target_doctor_email required' })
-  const doctor = (await db.execute({ sql: 'SELECT name FROM users WHERE email = ? AND active = 1', args: [target_doctor_email] })).rows[0]
-  if (!doctor) return res.status(404).json({ error: 'Target doctor not found' })
-  const role = caller_role === 'family' ? 'family' : 'patient'
+  if (!patient_id || !patient_name) return res.status(400).json({ error: 'patient_id and patient_name required' })
+  const role = ['family', 'doctor'].includes(caller_role) ? caller_role : 'patient'
   const id = randomUUID()
   const now = new Date().toISOString()
+
+  // Doctor-initiated ("doctor calls patient") is self-logged, not routed — the doctor
+  // placing the call IS the target, so there's no hand-off to accept/decline. It lands
+  // straight in 'accepted' so the Start Call control is available immediately, mirroring
+  // how a patient/family request looks the moment a doctor accepts theirs.
+  if (role === 'doctor') {
+    await db.execute({
+      sql: `INSERT INTO call_requests (id, patient_id, patient_name, patient_phone, owner_email, owner_name, target_doctor_email, target_doctor_name, reason, caller_role, family_member_name, status, created_at, responded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'accepted',?,?)`,
+      args: [id, patient_id, patient_name, sanitise(patient_phone, 40) || '', req.apiKey, req.user?.name || req.apiKey, req.apiKey, req.user?.name || req.apiKey, sanitise(reason, 500) || '', role, '', now, now],
+    })
+    return res.json({ id, status: 'accepted', created_at: now })
+  }
+
+  if (!target_doctor_email) return res.status(400).json({ error: 'target_doctor_email required' })
+  const doctor = (await db.execute({ sql: 'SELECT name FROM users WHERE email = ? AND active = 1', args: [target_doctor_email] })).rows[0]
+  if (!doctor) return res.status(404).json({ error: 'Target doctor not found' })
   await db.execute({
     sql: `INSERT INTO call_requests (id, patient_id, patient_name, patient_phone, owner_email, owner_name, target_doctor_email, target_doctor_name, reason, caller_role, family_member_name, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?)`,
     args: [id, patient_id, patient_name, sanitise(patient_phone, 40) || '', req.apiKey, req.user?.name || req.apiKey, target_doctor_email, doctor.name, sanitise(reason, 500) || '', role, role === 'family' ? sanitise(family_member_name, 120) || '' : '', now],
@@ -5782,6 +5853,38 @@ app.post('/api/call-requests/:id/complete', auth, async (req, res) => {
   if (cr.target_doctor_email !== req.apiKey && req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Not authorized' })
   await db.execute({ sql: `UPDATE call_requests SET status = 'completed', completed_at = ?, notes = ? WHERE id = ?`, args: [new Date().toISOString(), sanitise(notes, 1000) || '', req.params.id] })
   res.json({ ok: true })
+})
+
+// Real-time call tracking — Start/End replace the old "click tel: and hope someone
+// remembers to mark it done" flow with an actual timestamped duration, covering all
+// three directions (doctor->patient, patient->doctor, family->doctor all flow through
+// this same accepted call_requests row). duration_minutes is what CCM/RPM check-ins
+// pull from to auto-fill their minutes field instead of a doctor retyping a guess.
+app.post('/api/call-requests/:id/start', auth, async (req, res) => {
+  const cr = (await db.execute({ sql: 'SELECT * FROM call_requests WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!cr) return res.status(404).json({ error: 'Request not found' })
+  if (cr.target_doctor_email !== req.apiKey && req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Not authorized' })
+  if (cr.status !== 'accepted') return res.status(400).json({ error: 'Call must be accepted before it can be started' })
+  if (cr.started_at) return res.json({ ok: true, started_at: cr.started_at }) // already started — idempotent
+  const now = new Date().toISOString()
+  await db.execute({ sql: `UPDATE call_requests SET started_at = ? WHERE id = ?`, args: [now, req.params.id] })
+  res.json({ ok: true, started_at: now })
+})
+
+app.post('/api/call-requests/:id/end', auth, async (req, res) => {
+  const { notes } = req.body
+  const cr = (await db.execute({ sql: 'SELECT * FROM call_requests WHERE id = ?', args: [req.params.id] })).rows[0]
+  if (!cr) return res.status(404).json({ error: 'Request not found' })
+  if (cr.target_doctor_email !== req.apiKey && req.keyRole !== 'superadmin') return res.status(403).json({ error: 'Not authorized' })
+  if (!cr.started_at) return res.status(400).json({ error: 'Call was never started' })
+  if (cr.status === 'completed') return res.json({ ok: true, duration_minutes: cr.duration_minutes }) // already ended — idempotent
+  const now = new Date().toISOString()
+  const durationMinutes = Math.max(1, Math.round((new Date(now) - new Date(cr.started_at)) / 60000))
+  await db.execute({
+    sql: `UPDATE call_requests SET status = 'completed', ended_at = ?, duration_minutes = ?, completed_at = ?, notes = ? WHERE id = ?`,
+    args: [now, durationMinutes, now, sanitise(notes, 1000) || cr.notes || '', req.params.id],
+  })
+  res.json({ ok: true, duration_minutes: durationMinutes })
 })
 
 // ── 404 for unknown API routes ────────────────────────────────────────────────
