@@ -252,6 +252,8 @@ export default function CCM() {
         const d = await r.json().catch(() => ({}))
         throw new Error(d.error || `Enrollment failed (${r.status})`)
       }
+      const d = await r.json().catch(() => ({}))
+      if (d.care_plan_drafted) toast.success('Enrolled — AI drafted a starting care plan for review')
       resetEnrollForm()
       loadPatients()
     } catch (err) {
