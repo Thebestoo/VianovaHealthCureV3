@@ -1,10 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Phone, PhoneCall, PhoneOff, PhoneIncoming, Mic, MicOff, Bot, Stethoscope,
-  Users, Clock, Check, X, Loader2, Search, Send, User as UserIcon, CalendarClock,
+  Users, Clock, Check, X, Loader2, Search, Send, User as UserIcon, CalendarClock, Copy,
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useKey } from '../context/KeyContext.jsx'
 import PatientSnapshot from '../components/PatientSnapshot.jsx'
+
+// tel: links depend on the OS having a calling handler registered (e.g. macOS
+// Continuity/Handoff) — when that's unavailable or flaky ("iPhone Calls Not
+// Available"), staff still need a way to get the number. Copy-to-clipboard
+// works everywhere the tel: link doesn't.
+function copyPhone(phone) {
+  navigator.clipboard?.writeText(phone).then(
+    () => toast.success(`Copied ${phone}`),
+    () => toast.error('Could not copy number')
+  )
+}
 
 const TABS = [
   { key: 'ai',       label: 'AI Assistant',      icon: Bot },
@@ -557,7 +569,12 @@ function PatientCallbacksPanel({ apiKey, email }) {
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>{p.phone || 'No phone number on file'}</div>
                 </div>
                 {p.phone
-                  ? <a className="btn btn-primary btn-sm" href={`tel:${p.phone}`} onClick={() => startDirectCall(p)} style={{ textDecoration: 'none', flexShrink: 0 }}><Phone size={12} /> Call</a>
+                  ? (
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <a className="btn btn-primary btn-sm" href={`tel:${p.phone}`} onClick={() => startDirectCall(p)} style={{ textDecoration: 'none' }}><Phone size={12} /> Call</a>
+                      <button type="button" className="btn btn-sm" title="Copy number" onClick={() => copyPhone(p.phone)} style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}><Copy size={12} /></button>
+                    </div>
+                  )
                   : <span style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0 }}>Unavailable</span>}
               </div>
             ))}
@@ -674,6 +691,7 @@ function PatientCallbacksPanel({ apiKey, email }) {
                 {isTarget && r.status === 'accepted' && (
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
                     {r.patient_phone && <a className="btn btn-sm" href={`tel:${r.patient_phone}`} style={{ background: '#dcfce7', color: '#15803d', textDecoration: 'none' }}><Phone size={12} /> Call now</a>}
+                    {r.patient_phone && <button type="button" className="btn btn-sm" title="Copy number" onClick={() => copyPhone(r.patient_phone)} style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}><Copy size={12} /></button>}
                     {r.started_at ? (
                       <>
                         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: 4 }}>
