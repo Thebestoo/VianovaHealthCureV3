@@ -347,12 +347,15 @@ export default function Patients() {
     setDeleting(null)
   }
 
-  const filtered = patients.filter(p =>
-    (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (p.conditions || '').toLowerCase().includes(search.toLowerCase()) ||
-    (p.mrn || '').toLowerCase().includes(search.toLowerCase()) ||
-    (p.email || '').toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return patients.filter(p =>
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.conditions || '').toLowerCase().includes(q) ||
+      (p.mrn || '').toLowerCase().includes(q) ||
+      (p.email || '').toLowerCase().includes(q)
+    )
+  }, [patients, search])
 
   // Group each patient's linked cases (cases carry patient_id only when created
   // from the "+ New Case" button on a patient row) to derive real assignment-based views.
@@ -372,10 +375,11 @@ export default function Patients() {
     Object.entries(casesByPatient).filter(([, cs]) => cs.some(c => c.assigned_to === email && !c.approved)).map(([pid]) => pid)
   ), [casesByPatient, email])
 
-  const viewFiltered =
+  const viewFiltered = useMemo(() => (
     view === 'mine'     ? filtered.filter(p => mineIds.has(String(p.id))) :
     view === 'caseload' ? filtered.filter(p => caseloadIds.has(String(p.id))) :
     filtered
+  ), [view, filtered, mineIds, caseloadIds])
 
   // "My Call List" is appointment-centric rather than patient-centric, so it's
   // rendered as its own list further down instead of filtering `patients`.

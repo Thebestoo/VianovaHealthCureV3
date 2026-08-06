@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, AlertCircle, Plus, RefreshCw, Users, Search, UserMinus, Wand2, X, Clock } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
@@ -305,25 +305,32 @@ export default function RPM() {
 
   // Roster-wide vital status — computed once from the latest-reading map so the
   // sidebar dots, sort order and top stat cards all agree with each other and
-  // stay accurate no matter which patient (if any) is currently open.
-  const rosterStatus = Object.fromEntries(patients.map(p => [p.id, worstStatusFor(patientLatest[p.id])]))
-  const statusCounts = patients.reduce((acc, p) => {
+  // stay accurate no matter which patient (if any) is currently open. Memoized
+  // on [patients, patientLatest] so it doesn't re-run on every keystroke in the
+  // roster search box below.
+  const rosterStatus = useMemo(
+    () => Object.fromEntries(patients.map(p => [p.id, worstStatusFor(patientLatest[p.id])])),
+    [patients, patientLatest]
+  )
+  const statusCounts = useMemo(() => patients.reduce((acc, p) => {
     const s = rosterStatus[p.id]
     if (s === 'critical' || s === 'warning') acc[s]++
     return acc
-  }, { critical: 0, warning: 0 })
+  }, { critical: 0, warning: 0 }), [patients, rosterStatus])
 
-  const filteredPatients = patients
+  const filteredPatients = useMemo(() => patients
     .filter(p => p.name?.toLowerCase().includes(search.toLowerCase()) || p.condition?.toLowerCase().includes(search.toLowerCase()))
     .filter(p => statusFilter === 'all' || rosterStatus[p.id] === statusFilter)
-    .sort((a, b) => STATUS_RANK[rosterStatus[a.id]] - STATUS_RANK[rosterStatus[b.id]] || a.name.localeCompare(b.name))
+    .sort((a, b) => STATUS_RANK[rosterStatus[a.id]] - STATUS_RANK[rosterStatus[b.id]] || a.name.localeCompare(b.name)),
+    [patients, rosterStatus, search, statusFilter]
+  )
 
-  const filteredReadings = readings.filter(r => {
+  const filteredReadings = useMemo(() => readings.filter(r => {
     if (!readingSearch.trim()) return true
     const q = readingSearch.toLowerCase()
     return r.note?.toLowerCase().includes(q) ||
       formatReadingTime(r.recorded_at, true).toLowerCase().includes(q)
-  })
+  }), [readings, readingSearch])
 
   return (
     <div>

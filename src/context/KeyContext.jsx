@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react'
 import toast from 'react-hot-toast'
 
 const KeyContext = createContext(null)
@@ -164,8 +164,17 @@ export function KeyProvider({ children }) {
     } catch {}
   }, [key])
 
+  // Without this, a plain object literal is rebuilt every provider render (e.g.
+  // on every refreshStats poll), which changes identity even when nothing a
+  // given consumer reads actually changed — forcing all 30+ useKey() consumers
+  // app-wide to re-render on every tick instead of just the ones that care.
+  const value = useMemo(
+    () => ({ key, role, label, email, avatar, stats, connect, loginWithOTP, disconnect, refreshStats, setAvatar }),
+    [key, role, label, email, avatar, stats, connect, loginWithOTP, disconnect, refreshStats, setAvatar]
+  )
+
   return (
-    <KeyContext.Provider value={{ key, role, label, email, avatar, stats, connect, loginWithOTP, disconnect, refreshStats, setAvatar }}>
+    <KeyContext.Provider value={value}>
       {children}
     </KeyContext.Provider>
   )

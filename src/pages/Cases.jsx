@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { PlusCircle, Search, ShieldAlert, AlertTriangle, CheckCircle, Clock, KeyRound, X, Inbox, UserCheck } from 'lucide-react'
@@ -73,7 +73,7 @@ export default function Cases() {
   }
 
   const sourceList = (view === 'queue' && !isSuperAdmin) ? queue : cases
-  const filtered = sourceList.filter(c => {
+  const filtered = useMemo(() => sourceList.filter(c => {
     const q = search.toLowerCase()
     if (q && !(
       c.presenting_complaint?.toLowerCase().includes(q) ||
@@ -93,7 +93,7 @@ export default function Cases() {
       if (d > new Date(dateTo + 'T23:59:59')) return false
     }
     return true
-  })
+  }), [sourceList, search, statusFilter, confFilter, dateFrom, dateTo])
 
   function clearFilters() {
     setSearch('')
