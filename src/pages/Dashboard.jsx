@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PlusCircle, TrendingUp, ChevronDown } from 'lucide-react'
+import { PlusCircle, TrendingUp, DollarSign, ChevronDown } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { RingStat, DonutOverview } from '../components/MiniChart.jsx'
+import { RingStat, DonutOverview, TrendChart } from '../components/MiniChart.jsx'
+import { RANGE_OPTIONS, filterByRange, buildRangeSeries } from '../utils/timeSeries.js'
 
 const CATEGORY_KEYWORDS = {
   Cardiology: ['chest', 'heart', 'cardiac', 'palpitation', 'angina', 'hypertension'],
@@ -30,87 +30,6 @@ function categorize(complaint) {
     if (kws.some(k => c.includes(k))) return cat
   }
   return 'General'
-}
-
-function startOfHour(d) {
-  const x = new Date(d)
-  x.setMinutes(0, 0, 0)
-  return x
-}
-
-function startOfDay(d) {
-  const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  return x
-}
-
-function startOfMonth(d) {
-  const x = startOfDay(d)
-  x.setDate(1)
-  return x
-}
-
-// Builds `count` buckets stepping backward from now by `stepMs`-ish units (via
-// `advance`), so daily/weekly/monthly/lifetime views all share one shape of series.
-function buildSeries(cases, { count, floor, advance, format }) {
-  const buckets = []
-  const now = floor(new Date())
-  for (let i = count - 1; i >= 0; i--) {
-    const start = advance(new Date(now), -i)
-    buckets.push({ start, label: format(start), count: 0 })
-  }
-  cases.forEach(c => {
-    const start = floor(new Date(c.created_at))
-    const slot = buckets.find(b => b.start.getTime() === start.getTime())
-    if (slot) slot.count++
-  })
-  return buckets.map(b => ({ bucket: b.label, count: b.count }))
-}
-
-const RANGE_OPTIONS = [
-  { key: 'daily',    label: 'Daily',    chartLabel: 'Last 24 hours', suffix: 'today' },
-  { key: 'weekly',   label: 'Weekly',   chartLabel: 'Last 7 days',   suffix: 'last 7 days' },
-  { key: 'monthly',  label: 'Monthly',  chartLabel: 'Last 30 days',  suffix: 'last 30 days' },
-  { key: 'lifetime', label: 'Lifetime', chartLabel: 'Last 12 months', suffix: 'all time' },
-]
-
-function filterByRange(cases, range) {
-  if (range === 'lifetime') return cases
-  const now = new Date()
-  const cutoff = new Date(now)
-  if (range === 'daily') return cases.filter(c => new Date(c.created_at) >= startOfDay(now))
-  if (range === 'weekly') cutoff.setDate(cutoff.getDate() - 7)
-  if (range === 'monthly') cutoff.setDate(cutoff.getDate() - 30)
-  return cases.filter(c => new Date(c.created_at) >= cutoff)
-}
-
-function buildRangeSeries(cases, range) {
-  if (range === 'daily') {
-    return buildSeries(cases, {
-      count: 24, floor: startOfHour,
-      advance: (d, i) => { d.setHours(d.getHours() + i); return d },
-      format: d => d.toLocaleTimeString('en-US', { hour: 'numeric' }),
-    })
-  }
-  if (range === 'weekly') {
-    return buildSeries(cases, {
-      count: 7, floor: startOfDay,
-      advance: (d, i) => { d.setDate(d.getDate() + i); return d },
-      format: d => d.toLocaleDateString('en-US', { weekday: 'short' }),
-    })
-  }
-  if (range === 'monthly') {
-    return buildSeries(cases, {
-      count: 30, floor: startOfDay,
-      advance: (d, i) => { d.setDate(d.getDate() + i); return d },
-      format: d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    })
-  }
-  return buildSeries(cases, {
-    count: 12, floor: startOfMonth,
-    advance: (d, i) => { d.setMonth(d.getMonth() + i); return d },
-    format: d => d.toLocaleDateString('en-US', { month: 'short' }),
-  })
 }
 
 function buildConditionBreakdown(cases) {
@@ -140,20 +59,11 @@ function AnimatedNumber({ value }) {
   return display
 }
 
-function ChartTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null
-  return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', boxShadow: 'var(--shadow-md)' }}>
-      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{payload[0].value} case{payload[0].value === 1 ? '' : 's'}</div>
-    </div>
-  )
-}
-
 export default function Dashboard() {
   const navigate = useNavigate()
   const { key } = useKey()
   const [cases, setCases] = useState([])
+  const [claims, setClaims] = useState([])
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState('lifetime')
   const [rangeMenuOpen, setRangeMenuOpen] = useState(false)
@@ -164,6 +74,10 @@ export default function Dashboard() {
       .then(r => r.json())
       .then(data => { setCases(Array.isArray(data) ? data : []); setLoading(false) })
       .catch(() => setLoading(false))
+    fetch('/api/billing', { headers: { 'x-api-key': key } })
+      .then(r => r.json())
+      .then(data => setClaims(Array.isArray(data.claims) ? data.claims : []))
+      .catch(() => {})
   }, [key])
 
   const rangeOption = RANGE_OPTIONS.find(r => r.key === range)
@@ -181,6 +95,15 @@ export default function Dashboard() {
   const seriesPeak = series.reduce((m, b) => Math.max(m, b.count), 0)
   const breakdown = buildConditionBreakdown(rangedCases)
   const hasChartData = rangedCases.length > 0
+
+  const rangedClaims = filterByRange(claims, range)
+  const revenueSeries = buildRangeSeries(rangedClaims, range, {
+    reduce: (b, claim) => { b.count++; b.value += Number(claim.total_charges) || 0 },
+  })
+  const revenueTotal = revenueSeries.reduce((s, b) => s + b.value, 0)
+  const revenuePeak = revenueSeries.reduce((m, b) => Math.max(m, b.value), 0)
+  const hasRevenueData = rangedClaims.length > 0
+  const formatCurrency = v => `$${Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
   const statusBreakdown = [
     { name: 'Approved', label: 'Approved', value: stats.approved, color: 'var(--success)', showPct: true },
     { name: 'Urgent',   label: 'Urgent',   value: rangedCases.filter(c => (c.requires_urgent_review || c.emergency_detected) && !c.approved).length, color: 'var(--danger)', showPct: true },
@@ -305,27 +228,36 @@ export default function Dashboard() {
                 No data yet.
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={series} margin={{ top: 16, right: 12, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="casesFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#0e7490" stopOpacity={0.32} />
-                      <stop offset="100%" stopColor="#0e7490" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="casesStroke" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#0e7490" />
-                      <stop offset="100%" stopColor="#059669" />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} strokeDasharray="4 6" stroke="var(--border)" />
-                  <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} interval={range === 'monthly' ? 3 : 0} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} width={26} />
-                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '3 3' }} />
-                  <Area type="monotone" dataKey="count" stroke="url(#casesStroke)" strokeWidth={2.75} fill="url(#casesFill)"
-                    activeDot={{ r: 5, fill: '#fff', stroke: '#0e7490', strokeWidth: 2.5 }}
-                    isAnimationActive animationDuration={900} animationEasing="ease-out" />
-                </AreaChart>
-              </ResponsiveContainer>
+              <TrendChart data={series} xTickInterval={range === 'monthly' ? 3 : 0}
+                formatValue={v => `${v} case${v === 1 ? '' : 's'}`} />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '0 32px 24px' }}>
+        <div className="card hoverable animate-fade-up" style={{ animationDelay: '.16s' }}>
+          <div className="card-header">
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <DollarSign size={15} /> Billing Trend
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              {hasRevenueData && (
+                <span style={{ fontSize: 11.5, color: 'var(--text2)' }}>
+                  Peak <b style={{ color: 'var(--text)' }}>{formatCurrency(revenuePeak)}</b> · Total <b style={{ color: 'var(--text)' }}>{formatCurrency(revenueTotal)}</b>
+                </span>
+              )}
+              <span style={{ fontSize: 11, color: 'var(--text3)' }}>{rangeOption.chartLabel}</span>
+            </div>
+          </div>
+          <div className="card-body" style={{ height: 260 }}>
+            {!hasRevenueData ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text3)', fontSize: 13 }}>
+                {!key ? 'Connect an API key via Logs & Analytics to view data.' : 'No billing claims yet.'}
+              </div>
+            ) : (
+              <TrendChart data={revenueSeries} dataKey="value" color="#059669" color2="#0e7490"
+                xTickInterval={range === 'monthly' ? 3 : 0} formatValue={formatCurrency} />
             )}
           </div>
         </div>

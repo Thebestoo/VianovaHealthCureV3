@@ -7,6 +7,8 @@ import {
 import { useKey } from '../context/KeyContext.jsx'
 import SummaryActions from '../components/SummaryActions.jsx'
 import { patientHistoryDraft } from '../utils/patientUtils.js'
+import { TrendChart } from '../components/MiniChart.jsx'
+import { buildRangeSeries } from '../utils/timeSeries.js'
 
 // Draft additional note content from a fetched case's real encounter data —
 // merged after the patient history draft when a specific case is selected.
@@ -570,6 +572,15 @@ export default function Billing() {
   const medFlags = allFlags.filter(f => f.severity === 'medium')
   const lowFlags = allFlags.filter(f => f.severity === 'low')
 
+  // Last 12 months of billed revenue, bucketed the same way Dashboard buckets
+  // cases — reused via buildRangeSeries()'s `reduce` so this sums total_charges
+  // per month instead of just counting claims.
+  const revenueSeries = buildRangeSeries(claims, 'lifetime', {
+    reduce: (b, claim) => { b.count++; b.value += Number(claim.total_charges) || 0 },
+  })
+  const revenueTotal = revenueSeries.reduce((s, b) => s + b.value, 0)
+  const formatCurrency = v => `$${Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1100, margin: '0 auto', background: 'var(--surface2)', minHeight: '100vh' }}>
       {/* Page header */}
@@ -587,6 +598,36 @@ export default function Billing() {
       </div>
 
       <StatsStrip stats={stats} />
+
+      {/* Claims Over Time */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <DollarSign size={15} /> Claims Over Time
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            {claims.length > 0 && (
+              <span style={{ fontSize: 11.5, color: 'var(--text2)' }}>
+                Total billed <b style={{ color: 'var(--text)' }}>{formatCurrency(revenueTotal)}</b>
+              </span>
+            )}
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>Last 12 months</span>
+          </div>
+        </div>
+        <div style={{ height: 260 }}>
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text3)', fontSize: 13 }}>
+              Loading…
+            </div>
+          ) : claims.length === 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text3)', fontSize: 13 }}>
+              No claims yet.
+            </div>
+          ) : (
+            <TrendChart data={revenueSeries} dataKey="value" color="#059669" color2="#0e7490" formatValue={formatCurrency} />
+          )}
+        </div>
+      </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 4, width: 'fit-content' }}>

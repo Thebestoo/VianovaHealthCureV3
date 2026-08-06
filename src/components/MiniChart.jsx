@@ -1,7 +1,8 @@
 import React from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, PieChart, Pie, Cell, Legend
+  LineChart, Line, CartesianGrid, PieChart, Pie, Cell, Legend,
+  AreaChart, Area
 } from 'recharts'
 
 export function TypeBarChart({ data, color = '#0e7490' }) {
@@ -28,6 +29,53 @@ export function TimelineChart({ data, color = '#0e7490', dataKey = 'count' }) {
         <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }} />
         <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2} dot={{ r: 3 }} />
       </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
+// Tooltip for TrendChart — pass `formatValue` to render units (e.g. "$1,240"
+// instead of a bare number); defaults to the raw value.
+export function TrendTooltip({ active, payload, label, formatValue }) {
+  if (!active || !payload?.length) return null
+  const raw = payload[0].value
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', boxShadow: 'var(--shadow-md)' }}>
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{formatValue ? formatValue(raw) : raw}</div>
+    </div>
+  )
+}
+
+// Dashed-grid gradient area chart for "X over time" trend cards — same visual
+// language as the original Cases Over Time chart (Dashboard), generalized so
+// Billing (and any future page) can plot its own bucketed series (e.g. a sum
+// of `total_charges` per period instead of a per-period count) without
+// re-declaring the gradients/axes/tooltip each time. Pair with data shaped by
+// `buildRangeSeries()` in `src/utils/timeSeries.js`.
+export function TrendChart({ data, dataKey = 'count', xKey = 'bucket', color = '#0e7490', color2 = '#059669', xTickInterval = 0, formatValue }) {
+  const gradId = `trendFill${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`
+  const strokeId = `trendStroke${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} margin={{ top: 16, right: 12, left: -20, bottom: 0 }}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.32} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id={strokeId} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={color} />
+            <stop offset="100%" stopColor={color2} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} strokeDasharray="4 6" stroke="var(--border)" />
+        <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} interval={xTickInterval} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} width={26} />
+        <Tooltip content={<TrendTooltip formatValue={formatValue} />} cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '3 3' }} />
+        <Area type="monotone" dataKey={dataKey} stroke={`url(#${strokeId})`} strokeWidth={2.75} fill={`url(#${gradId})`}
+          activeDot={{ r: 5, fill: '#fff', stroke: color, strokeWidth: 2.5 }}
+          isAnimationActive animationDuration={900} animationEasing="ease-out" />
+      </AreaChart>
     </ResponsiveContainer>
   )
 }
