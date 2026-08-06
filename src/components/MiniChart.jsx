@@ -1,8 +1,7 @@
 import React from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, PieChart, Pie, Cell, Legend,
-  AreaChart, Area
+  LineChart, Line, CartesianGrid, PieChart, Pie, Cell, Legend
 } from 'recharts'
 
 export function TypeBarChart({ data, color = '#0e7490' }) {
@@ -46,36 +45,20 @@ export function TrendTooltip({ active, payload, label, formatValue }) {
   )
 }
 
-// Dashed-grid gradient area chart for "X over time" trend cards — same visual
-// language as the original Cases Over Time chart (Dashboard), generalized so
-// Billing (and any future page) can plot its own bucketed series (e.g. a sum
-// of `total_charges` per period instead of a per-period count) without
-// re-declaring the gradients/axes/tooltip each time. Pair with data shaped by
-// `buildRangeSeries()` in `src/utils/timeSeries.js`.
-export function TrendChart({ data, dataKey = 'count', xKey = 'bucket', color = '#0e7490', color2 = '#059669', xTickInterval = 0, formatValue }) {
-  const gradId = `trendFill${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`
-  const strokeId = `trendStroke${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`
+// Flat, gridline-free rounded-bar chart for "X over time" trend cards — one
+// slim bar per bucket, no axis clutter, values surface only on hover via the
+// tooltip. Shared by Dashboard's Cases Over Time / Billing Trend and Billing's
+// Claims Over Time so they don't each re-declare the same bars/axes/tooltip.
+// Pair with data shaped by `buildRangeSeries()` in `src/utils/timeSeries.js`.
+export function TrendChart({ data, dataKey = 'count', xKey = 'bucket', color = '#0e7490', xTickInterval = 0, formatValue }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data} margin={{ top: 16, right: 12, left: -20, bottom: 0 }}>
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.32} />
-            <stop offset="100%" stopColor={color} stopOpacity={0} />
-          </linearGradient>
-          <linearGradient id={strokeId} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={color} />
-            <stop offset="100%" stopColor={color2} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid vertical={false} strokeDasharray="4 6" stroke="var(--border)" />
+      <BarChart data={data} margin={{ top: 16, right: 8, left: 0, bottom: 0 }} barCategoryGap="32%">
         <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} interval={xTickInterval} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text3)' }} axisLine={false} tickLine={false} width={26} />
-        <Tooltip content={<TrendTooltip formatValue={formatValue} />} cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '3 3' }} />
-        <Area type="monotone" dataKey={dataKey} stroke={`url(#${strokeId})`} strokeWidth={2.75} fill={`url(#${gradId})`}
-          activeDot={{ r: 5, fill: '#fff', stroke: color, strokeWidth: 2.5 }}
-          isAnimationActive animationDuration={900} animationEasing="ease-out" />
-      </AreaChart>
+        <Tooltip content={<TrendTooltip formatValue={formatValue} />} cursor={{ fill: 'var(--surface2)' }} />
+        <Bar dataKey={dataKey} fill={color} radius={[6, 6, 0, 0]} maxBarSize={26}
+          isAnimationActive animationDuration={700} animationEasing="ease-out" />
+      </BarChart>
     </ResponsiveContainer>
   )
 }

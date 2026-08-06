@@ -624,7 +624,7 @@ export default function Billing() {
               No claims yet.
             </div>
           ) : (
-            <TrendChart data={revenueSeries} dataKey="value" color="#059669" color2="#0e7490" formatValue={formatCurrency} />
+            <TrendChart data={revenueSeries} dataKey="value" color="#059669" formatValue={formatCurrency} />
           )}
         </div>
       </div>

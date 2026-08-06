@@ -256,7 +256,7 @@ export default function Dashboard() {
                 {!key ? 'Connect an API key via Logs & Analytics to view data.' : 'No billing claims yet.'}
               </div>
             ) : (
-              <TrendChart data={revenueSeries} dataKey="value" color="#059669" color2="#0e7490"
+              <TrendChart data={revenueSeries} dataKey="value" color="#059669"
                 xTickInterval={range === 'monthly' ? 3 : 0} formatValue={formatCurrency} />
             )}
           </div>
