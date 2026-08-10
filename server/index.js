@@ -272,6 +272,10 @@ async function initDB() {
     `ALTER TABLE call_requests ADD COLUMN started_at TEXT`,
     `ALTER TABLE call_requests ADD COLUMN ended_at TEXT`,
     `ALTER TABLE call_requests ADD COLUMN duration_minutes INTEGER`,
+    // Complex CCM (99487/99489) requires CMS's moderate/high medical-decision-making
+    // complexity criteria, which isn't derivable from time logged alone — a care
+    // manager sets this flag explicitly per patient to opt them into the higher tiers.
+    `ALTER TABLE ccm_patients ADD COLUMN complex_ccm INTEGER NOT NULL DEFAULT 0`,
   ]
   for (const sql of migrations) {
     try { await db.execute({ sql, args: [] }) } catch {}
@@ -2278,7 +2282,7 @@ app.post('/api/rpm/patients', auth, async (req, res) => {
   if (call_id && gen_patient_id) {
     try {
       const result = await linkEnrollmentCall({
-        callId: call_id, genPatientId: gen_patient_id, ownerEmail: req.apiKey, table: 'rpm_readings', pid: id, cpt: CPT_RPM_TIME,
+        callId: call_id, genPatientId: gen_patient_id, ownerEmail: req.apiKey, table: 'rpm_readings', pid: id, tiers: RPM_TIME_TIERS,
         insertEntry: call => db.execute({
           sql: `INSERT INTO rpm_readings (patient_id, owner_key, heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note, minutes, call_id, recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
           args: [id, req.apiKey, null, null, null, null, null, null, 'Initial RPM enrollment / patient education call.', call.duration_minutes || 0, call.id, now]
@@ -2338,16 +2342,23 @@ app.post('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
   })
 
   // Same 20-min/month threshold as CCM, but for RPM's interactive-communication
-  // time code (99457) — only relevant when this reading actually logged minutes.
+  // time codes (99457/99458) — only relevant when this reading actually logged minutes.
   let autoBilled = null
   if ((minutes || 0) > 0) {
     autoBilled = await checkMonthlyTimeThreshold({
       table: 'rpm_readings', pid: req.params.pid, genPatientId: rpmPatient.gen_patient_id, ownerEmail: req.apiKey,
-      cptCode: CPT_RPM_TIME.code, cptDescription: CPT_RPM_TIME.description,
+      tiers: RPM_TIME_TIERS,
     })
   }
 
-  res.json({ ok: true, auto_billed: !!autoBilled })
+  // Device-supply code (99454) tracks data volume, not minutes, so it's checked on
+  // every reading regardless of whether this one logged time.
+  let deviceBilled = null
+  if (rpmPatient.gen_patient_id) {
+    deviceBilled = await checkDeviceSupplyThreshold({ pid: req.params.pid, genPatientId: rpmPatient.gen_patient_id, ownerEmail: req.apiKey })
+  }
+
+  res.json({ ok: true, auto_billed: !!autoBilled || !!deviceBilled })
 })
 
 // AI-assisted reading note — summarizes whether the just-entered vitals are in range
@@ -2402,9 +2413,35 @@ const MONTHLY_TIME_THRESHOLD_MIN = 20
 // readings, enrollment call-linking) cites the exact same wording — previously each
 // site respelled the description inline, risking drift between e.g. two 99490 claims.
 const CPT_CCM_TIME = { code: '99490', description: 'Chronic Care Management, first 20 min/month' }
+const CPT_CCM_TIME_ADDL = { code: '99439', description: 'Chronic Care Management, each additional 20 min/month' }
+const CPT_CCM_COMPLEX_BASE = { code: '99487', description: 'Complex Chronic Care Management, first 60 min/month' }
+const CPT_CCM_COMPLEX_ADDL = { code: '99489', description: 'Complex Chronic Care Management, each additional 30 min/month' }
 const CPT_RPM_TIME = { code: '99457', description: 'Remote Physiologic Monitoring treatment management, first 20 min/month' }
+const CPT_RPM_TIME_ADDL = { code: '99458', description: 'Remote Physiologic Monitoring treatment management, each additional 20 min/month' }
+const CPT_RPM_DEVICE_SUPPLY = { code: '99454', description: 'RPM device(s) supply with daily recording(s) or programmed alert(s) transmission, each 30 days' }
 
-async function autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptDescription, monthPrefix }) {
+// Tier lists drive checkMonthlyTimeThreshold: each entry is a minute threshold paired
+// with the CPT it unlocks. Sorted ascending — autoBillMonthlyTimeCode's own per-code
+// dedup means re-checking a tier that was already billed earlier this month is a no-op,
+// so the loop can safely re-evaluate every tier on every check-in/reading instead of
+// tracking "which tier are we on" as separate state.
+const RPM_TIME_TIERS = [
+  { minMinutes: MONTHLY_TIME_THRESHOLD_MIN, cpt: CPT_RPM_TIME },
+  { minMinutes: MONTHLY_TIME_THRESHOLD_MIN * 2, cpt: CPT_RPM_TIME_ADDL },
+]
+const CCM_TIME_TIERS = [
+  { minMinutes: MONTHLY_TIME_THRESHOLD_MIN, cpt: CPT_CCM_TIME },
+  { minMinutes: MONTHLY_TIME_THRESHOLD_MIN * 2, cpt: CPT_CCM_TIME_ADDL },
+]
+// Complex CCM (99487/99489) requires clinical judgment — CMS defines it by moderate/high
+// medical decision-making complexity, not just time logged — so a patient only uses these
+// tiers once a care manager has explicitly flagged them via ccm_patients.complex_ccm.
+const CCM_COMPLEX_TIME_TIERS = [
+  { minMinutes: 60, cpt: CPT_CCM_COMPLEX_BASE },
+  { minMinutes: 90, cpt: CPT_CCM_COMPLEX_ADDL },
+]
+
+async function autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptDescription, monthPrefix, notes }) {
   if (!genPatientId) return null // no linked roster patient to attach the claim to
   const already = (await db.execute({
     sql: `SELECT id FROM billing_claims WHERE patient_id = ? AND encounter_date LIKE ? AND cpt_codes LIKE ?`,
@@ -2424,7 +2461,7 @@ async function autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptD
       '[]', JSON.stringify(cptCodes), '[]', 0,
       JSON.stringify({ overall: 'Rule-based — time threshold met, not AI-generated. Verify charge amount before submitting.' }),
       '[]', '[]',
-      `Auto-drafted: ${MONTHLY_TIME_THRESHOLD_MIN}+ min of care logged for ${monthPrefix} (CPT ${cptCode}).`,
+      notes || `Auto-drafted: ${MONTHLY_TIME_THRESHOLD_MIN}+ min of care logged for ${monthPrefix} (CPT ${cptCode}).`,
       JSON.stringify(fhirClaim), now]
   })
   notify(ownerEmail, tplBillingClaimSubmitted({ claimId: id, patientName: patient?.name, cptCount: 1, totalCharges: 0, complianceFlags: 0 })).catch(() => {})
@@ -2432,22 +2469,52 @@ async function autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptD
 }
 
 // Sums a patient's logged care-time minutes for the current calendar month from
-// either ccm_checkins or rpm_readings and, once the 20-min threshold is crossed,
-// auto-drafts the matching time-based CPT claim. Shared by every place minutes get
+// either ccm_checkins or rpm_readings and auto-drafts a claim for every tier whose
+// minute threshold has been crossed (e.g. the base 20-min code and, once enough time
+// has piled up, the "each additional" code too). Shared by every place minutes get
 // logged — check-ins, readings, and a call linked at enrollment — so the threshold
 // is only ever evaluated one way instead of re-implemented per call site.
-async function checkMonthlyTimeThreshold({ table, pid, genPatientId, ownerEmail, cptCode, cptDescription }) {
+async function checkMonthlyTimeThreshold({ table, pid, genPatientId, ownerEmail, tiers }) {
   const monthPrefix = new Date().toISOString().slice(0, 7)
   const dateCol = table === 'ccm_checkins' ? 'created_at' : 'recorded_at'
   const sum = (await db.execute({
     sql: `SELECT COALESCE(SUM(minutes), 0) AS total FROM ${table} WHERE patient_id = ? AND ${dateCol} LIKE ?`,
     args: [pid, `${monthPrefix}%`],
   })).rows[0]?.total || 0
-  if (sum < MONTHLY_TIME_THRESHOLD_MIN) return null
+  const billed = []
+  for (const tier of tiers) {
+    if (sum < tier.minMinutes) continue
+    try {
+      const result = await autoBillMonthlyTimeCode({
+        genPatientId, ownerEmail, cptCode: tier.cpt.code, cptDescription: tier.cpt.description, monthPrefix,
+        notes: `Auto-drafted: ${tier.minMinutes}+ min of care logged for ${monthPrefix} (CPT ${tier.cpt.code}).`,
+      })
+      if (result) billed.push(result)
+    } catch (e) {
+      logError('auto_bill_failed', e.message, `monthly time threshold (${table})`, e.stack, { patient_id: pid })
+    }
+  }
+  return billed.length ? billed : null
+}
+
+// CPT 99454 requires 16+ of the last 30 days to have a device reading on file — a
+// data-volume rule, not a time rule, so it's evaluated separately from the minute-based
+// tiers above using a rolling 30-day distinct-day count off rpm_readings.recorded_at.
+async function checkDeviceSupplyThreshold({ pid, genPatientId, ownerEmail }) {
+  const monthPrefix = new Date().toISOString().slice(0, 7)
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const days = (await db.execute({
+    sql: `SELECT COUNT(DISTINCT substr(recorded_at, 1, 10)) AS days FROM rpm_readings WHERE patient_id = ? AND recorded_at >= ?`,
+    args: [pid, since],
+  })).rows[0]?.days || 0
+  if (days < 16) return null
   try {
-    return await autoBillMonthlyTimeCode({ genPatientId, ownerEmail, cptCode, cptDescription, monthPrefix })
+    return await autoBillMonthlyTimeCode({
+      genPatientId, ownerEmail, cptCode: CPT_RPM_DEVICE_SUPPLY.code, cptDescription: CPT_RPM_DEVICE_SUPPLY.description, monthPrefix,
+      notes: `Auto-drafted: readings on file for ${days} of the last 30 days (CPT ${CPT_RPM_DEVICE_SUPPLY.code}, requires 16+).`,
+    })
   } catch (e) {
-    logError('auto_bill_failed', e.message, `monthly time threshold (${table})`, e.stack, { patient_id: pid })
+    logError('auto_bill_failed', e.message, 'device supply threshold (rpm_readings)', e.stack, { patient_id: pid })
     return null
   }
 }
@@ -2458,11 +2525,11 @@ async function checkMonthlyTimeThreshold({ table, pid, genPatientId, ownerEmail,
 // with only the target table/columns differing — `insertEntry` is the one part
 // that's genuinely table-specific (ccm_checkins vs rpm_readings have different
 // columns), so it stays a caller-supplied callback rather than being inlined here.
-async function linkEnrollmentCall({ callId, genPatientId, ownerEmail, table, pid, cpt, insertEntry }) {
+async function linkEnrollmentCall({ callId, genPatientId, ownerEmail, table, pid, tiers, insertEntry }) {
   const call = (await db.execute({ sql: 'SELECT * FROM call_requests WHERE id = ? AND patient_id = ?', args: [callId, genPatientId] })).rows[0]
   if (!call) return { linked: false, timeAutoBilled: false }
   await insertEntry(call)
-  const autoBilled = await checkMonthlyTimeThreshold({ table, pid, genPatientId, ownerEmail, cptCode: cpt.code, cptDescription: cpt.description })
+  const autoBilled = await checkMonthlyTimeThreshold({ table, pid, genPatientId, ownerEmail, tiers })
   return { linked: true, timeAutoBilled: !!autoBilled }
 }
 
@@ -2637,7 +2704,7 @@ app.post('/api/ccm/patients', auth, aiLimiter, async (req, res) => {
     if (call_id && gen_patient_id) {
       try {
         const result = await linkEnrollmentCall({
-          callId: call_id, genPatientId: gen_patient_id, ownerEmail: req.apiKey, table: 'ccm_checkins', pid: id, cpt: CPT_CCM_TIME,
+          callId: call_id, genPatientId: gen_patient_id, ownerEmail: req.apiKey, table: 'ccm_checkins', pid: id, tiers: CCM_TIME_TIERS,
           insertEntry: call => db.execute({
             sql: `INSERT INTO ccm_checkins (patient_id, owner_key, minutes, notes, barriers, plan_update, call_id, created_at) VALUES (?,?,?,?,?,?,?,?)`,
             args: [id, req.apiKey, call.duration_minutes || 0, 'Initial CCM enrollment/consent call.', null, null, call.id, now]
@@ -2734,12 +2801,13 @@ app.post('/api/ccm/patients/:pid/checkins', auth, async (req, res) => {
       args: [req.params.pid, req.apiKey, minutes || 0, notes || null, barriers || null, plan_update || null, linkedCallId, new Date().toISOString()]
     })
 
-    // If this check-in pushed the patient's monthly CCM time over the 20-min
-    // billing threshold, auto-draft the claim instead of leaving it for someone
-    // to notice and enter manually in Billing.
+    // If this check-in pushed the patient's monthly CCM time over the billing
+    // threshold(s), auto-draft the claim instead of leaving it for someone to notice
+    // and enter manually in Billing. Patients flagged complex_ccm bill against the
+    // higher 60/90-min complex-CCM codes instead of the standard 20/40-min ones.
     const autoBilled = await checkMonthlyTimeThreshold({
       table: 'ccm_checkins', pid: req.params.pid, genPatientId: ccmPatient.gen_patient_id, ownerEmail: req.apiKey,
-      cptCode: CPT_CCM_TIME.code, cptDescription: CPT_CCM_TIME.description,
+      tiers: ccmPatient.complex_ccm ? CCM_COMPLEX_TIME_TIERS : CCM_TIME_TIERS,
     })
 
     res.json({ ok: true, auto_billed: !!autoBilled })
@@ -2814,6 +2882,23 @@ app.post('/api/ccm/patients/:pid/plan/ai-draft', auth, aiLimiter, async (req, re
   } catch (e) {
     res.status(500).json({ error: 'AI draft failed', detail: e.message })
   }
+})
+
+// Toggles whether a patient bills against the complex-CCM codes (99487/99489) instead
+// of standard CCM (99490/99439). This is a clinical-judgment call CMS ties to
+// medical-decision-making complexity, not something derivable from minutes logged, so
+// it's a manual flag a care manager sets rather than an automatic classification.
+app.patch('/api/ccm/patients/:pid', auth, async (req, res) => {
+  try {
+    const existing = await loadOwnedCcmPatient(req.params.pid, req.apiKey)
+    if (!existing) return res.status(404).json({ error: 'Not found or access denied' })
+    if (req.body.complex_ccm === undefined) return res.status(400).json({ error: 'Nothing to update' })
+    await db.execute({
+      sql: 'UPDATE ccm_patients SET complex_ccm = ? WHERE id = ? AND owner_email = ?',
+      args: [req.body.complex_ccm ? 1 : 0, req.params.pid, req.apiKey]
+    })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: 'Failed to update patient', detail: e.message }) }
 })
 
 // Disenroll — CMS audits can request proof CCM services were actually rendered,

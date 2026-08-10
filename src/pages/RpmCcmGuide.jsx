@@ -12,7 +12,7 @@ const STEPS = [
     icon: Radio,
     title: '2. Device Setup & Data Transmission',
     body: "Patients are given connected devices (BP cuffs, glucose meters, pulse oximeters) that report readings back to the care team, cutting down on manual clinic visits.",
-    status: 'Not yet automated here — readings are entered by staff via "Log Reading" (with an AI-suggest helper). No device/API ingestion pipeline exists yet.',
+    status: 'Readings are entered by staff via "Log Reading" (with an AI-suggest helper) — there\'s still no device/API ingestion pipeline. Each patient\'s last reading drives an Online/Offline badge (48h window) so staff can see at a glance whose device has gone quiet.',
     manual: true,
   },
   {
@@ -31,20 +31,20 @@ const STEPS = [
     icon: FileCheck2,
     title: '5. Documentation & Billing',
     body: 'Every RPM alert and CCM follow-up is logged against the right CMS code so reimbursement is accurate and the record is audit-ready.',
-    status: 'Claims are stored with coding, compliance flags, scrub results, and an exportable FHIR Claim resource for every auto-billed code below.',
+    status: 'Claims are stored with coding, compliance flags, scrub results, and an exportable FHIR Claim resource for every auto-billed code below. Complex CCM (99487/99489) still requires a care manager to flag the patient first — CMS ties that tier to medical-decision-making complexity, not time alone.',
   },
 ]
 
 const CPT_CODES = [
   { program: 'RPM', code: '99453', desc: 'Initial setup & patient education (one-time)', live: true, note: 'Auto-billed at RPM enrollment' },
-  { program: 'RPM', code: '99454', desc: 'Device supply with daily recording/transmission (16+ of 30 days)', live: false, note: 'Not yet automated — would need device data-volume tracking' },
+  { program: 'RPM', code: '99454', desc: 'Device supply with daily recording/transmission (16+ of 30 days)', live: true, note: 'Auto-drafted once a patient has readings on file for 16+ of the last 30 days' },
   { program: 'RPM', code: '99457', desc: 'Treatment management, first 20 min/month', live: true, note: 'Auto-drafted once ≥20 min/month is logged' },
-  { program: 'RPM', code: '99458', desc: 'Treatment management, each additional 20 min/month', live: false, note: 'Not yet automated — only the first 20-min code is tracked' },
+  { program: 'RPM', code: '99458', desc: 'Treatment management, each additional 20 min/month', live: true, note: 'Auto-drafted once ≥40 min/month is logged' },
   { program: 'CCM', code: 'G0506', desc: 'Comprehensive care planning at CCM initiation (one-time)', live: true, note: 'Auto-billed at CCM enrollment' },
-  { program: 'CCM', code: '99490', desc: 'Chronic Care Management, first 20 min/month', live: true, note: 'Auto-drafted once ≥20 min/month is logged' },
-  { program: 'CCM', code: '99439', desc: 'Chronic Care Management, each additional 20 min/month', live: false, note: 'Not yet automated' },
-  { program: 'CCM', code: '99487', desc: 'Complex CCM, first 60 min/month', live: false, note: 'Not yet automated — complex CCM isn’t distinguished from standard CCM yet' },
-  { program: 'CCM', code: '99489', desc: 'Complex CCM, each additional 30 min/month', live: false, note: 'Not yet automated' },
+  { program: 'CCM', code: '99490', desc: 'Chronic Care Management, first 20 min/month', live: true, note: 'Auto-drafted once ≥20 min/month is logged (standard patients)' },
+  { program: 'CCM', code: '99439', desc: 'Chronic Care Management, each additional 20 min/month', live: true, note: 'Auto-drafted once ≥40 min/month is logged (standard patients)' },
+  { program: 'CCM', code: '99487', desc: 'Complex CCM, first 60 min/month', live: true, note: 'Auto-drafted once ≥60 min/month is logged, only for patients a care manager has manually flagged Complex CCM' },
+  { program: 'CCM', code: '99489', desc: 'Complex CCM, each additional 30 min/month', live: true, note: 'Auto-drafted once ≥90 min/month is logged, only for patients flagged Complex CCM' },
 ]
 
 const cardStyle = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }

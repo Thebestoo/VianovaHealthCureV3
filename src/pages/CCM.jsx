@@ -411,6 +411,22 @@ export default function CCM() {
     } finally { setDisenrolling(false) }
   }
 
+  // Complex CCM (99487/99489) bills against a higher minute threshold and requires
+  // CMS's moderate/high medical-decision-making criteria — a clinical judgment call,
+  // so this stays a manual toggle rather than something inferred from time logged.
+  async function toggleComplexCcm() {
+    const next = !selected.complex_ccm
+    setSelected(s => ({ ...s, complex_ccm: next ? 1 : 0 }))
+    setPatients(ps => ps.map(p => p.id === selected.id ? { ...p, complex_ccm: next ? 1 : 0 } : p))
+    try {
+      await fetch(`/api/ccm/patients/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({ complex_ccm: next }),
+      })
+    } catch {}
+  }
+
   // Drafts goals/tasks/care_team from the patient's clinical picture (conditions,
   // vitals, labs, care gaps, check-in barriers) for the clinician to review and edit —
   // never persisted until the clinician explicitly saves the plan.
@@ -436,8 +452,9 @@ export default function CCM() {
   }
 
   const monthlyMinutes = sumMinutesThisMonth(checkins)
-  const ccmEligible = monthlyMinutes >= 20
-  const minutesPct = Math.min(100, (monthlyMinutes / 20) * 100)
+  const ccmThreshold = selected?.complex_ccm ? 60 : 20
+  const ccmEligible = monthlyMinutes >= ccmThreshold
+  const minutesPct = Math.min(100, (monthlyMinutes / ccmThreshold) * 100)
 
   const doneTasks = planTasks.filter(t => t.done).length
   const totalTasks = planTasks.length
@@ -598,6 +615,10 @@ export default function CCM() {
                         <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                           {/* DOB/phone shown once, in the PatientSnapshot card below — not repeated here */}
                           <span style={{ background: 'var(--primary-light)', color: 'var(--primary-dark)', padding: '3px 10px', borderRadius: 99, fontWeight: 700, fontSize: 11.5 }}>{selected.condition}</span>
+                          <button type="button" onClick={toggleComplexCcm} title="Toggle complex CCM billing (99487/99489 vs 99490/99439)"
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, background: selected.complex_ccm ? 'var(--warning-light)' : 'var(--surface2)', color: selected.complex_ccm ? 'var(--warning)' : 'var(--text3)', border: '1px solid ' + (selected.complex_ccm ? 'var(--warning-light)' : 'var(--border)'), padding: '3px 10px', borderRadius: 99, fontWeight: 700, fontSize: 11.5, cursor: 'pointer' }}>
+                            {selected.complex_ccm ? '● Complex CCM' : 'Standard CCM'}
+                          </button>
                           {selected.consent_date && (
                             <span style={{ color: 'var(--success)', fontWeight: 600, fontSize: 12 }}>
                               ✓ Consent {selected.consent_date}{selected.consent_method ? ` (${selected.consent_method})` : ''}
@@ -622,7 +643,7 @@ export default function CCM() {
                     </div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                       <div style={{ textAlign: 'center', background: ccmEligible ? 'var(--success-light)' : 'var(--warning-light)', border: `1px solid ${ccmEligible ? 'var(--success-light)' : 'var(--warning-light)'}`, borderRadius: 14, padding: '12px 20px', minWidth: 112 }}>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: ccmEligible ? 'var(--success)' : 'var(--warning)', letterSpacing: '-.01em' }}>{monthlyMinutes}<span style={{ fontSize: 12.5, fontWeight: 600 }}>/20</span></div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: ccmEligible ? 'var(--success)' : 'var(--warning)', letterSpacing: '-.01em' }}>{monthlyMinutes}<span style={{ fontSize: 12.5, fontWeight: 600 }}>/{ccmThreshold}</span></div>
                         <div style={{ height: 4, borderRadius: 4, background: 'var(--border)', marginTop: 6, overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${minutesPct}%`, background: ccmEligible ? 'var(--success)' : 'var(--warning)', transition: 'width .4s' }} />
                         </div>

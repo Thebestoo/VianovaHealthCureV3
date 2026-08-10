@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import toast from 'react-hot-toast'
-import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, AlertCircle, Plus, RefreshCw, Users, Search, UserMinus, Wand2, X, Clock } from 'lucide-react'
+import { Activity, Heart, Thermometer, Wind, Droplets, AlertTriangle, AlertCircle, Plus, RefreshCw, Users, Search, UserMinus, Wand2, X, Clock, Wifi, WifiOff } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
 import PatientSnapshot from '../components/PatientSnapshot.jsx'
@@ -42,6 +42,17 @@ function worstStatusFor(reading) {
 }
 
 const STATUS_RANK = { critical: 0, warning: 1, normal: 2, none: 3 }
+
+// A device counts as "online" if it has reported a reading within the last 48h —
+// generous enough to tolerate a missed daily sync without flagging every patient
+// offline, but tight enough to surface a device that's actually stopped transmitting.
+// This is also what CPT 99454 (16+ of 30 days) needs the data for; the badge here is
+// just the at-a-glance version of the same signal.
+const DEVICE_ONLINE_WINDOW_MS = 48 * 60 * 60 * 1000
+function deviceOnlineFor(reading) {
+  if (!reading?.recorded_at) return false
+  return Date.now() - new Date(reading.recorded_at).getTime() < DEVICE_ONLINE_WINDOW_MS
+}
 
 function timeAgo(iso) {
   if (!iso) return null
@@ -312,6 +323,10 @@ export default function RPM() {
     () => Object.fromEntries(patients.map(p => [p.id, worstStatusFor(patientLatest[p.id])])),
     [patients, patientLatest]
   )
+  const rosterOnline = useMemo(
+    () => Object.fromEntries(patients.map(p => [p.id, deviceOnlineFor(patientLatest[p.id])])),
+    [patients, patientLatest]
+  )
   const statusCounts = useMemo(() => patients.reduce((acc, p) => {
     const s = rosterStatus[p.id]
     if (s === 'critical' || s === 'warning') acc[s]++
@@ -426,6 +441,11 @@ export default function RPM() {
                     <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.condition || 'No condition set'}</div>
                   </div>
                   {rosterStatus[p.id] !== 'none' && (
+                    rosterOnline[p.id]
+                      ? <Wifi size={12} title="Device online — reading within 48h" color="var(--success)" style={{ flexShrink: 0 }} />
+                      : <WifiOff size={12} title="Device offline — no reading in 48h+" color="var(--text3)" style={{ flexShrink: 0 }} />
+                  )}
+                  {rosterStatus[p.id] !== 'none' && (
                     <span title={rosterStatus[p.id] === 'critical' ? 'Critical vitals' : rosterStatus[p.id] === 'warning' ? 'Out of range' : 'Vitals normal'}
                       style={{ width: 8, height: 8, borderRadius: 99, flexShrink: 0, background: STATUS_COLORS[rosterStatus[p.id]] }} />
                   )}
@@ -455,7 +475,14 @@ export default function RPM() {
                       {initials(selected.name)}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--text)', letterSpacing: '-.01em' }}>{selected.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--text)', letterSpacing: '-.01em' }}>{selected.name}</div>
+                        <span title={deviceOnlineFor(latest) ? 'Device online — reading within 48h' : 'Device offline — no reading in 48h+'}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: deviceOnlineFor(latest) ? 'var(--success-light)' : 'var(--surface2)', color: deviceOnlineFor(latest) ? 'var(--success)' : 'var(--text3)' }}>
+                          {deviceOnlineFor(latest) ? <Wifi size={11} /> : <WifiOff size={11} />}
+                          {deviceOnlineFor(latest) ? 'Online' : 'Offline'}
+                        </span>
+                      </div>
                       {readings.length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
                           <Clock size={11} /> Vitals updated {timeAgo(latest.recorded_at)}
