@@ -66,6 +66,7 @@ const NAV_GROUPS = [
         children: [
           { label: 'RPM Enrollment', path: '/rpm' },
           { label: 'CCM Enrollment', path: '/ccm' },
+          { label: 'Billing Guide',  path: '/rpm-ccm-guide' },
         ],
       },
       {

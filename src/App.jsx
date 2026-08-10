@@ -35,6 +35,7 @@ const Channels         = lazy(() => import('./pages/Channels.jsx'))
 const Calls            = lazy(() => import('./pages/Calls.jsx'))
 const CCM              = lazy(() => import('./pages/CCM.jsx'))
 const RPM              = lazy(() => import('./pages/RPM.jsx'))
+const RpmCcmGuide       = lazy(() => import('./pages/RpmCcmGuide.jsx'))
 
 function PageLoader() {
   return (
@@ -105,6 +106,7 @@ function AppRoutes() {
               <Route path="/calls"            element={<P component={Calls} />} />
               <Route path="/ccm"              element={<PBeta component={CCM} featureKey="ccm" title="Chronic Care Management" accent="#8b5cf6" />} />
               <Route path="/rpm"              element={<PBeta component={RPM} featureKey="rpm" title="Remote Patient Monitoring" accent="#0ea5e9" />} />
+              <Route path="/rpm-ccm-guide"    element={<P component={RpmCcmGuide} />} />
             </Routes>
           </Suspense>
         </Layout>
