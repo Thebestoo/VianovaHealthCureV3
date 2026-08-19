@@ -379,6 +379,25 @@ function validEmail(e) {
 
 const client = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
+// Every AI-drafting endpoint in this file parses the LLM's response as JSON. Even
+// with response_format: 'json_object', a response can still arrive truncated (hit
+// max_tokens mid-object) or wrapped in stray prose/markdown fences — a bare
+// JSON.parse on the raw content throws on all of those. This extracts the first
+// balanced-looking {...} or [...] substring before parsing, so the same class of
+// near-miss output that already works fine everywhere the regex-extraction pattern
+// was used by hand also works everywhere else. Still throws (callers keep their
+// existing try/catch + fallback) if no JSON-shaped substring is found at all.
+function parseAiJson(content) {
+  const text = (content || '').trim()
+  if (!text) throw new Error('Empty AI response')
+  const start = text.search(/[{[]/)
+  if (start === -1) throw new Error('AI response contained no JSON')
+  const closer = text[start] === '{' ? '}' : ']'
+  const end = text.lastIndexOf(closer)
+  if (end === -1 || end <= start) throw new Error('AI response contained no JSON')
+  return JSON.parse(text.slice(start, end + 1))
+}
+
 // ── specialty-based case routing ───────────────────────────────────────────────
 // Doctors declare one specialty on their account (users.specialty). New cases are
 // classified against this list from the AI analysis (keyword match against the
@@ -806,8 +825,7 @@ app.post('/api/analyze', auth, aiLimiter, async (req, res) => {
 
     let analysis
     try {
-      const raw = message.choices[0].message.content.trim()
-      analysis = JSON.parse(raw)
+      analysis = parseAiJson(message.choices[0].message.content)
     } catch {
       return res.status(500).json({ error: 'AI returned malformed JSON', raw: message.choices[0].message.content })
     }
@@ -1939,7 +1957,7 @@ app.post('/api/cases', auth, async (req, res) => {
     })
 
     let analysis
-    try { analysis = JSON.parse(message.choices[0].message.content.trim()) }
+    try { analysis = parseAiJson(message.choices[0].message.content) }
     catch { return res.status(500).json({ error: 'AI returned malformed JSON' }) }
 
     const caseId = randomUUID()
@@ -2322,6 +2340,24 @@ app.get('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
   res.json({ readings: rows })
 })
 
+// Vitals by roster patient — mirrors /api/labs and /api/care-gaps, both of which
+// take patient_id as a gen_patients.id query param, so callers that only know the
+// roster id (e.g. the CCM Care Plan Panel, which has no rpm_patients.id of its own)
+// don't have to separately resolve this patient's RPM enrollment first. rpm_readings
+// is keyed by rpm_patients.id, not gen_patients.id, so this resolves through the
+// gen_patient_id bridge column via a join instead of querying rpm_readings directly.
+app.get('/api/vitals', auth, async (req, res) => {
+  const { patient_id } = req.query
+  if (!patient_id) return res.status(400).json({ error: 'patient_id required' })
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100)
+  const rows = (await db.execute({
+    sql: `SELECT r.* FROM rpm_readings r JOIN rpm_patients rp ON r.patient_id = rp.id
+          WHERE rp.gen_patient_id = ? AND rp.owner_email = ? ORDER BY r.recorded_at DESC LIMIT ${limit}`,
+    args: [patient_id, req.apiKey],
+  })).rows
+  res.json(rows)
+})
+
 app.post('/api/rpm/patients/:pid/readings', auth, async (req, res) => {
   const { heart_rate, spo2, systolic_bp, diastolic_bp, temperature, resp_rate, note, minutes, call_id } = req.body
   const rpmPatient = await loadOwnedRpmPatient(req.params.pid, req.apiKey)
@@ -2576,13 +2612,23 @@ async function loadOwnedCcmPatient(pid, ownerEmail) {
 // manually later. Throws on failure; callers decide whether that should fail the
 // whole request (manual draft) or just skip silently (auto-draft at enroll).
 async function draftCarePlanForPatient(pid, patient) {
+  // lab_results and care_gaps are keyed by gen_patients.id; ccm_checkins is keyed by
+  // pid (ccm_patients.id). rpm_readings is keyed by rpm_patients.id — a THIRD, distinct
+  // id space, not gen_patients.id — so it needs its own resolution step below rather
+  // than reusing genPid directly. Passing `pid` (ccm_patients.id) to all four queries
+  // was the original bug; passing gen_patients.id to rpm_readings would just be a
+  // different wrong id — none of these three tables share a key.
+  const genPid = patient.gen_patient_id || null
+  const rpmPid = genPid
+    ? await db.execute({ sql: 'SELECT id FROM rpm_patients WHERE gen_patient_id = ? LIMIT 1', args: [genPid] }).then(r => r.rows[0]?.id || null).catch(() => null)
+    : null
   // Four independent lookups against different tables — run concurrently instead
   // of one round trip after another (this runs inline during enrollment, so its
   // latency is directly in the way of the response).
   const [vitalsRows, labRows, gapRows, barrierRows] = await Promise.all([
-    db.execute({ sql: 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 3', args: [pid] }).then(r => r.rows).catch(() => []),
-    db.execute({ sql: 'SELECT test_name, value, unit, interpretation FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 5', args: [pid] }).then(r => r.rows).catch(() => []),
-    db.execute({ sql: "SELECT gap_type, description, priority FROM care_gaps WHERE patient_id = ? AND status = 'open' LIMIT 5", args: [pid] }).then(r => r.rows).catch(() => []),
+    rpmPid ? db.execute({ sql: 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 3', args: [rpmPid] }).then(r => r.rows).catch(() => []) : [],
+    genPid ? db.execute({ sql: 'SELECT test_name, value, unit, interpretation FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 5', args: [genPid] }).then(r => r.rows).catch(() => []) : [],
+    genPid ? db.execute({ sql: "SELECT gap_type, description, priority FROM care_gaps WHERE patient_id = ? AND status = 'open' LIMIT 5", args: [genPid] }).then(r => r.rows).catch(() => []) : [],
     db.execute({ sql: 'SELECT barriers, created_at FROM ccm_checkins WHERE patient_id = ? AND barriers IS NOT NULL ORDER BY created_at DESC LIMIT 3', args: [pid] }).then(r => r.rows).catch(() => []),
   ])
 
@@ -2623,7 +2669,13 @@ Provide 2-4 goals and 4-8 tasks addressing the open care gaps and recent barrier
     response_format: { type: 'json_object' },
     temperature: 0.3, max_tokens: 900,
   })
-  const parsed = JSON.parse(chat.choices[0].message.content)
+  // Unlike the other AI-drafting endpoints in this file, this used to be a bare
+  // JSON.parse with no fallback — one malformed LLM response would throw past the
+  // enrollment try/catch and skip the drafted plan entirely with no diagnostic.
+  const raw = chat.choices[0].message.content
+  const m = raw.match(/\{[\s\S]*\}/)
+  if (!m) throw new Error('AI returned an unparseable care plan')
+  const parsed = JSON.parse(m[0])
   return {
     goals: Array.isArray(parsed.goals) ? parsed.goals : [],
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
@@ -2663,7 +2715,10 @@ app.post('/api/ccm/patients', auth, aiLimiter, async (req, res) => {
     try {
       // Built from the fields just inserted above rather than re-querying
       // ccm_patients — the row can't have changed in the microseconds since.
-      const draft = await draftCarePlanForPatient(id, { name, condition, conditions, medications, allergies })
+      // gen_patient_id must be included — draftCarePlanForPatient needs it to look
+      // up real vitals/labs/care-gaps (those tables are keyed by gen_patients.id,
+      // not this freshly-created ccm_patients.id).
+      const draft = await draftCarePlanForPatient(id, { name, condition, conditions, medications, allergies, gen_patient_id })
       await db.execute({
         sql: `INSERT INTO ccm_care_plans (patient_id, owner_key, template, tasks, goals, care_team, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
         args: [id, req.apiKey, condition ? `AI-drafted at enrollment — ${condition}` : 'AI-drafted at enrollment',
@@ -2851,8 +2906,8 @@ Open care plan tasks: ${openTasks.join('; ') || 'none'}
 Previous check-ins (most recent first):
 ${history || 'none on record — this is the first check-in'}
 
-Write a concise, professional check-in note (2-3 sentences) documenting a routine telephone check-in with ${patient.name}, covering symptom review, medication adherence/reconciliation, and progress on the open tasks above. If there are previous check-ins, reference continuity (e.g. follow-up on a prior barrier) rather than repeating the same note verbatim. Suggest a realistic minutes value for a CCM call (typically 10-20).
-Respond with JSON only: {"minutes": number, "notes": "string", "plan_update": "1 short sentence or empty string"}`
+Write a concise, professional check-in note (2-3 sentences) documenting a routine telephone check-in with ${patient.name}, covering symptom review, medication adherence/reconciliation, and progress on the open tasks above. If there are previous check-ins, reference continuity (e.g. follow-up on a prior barrier) rather than repeating the same note verbatim. Suggest a realistic minutes value for a CCM call (typically 10-20). Only name a barrier to care (e.g. transportation, cost, health literacy, social support) if the history above actually suggests one — leave it an empty string if nothing indicates a barrier.
+Respond with JSON only: {"minutes": number, "notes": "string", "barriers": "string or empty", "plan_update": "1 short sentence or empty string"}`
 
     try {
       const chat = await client.chat.completions.create({
@@ -2862,9 +2917,9 @@ Respond with JSON only: {"minutes": number, "notes": "string", "plan_update": "1
       })
       const m = chat.choices[0].message.content.match(/\{[\s\S]*\}/)
       const parsed = m ? JSON.parse(m[0]) : null
-      res.json(parsed || { minutes: 15, notes: 'Routine telephone check-in completed with patient.', plan_update: '' })
+      res.json(parsed || { minutes: 15, notes: 'Routine telephone check-in completed with patient.', barriers: '', plan_update: '' })
     } catch {
-      res.json({ minutes: 15, notes: 'Routine telephone check-in completed with patient.', plan_update: '' })
+      res.json({ minutes: 15, notes: 'Routine telephone check-in completed with patient.', barriers: '', plan_update: '' })
     }
   } catch (e) { res.status(500).json({ error: 'Failed to draft check-in suggestion', detail: e.message }) }
 })
@@ -3247,6 +3302,31 @@ app.delete('/api/labs/:id', auth, async (req, res) => {
   res.json({ ok: true })
 })
 
+app.post('/api/labs/ai-suggest-note', auth, aiLimiter, async (req, res) => {
+  const { patient_id, test_name, value, unit, reference_low, reference_high } = req.body
+  if (!patient_id || !test_name || value == null || value === '') return res.json({ notes: '' })
+  const patient = (await db.execute({ sql: 'SELECT * FROM gen_patients WHERE id = ? AND owner_email = ?', args: [patient_id, req.apiKey] })).rows[0]
+  if (!patient) return res.status(404).json({ error: 'Patient not found' })
+
+  const key = test_name.toLowerCase().replace(/\s+/g, '')
+  const ref = LAB_REFS[key] || LAB_REFS[test_name.toLowerCase()] || {}
+  const refLow  = reference_low  || ref.low  || null
+  const refHigh = reference_high || ref.high || null
+  const interp = interpretLab(test_name, parseFloat(value), refLow, refHigh, ref.critical_low ?? null, ref.critical_high ?? null)
+
+  const prompt = `Draft a brief clinical note (1-2 sentences) for this lab result, as if written by the clinician entering it into the chart. Reference the value and interpretation, suggest follow-up only if clinically warranted, no boilerplate.
+Test: ${test_name} | Value: ${value} ${unit || ''} | Reference: ${refLow ?? '?'}–${refHigh ?? '?'} ${unit || ''} | Interpretation: ${interp}
+Patient: ${patient.name}, conditions: ${patient.conditions || 'none'}`
+  try {
+    const chat = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1, max_tokens: 120,
+    })
+    res.json({ notes: chat.choices[0].message.content.trim() })
+  } catch { res.json({ notes: '' }) }
+})
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // FEATURE 9 — APPOINTMENTS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3317,17 +3397,17 @@ app.post('/api/appointments/suggest', auth, aiLimiter, async (req, res) => {
   const prompt = `Suggest the most appropriate appointment type for this patient.
 Patient: ${patient.name}, ${patient.sex || 'unknown sex'}, conditions: ${patient.conditions || 'none'}
 Open care gaps: ${gaps.map(g => g.gap_type).join(', ') || 'none'}
-Respond with JSON: {"appointment_type":"string","reason":"1 sentence","duration_minutes":number,"urgency":"routine|urgent|same-day"}`
+Respond with JSON: {"appointment_type":"string","reason":"1 sentence","duration_minutes":number,"urgency":"routine|urgent|same-day","notes":"1-2 sentence draft appointment note a scheduler could edit, referencing the open care gaps if any"}`
 
   try {
     const chat = await client.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1, max_tokens: 150,
+      temperature: 0.1, max_tokens: 200,
     })
     const m = chat.choices[0].message.content.match(/\{[\s\S]*\}/)
-    res.json(m ? JSON.parse(m[0]) : { appointment_type: 'Follow-up Visit', duration_minutes: 30 })
-  } catch (e) { res.json({ appointment_type: 'Follow-up Visit', duration_minutes: 30 }) }
+    res.json(m ? JSON.parse(m[0]) : { appointment_type: 'Follow-up Visit', duration_minutes: 30, notes: '' })
+  } catch (e) { res.json({ appointment_type: 'Follow-up Visit', duration_minutes: 30, notes: '' }) }
 })
 
 app.post('/api/appointments/:id/remind', auth, async (req, res) => {
@@ -3468,7 +3548,7 @@ Return ONLY valid JSON matching the schema above. patient_instructions and patie
       max_tokens: 1500,
       response_format: { type: 'json_object' },
     })
-    const draft = JSON.parse(chat.choices[0].message.content)
+    const draft = parseAiJson(chat.choices[0].message.content)
 
     // Normalize instructions to arrays
     if (!Array.isArray(draft.patient_instructions)) {
@@ -3731,7 +3811,7 @@ Return JSON with keys:
         response_format: { type: 'json_object' },
         temperature: 0.2
       })
-      const ai = JSON.parse(aiRes.choices[0].message.content)
+      const ai = parseAiJson(aiRes.choices[0].message.content)
       await db.execute({
         sql: 'UPDATE adverse_events SET causality = ?, ai_assessment = ?, medwatch_draft = ? WHERE id = ?',
         args: [ai.causality || null, JSON.stringify(ai), ai.medwatch_draft || null, id]
@@ -3791,7 +3871,7 @@ Only report genuine signals, not already-reported ones. Return [] if no new sign
     })
     let signals = []
     try {
-      const parsed = JSON.parse(aiRes.choices[0].message.content)
+      const parsed = parseAiJson(aiRes.choices[0].message.content)
       signals = Array.isArray(parsed) ? parsed : (parsed.signals || [])
     } catch {}
 
@@ -4095,7 +4175,7 @@ ${members.map((m, i) => `${i+1}. ${m.name} | Conditions: ${m.conditions || 'none
 Return JSON: { "stratification": [ { "patient_id": "...", "risk_level": "high"|"medium"|"low", "reason": "brief reason" } ] }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
-    const { stratification = [] } = JSON.parse(aiRes.choices[0].message.content)
+    const { stratification = [] } = parseAiJson(aiRes.choices[0].message.content)
 
     for (const s of stratification) {
       await db.execute({ sql: 'UPDATE cohort_members SET risk_level = ? WHERE cohort_id = ? AND patient_id = ?', args: [s.risk_level, req.params.id, s.patient_id] })
@@ -4117,7 +4197,7 @@ Message should: introduce the program, explain benefits, ask patient to schedule
 Keep it under 120 words. Plain language. Return JSON: { "message": "..." }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.5 })
-    const { message } = JSON.parse(aiRes.choices[0].message.content)
+    const { message } = parseAiJson(aiRes.choices[0].message.content)
     await db.execute({ sql: "UPDATE cohort_members SET outreach_status = 'sent' WHERE cohort_id = ? AND patient_id = ?", args: [req.params.cohortId, req.params.patientId] })
     res.json({ message, patient_name: patient.name })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -4150,7 +4230,7 @@ Return JSON:
 }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
-    const extracted = JSON.parse(aiRes.choices[0].message.content)
+    const extracted = parseAiJson(aiRes.choices[0].message.content)
     res.json({ extracted, patient_id: patient_id || null })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4165,7 +4245,7 @@ Replace: patient names → [PATIENT], provider names → [PROVIDER], dates → [
 Return JSON: { "deidentified_text": "...", "phi_found": ["list of PHI types found"] }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: `${prompt}\n\nNote:\n${note_text.slice(0, 3000)}` }], response_format: { type: 'json_object' }, temperature: 0.1 })
-    const result = JSON.parse(aiRes.choices[0].message.content)
+    const result = parseAiJson(aiRes.choices[0].message.content)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4393,7 +4473,7 @@ Return this exact JSON structure:
       temperature: 0.2,
       max_tokens: 2000,
     })
-    const aiResult = JSON.parse(aiRes.choices[0].message.content)
+    const aiResult = parseAiJson(aiRes.choices[0].message.content)
 
     notify(req.apiKey, tplClinicalDecisionRun({ patientName: patient.name, news2Score: news2.score, news2Label: news2.label, riskLabel: aiResult.risk_label, topDiagnosis: aiResult.differential?.[0]?.diagnosis, alertCount: (aiResult.cards||[]).length })).catch(() => {})
     res.json({
@@ -4469,7 +4549,7 @@ Return JSON:
 }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
-    const result = JSON.parse(aiRes.choices[0].message.content)
+    const result = parseAiJson(aiRes.choices[0].message.content)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4508,7 +4588,7 @@ Return JSON:
       response_format: { type: 'json_object' },
       temperature: 0.1,
     })
-    res.json(JSON.parse(aiRes.choices[0].message.content))
+    res.json(parseAiJson(aiRes.choices[0].message.content))
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -4541,7 +4621,7 @@ Return JSON:
       response_format: { type: 'json_object' },
       temperature: 0.2,
     })
-    res.json(JSON.parse(aiRes.choices[0].message.content))
+    res.json(parseAiJson(aiRes.choices[0].message.content))
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -4581,7 +4661,7 @@ Return JSON:
 }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
-    const ai = JSON.parse(aiRes.choices[0].message.content)
+    const ai = parseAiJson(aiRes.choices[0].message.content)
 
     await db.execute({
       sql: 'INSERT INTO sdoh_assessments (id, patient_id, owner_email, housing, food_security, transportation, financial_strain, social_isolation, education, employment, safety, z_codes, ai_summary, resources_suggested, status, assessed_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -4645,7 +4725,7 @@ Return JSON:
 }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
-    const result = JSON.parse(aiRes.choices[0].message.content)
+    const result = parseAiJson(aiRes.choices[0].message.content)
     const _activeConditions = (result.programs||[]).map(p => p.condition)
     const _overallRisk = result.overall_status === 'critical' ? 'critical' : result.overall_status === 'worsening' ? 'high' : result.overall_status === 'stable' ? 'low' : 'moderate'
     notify(req.apiKey, tplChronicDiseaseUpdate({ patientName: patient.name, conditions: _activeConditions, riskLevel: _overallRisk, lastCheckin: new Date().toISOString().slice(0,10), nextCheckin: null })).catch(() => {})
@@ -4695,7 +4775,7 @@ Return JSON:
 }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
-    const ai = JSON.parse(aiRes.choices[0].message.content)
+    const ai = parseAiJson(aiRes.choices[0].message.content)
 
     const id = randomUUID(); const now = new Date().toISOString()
     await db.execute({
@@ -4812,7 +4892,7 @@ Target system: ${target_system || 'SNOMED CT, LOINC, and RxNorm as appropriate'}
 Return JSON: { "mappings": [ { "original_term": "...", "code": "...", "display": "...", "system": "SNOMED CT"|"LOINC"|"RxNorm"|"ICD-10", "confidence": 0.0-1.0 } ] }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
-    const result = JSON.parse(aiRes.choices[0].message.content)
+    const result = parseAiJson(aiRes.choices[0].message.content)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4857,7 +4937,7 @@ Return JSON:
 }`
 
     const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
-    const result = JSON.parse(aiRes.choices[0].message.content)
+    const result = parseAiJson(aiRes.choices[0].message.content)
     res.json({ ...result, event_count: events.length, period_days: 7 })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -5122,7 +5202,7 @@ Return JSON: { "can_delete": ["list of tables/data that CAN be deleted"], "must_
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }]
     })
-    const report = JSON.parse(aiRes.choices[0].message.content)
+    const report = parseAiJson(aiRes.choices[0].message.content)
     await db.execute({
       sql: `UPDATE patient_consents SET status='deletion_requested' WHERE id=?`,
       args: [req.params.id]
@@ -5272,7 +5352,7 @@ Return JSON with these exact keys:
       ]
     })
 
-    const coding = JSON.parse(aiResp.choices[0].message.content)
+    const coding = parseAiJson(aiResp.choices[0].message.content)
     const now = new Date().toISOString()
     const id = randomUUID()
 
@@ -5332,7 +5412,7 @@ Return JSON: { "issues": [{ "type": "unbundling"|"upcoding"|"missing_modifier"|"
       ]
     })
 
-    const scrubResult = JSON.parse(aiResp.choices[0].message.content)
+    const scrubResult = parseAiJson(aiResp.choices[0].message.content)
     await db.execute({ sql: `UPDATE billing_claims SET scrub_results = ? WHERE id = ?`, args: [JSON.stringify(scrubResult), claim.id] })
 
     res.json(scrubResult)
@@ -5507,7 +5587,7 @@ app.post('/api/nlp-notes/process', auth, aiLimiter, async (req, res) => {
       }]
     })
     let extracted = {}
-    try { extracted = JSON.parse(nlpResp.choices[0].message.content) } catch {}
+    try { extracted = parseAiJson(nlpResp.choices[0].message.content) } catch {}
 
     // Step 2: De-identification — regex pass first
     let deidentified_text = note_text
@@ -5526,7 +5606,7 @@ app.post('/api/nlp-notes/process', auth, aiLimiter, async (req, res) => {
           content: `De-identify this clinical note by replacing: patient names, provider names, facility names, addresses, phone numbers, dates (replace with relative terms like 'Day 1', 'Week 3'), MRNs, and any other PHI. Return JSON: { "deidentified_text": "string" }\n\nNote:\n${deidentified_text}`
         }]
       })
-      const deidParsed = JSON.parse(deidResp.choices[0].message.content)
+      const deidParsed = parseAiJson(deidResp.choices[0].message.content)
       if (deidParsed.deidentified_text) deidentified_text = deidParsed.deidentified_text
     } catch {}
 
@@ -5610,7 +5690,7 @@ app.post('/api/nlp-notes/deidentify-batch', auth, aiLimiter, async (req, res) =>
           max_tokens: 500,
           messages: [{ role: 'user', content: `De-identify this clinical note by replacing: patient names, provider names, facility names, addresses, phone numbers, dates, MRNs, and any other PHI. Return JSON: { "deidentified_text": "string" }\n\nNote:\n${deidentified_text}` }]
         })
-        const p = JSON.parse(deidResp.choices[0].message.content)
+        const p = parseAiJson(deidResp.choices[0].message.content)
         if (p.deidentified_text) deidentified_text = p.deidentified_text
       } catch {}
       await db.execute({ sql: `UPDATE nlp_notes SET deidentified_text = ? WHERE id = ?`, args: [deidentified_text, nid] })

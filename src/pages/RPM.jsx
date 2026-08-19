@@ -8,38 +8,21 @@ import EmptyState from '../components/EmptyState.jsx'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts'
+import { VITALS_REF, vitalStatus, worstVitalStatus } from '../utils/vitalsRef.js'
 
-const VITALS_CONFIG = [
-  { key: 'heart_rate',     label: 'Heart Rate',     unit: 'bpm',   icon: Heart,        normal: [60, 100],  critical: [40, 130], color: 'var(--danger)' },
-  { key: 'spo2',           label: 'SpO2',            unit: '%',     icon: Droplets,     normal: [95, 100],  critical: [90, 100], color: 'var(--primary)' },
-  { key: 'systolic_bp',   label: 'Systolic BP',     unit: 'mmHg',  icon: Activity,     normal: [90, 140],  critical: [70, 180], color: '#8b5cf6' },
-  { key: 'diastolic_bp',  label: 'Diastolic BP',    unit: 'mmHg',  icon: Activity,     normal: [60, 90],   critical: [40, 120], color: '#7c3aed' },
-  { key: 'temperature',   label: 'Temperature',     unit: '°C',    icon: Thermometer,  normal: [36.1, 37.5], critical: [35, 39], color: '#f97316' },
-  { key: 'resp_rate',     label: 'Resp. Rate',      unit: '/min',  icon: Wind,         normal: [12, 20],   critical: [8, 30],  color: '#06b6d4' },
-]
+// Icon/color are presentational and RPM-specific, so they stay local — the
+// normal/critical ranges themselves come from VITALS_REF, shared with the CCM
+// Care Plan Panel's Vitals section so the two pages can't silently disagree on
+// what counts as abnormal.
+const VITAL_ICON  = { heart_rate: Heart, spo2: Droplets, systolic_bp: Activity, diastolic_bp: Activity, temperature: Thermometer, resp_rate: Wind }
+const VITAL_COLOR = { heart_rate: 'var(--danger)', spo2: 'var(--primary)', systolic_bp: '#8b5cf6', diastolic_bp: '#7c3aed', temperature: '#f97316', resp_rate: '#06b6d4' }
+const VITALS_CONFIG = VITALS_REF.map(v => ({ ...v, icon: VITAL_ICON[v.key], color: VITAL_COLOR[v.key] }))
 
-function statusFor(key, val) {
-  const cfg = VITALS_CONFIG.find(v => v.key === key)
-  if (!cfg || val === '' || val === null) return 'normal'
-  const n = parseFloat(val)
-  if (n < cfg.critical[0] || n > cfg.critical[1]) return 'critical'
-  if (n < cfg.normal[0]   || n > cfg.normal[1])   return 'warning'
-  return 'normal'
-}
-
+const statusFor = vitalStatus
 // Worst status across every tracked vital in a single reading — drives the
 // roster-wide triage dot/sort so a patient shows red the moment ANY vital
 // (not just the one currently in view) goes critical.
-function worstStatusFor(reading) {
-  if (!reading) return 'none'
-  let worst = 'normal'
-  for (const cfg of VITALS_CONFIG) {
-    const s = statusFor(cfg.key, reading[cfg.key])
-    if (s === 'critical') return 'critical'
-    if (s === 'warning') worst = 'warning'
-  }
-  return worst
-}
+const worstStatusFor = worstVitalStatus
 
 const STATUS_RANK = { critical: 0, warning: 1, normal: 2, none: 3 }
 
@@ -270,19 +253,36 @@ export default function RPM() {
   }
 
   // Drafts a short clinical note interpreting the entered vitals so staff
-  // don't have to eyeball each value against normal ranges by hand.
-  async function aiSuggestNote() {
-    if (!form.patient_id || aiSuggesting) return
+  // don't have to eyeball each value against normal ranges by hand. Accepts
+  // explicit patientId/formOverride so it can be fired right after a patient
+  // is picked, before React has committed the corresponding setForm update.
+  async function aiSuggestNote(patientId = form.patient_id, formOverride = form) {
+    if (!patientId || aiSuggesting) return
     setAiSuggesting(true)
     try {
-      const r = await fetch(`/api/rpm/patients/${form.patient_id}/readings/ai-suggest`, {
+      const r = await fetch(`/api/rpm/patients/${patientId}/readings/ai-suggest`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...formOverride, patient_id: patientId }),
       })
       const d = await r.json()
       if (d.note) setForm(f => ({ ...f, note: d.note }))
     } catch {} finally { setAiSuggesting(false) }
+  }
+
+  // Removes manual data entry from the Log Reading flow entirely: the moment
+  // a patient is picked, vitals seed from their last recorded reading (or a
+  // clinically-normal baseline if they have no history yet) and a note drafts
+  // automatically — everything stays editable, nothing starts blank.
+  function autofillPatientReading(patientId) {
+    if (!patientId) { setForm(f => ({ ...f, patient_id: '' })); return }
+    const last = patientLatest[patientId]
+    const vitals = {}
+    VITALS_CONFIG.forEach(cfg => {
+      vitals[cfg.key] = last?.[cfg.key] != null ? String(last[cfg.key]) : String(Math.round((cfg.normal[0] + cfg.normal[1]) / 2))
+    })
+    setForm(f => ({ ...f, patient_id: patientId, ...vitals }))
+    aiSuggestNote(patientId, vitals)
   }
 
   function closeAddPatient() {
@@ -355,7 +355,7 @@ export default function RPM() {
           <button className="btn btn-secondary btn-sm" onClick={() => { setShowAddPatient(true) }}>
             <Plus size={14} /> Add Patient
           </button>
-          <button className="btn btn-primary btn-sm" onClick={() => { setAdding(true); setForm(f => ({ ...f, patient_id: selected?.id || '' })) }}>
+          <button className="btn btn-primary btn-sm" onClick={() => { setAdding(true); if (selected?.id) autofillPatientReading(selected.id) }}>
             <Activity size={14} /> Log Reading
           </button>
         </div>
@@ -665,14 +665,14 @@ export default function RPM() {
                   style={{ padding: '5px 11px', borderRadius: 8, border: '1px dashed var(--primary-light)', background: 'var(--primary-light)', color: 'var(--primary-dark)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
                   Use Normal Range
                 </button>
-                <button type="button" onClick={aiSuggestNote} disabled={!form.patient_id || aiSuggesting}
+                <button type="button" onClick={() => aiSuggestNote()} disabled={!form.patient_id || aiSuggesting}
                   style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 8, border: '1px dashed var(--primary-light)', background: form.patient_id ? 'var(--primary-light)' : 'var(--surface2)', color: form.patient_id ? 'var(--primary-dark)' : 'var(--text3)', fontSize: 11.5, fontWeight: 600, cursor: form.patient_id ? 'pointer' : 'default' }}>
                   <Wand2 size={12} /> {aiSuggesting ? 'Drafting…' : 'AI Suggest Note'}
                 </button>
               </div>
               <div>
                 <label className="form-label">Patient</label>
-                <select value={form.patient_id} onChange={e => setForm(f => ({ ...f, patient_id: e.target.value }))} required
+                <select value={form.patient_id} onChange={e => autofillPatientReading(e.target.value)} required
                   className="form-select">
                   <option value="">— select —</option>
                   {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

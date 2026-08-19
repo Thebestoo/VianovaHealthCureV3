@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
-import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, Phone, Target, Edit3, Save, X, Search, UserMinus, Timer, Pause, Play, Wand2, Users, DollarSign, History } from 'lucide-react'
+import { ClipboardList, Plus, CheckCircle2, Circle, Clock, Calendar, ChevronDown, ChevronUp, Phone, Target, Edit3, Save, X, Search, UserMinus, Timer, Pause, Play, Wand2, Users, DollarSign, History, FileJson } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import AiHelp from '../components/AiHelp.jsx'
 import PatientSnapshot from '../components/PatientSnapshot.jsx'
 import EmptyState from '../components/EmptyState.jsx'
+import { VITALS_REF, vitalStatus } from '../utils/vitalsRef.js'
+import { labToFhirObservation, readingToFhirObservations, careGapToFhirDetectedIssue } from '../utils/toFhir.js'
 
 const QUICK_MINUTES = [5, 10, 15, 20, 30]
 const NOTE_TEMPLATES = [
@@ -110,6 +112,13 @@ export default function CCM() {
   const [historyExpanded, setHistoryExpanded] = useState({})
   const [aiDrafting, setAiDrafting] = useState(false)
   const [doctorDirectory, setDoctorDirectory] = useState([]) // platform doctors, for the Care Team "select a doctor" picker
+  // Clinical Context (Care Gaps / Labs / Vitals) — read-only, sourced from the
+  // shared gen_patients-scoped endpoints so this stays in sync with the
+  // Patients/RPM pages instead of duplicating clinical data entry here.
+  const [careGaps, setCareGaps]         = useState([])
+  const [labResults, setLabResults]     = useState([])
+  const [vitalsReadings, setVitalsReadings] = useState([])
+  const [showFhirContext, setShowFhirContext] = useState(false)
   // Backing refs for toggleTask()'s race-proof save queue — see toggleTask below.
   const planTasksRef = useRef(planTasks)
   const toggleQueueRef = useRef(Promise.resolve())
@@ -123,6 +132,9 @@ export default function CCM() {
       loadPlan(selected.id)
       loadCheckins(selected.id)
       loadRelatedCalls(selected.id)
+      loadCareGaps(selected.gen_patient_id)
+      loadLabResults(selected.gen_patient_id)
+      loadVitalsForPlan(selected.gen_patient_id)
       setTimerRunning(false)
       setTimerSeconds(0)
     }
@@ -215,6 +227,36 @@ export default function CCM() {
       const d = await r.json()
       setRelatedCalls(d.calls || [])
     } catch { setRelatedCalls([]) }
+  }
+
+  // Care Gaps / Labs / Vitals are all scoped to gen_patients.id, not the CCM
+  // enrollment id — a newly-enrolled patient without a linked gen_patient_id
+  // simply shows no clinical context rather than erroring.
+  async function loadCareGaps(genPid) {
+    if (!genPid) return setCareGaps([])
+    try {
+      const r = await fetch(`/api/care-gaps?patient_id=${genPid}&status=open`, { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setCareGaps(Array.isArray(d) ? d : [])
+    } catch { setCareGaps([]) }
+  }
+
+  async function loadLabResults(genPid) {
+    if (!genPid) return setLabResults([])
+    try {
+      const r = await fetch(`/api/labs?patient_id=${genPid}`, { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setLabResults(Array.isArray(d) ? d : [])
+    } catch { setLabResults([]) }
+  }
+
+  async function loadVitalsForPlan(genPid) {
+    if (!genPid) return setVitalsReadings([])
+    try {
+      const r = await fetch(`/api/vitals?patient_id=${genPid}&limit=3`, { headers: { 'x-api-key': key } })
+      const d = await r.json()
+      setVitalsReadings(Array.isArray(d) ? d : [])
+    } catch { setVitalsReadings([]) }
   }
 
   // Enrollment now pulls demographics straight from the existing Patients
@@ -337,6 +379,7 @@ export default function CCM() {
         ...f,
         minutes: f.minutes || String(d.minutes ?? 15),
         notes: d.notes || f.notes,
+        barriers: d.barriers ?? f.barriers,
         plan_update: d.plan_update || f.plan_update,
       }))
     } catch {} finally { setAiSuggesting(false) }
@@ -459,6 +502,11 @@ export default function CCM() {
   const doneTasks = planTasks.filter(t => t.done).length
   const totalTasks = planTasks.length
   const progressPct = totalTasks ? (doneTasks / totalTasks) * 100 : 0
+
+  // lab_results has no dedicated workflow-status column — interpretation
+  // (N/H/L/HH/LL) doubles as that status. A row missing either it or a
+  // result_date is incomplete/unreliable and shouldn't be surfaced here.
+  const visibleLabs = labResults.filter(l => l.result_date && l.interpretation)
 
   const filteredPatients = patients
     .filter(p => p.name?.toLowerCase().includes(search.toLowerCase()) || p.condition?.toLowerCase().includes(search.toLowerCase()))
@@ -679,6 +727,111 @@ export default function CCM() {
                 </div>
 
                 <PatientSnapshot patient={selected} compact />
+
+                {/* Clinical Context — Care Gaps / Labs / Vitals, sourced from the same
+                    gen_patients-scoped data as the Patients/RPM pages so this can't drift
+                    into its own copy of clinical state. FHIR-interoperable via utils/toFhir.js,
+                    the reverse direction of the Bundle import parser in utils/parseFhir.js. */}
+                <div className="card" style={{ padding: '24px 28px', marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 10, letterSpacing: '-.01em' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <FileJson size={16} color="var(--primary)" />
+                      </div>
+                      Clinical Context
+                    </div>
+                    {selected.gen_patient_id && (
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFhirContext(v => !v)}>
+                        <FileJson size={13} /> {showFhirContext ? 'Hide' : 'View as'} FHIR
+                      </button>
+                    )}
+                  </div>
+
+                  {!selected.gen_patient_id ? (
+                    <div style={{ fontSize: 13, color: 'var(--text3)' }}>
+                      This patient isn't linked to a Patients roster record, so care gaps, labs and vitals aren't available.
+                    </div>
+                  ) : showFhirContext ? (
+                    <pre style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, fontSize: 11.5, lineHeight: 1.6, overflow: 'auto', maxHeight: 420 }}>
+{JSON.stringify({
+  resourceType: 'Bundle',
+  type: 'collection',
+  entry: [
+    ...careGaps.map(g => ({ resource: careGapToFhirDetectedIssue(g) })),
+    ...visibleLabs.map(l => ({ resource: labToFhirObservation(l) })),
+    ...vitalsReadings.flatMap(r => readingToFhirObservations(r).map(obs => ({ resource: obs }))),
+  ],
+}, null, 2)}
+                    </pre>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                      <div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Care Gaps</div>
+                        {careGaps.length === 0 ? (
+                          <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>No open care gaps</div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {careGaps.map(g => (
+                              <div key={g.id} style={{ padding: '8px 10px', borderRadius: 8, background: g.priority === 'high' ? 'var(--danger-light)' : 'var(--surface2)', border: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>{g.gap_type}</div>
+                                {g.description && <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 2 }}>{g.description}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Recent Labs</div>
+                        {visibleLabs.length === 0 ? (
+                          <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>No recent lab results</div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {visibleLabs.map(l => {
+                              const abnormal = l.interpretation !== 'N'
+                              return (
+                                <div key={l.id} style={{ padding: '8px 10px', borderRadius: 8, background: abnormal ? 'var(--danger-light)' : 'var(--surface2)', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                                  <div>
+                                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>{l.test_name}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{l.result_date?.slice(0, 10)}</div>
+                                  </div>
+                                  <div style={{ fontSize: 12.5, fontWeight: 700, color: abnormal ? 'var(--danger)' : 'var(--text2)', whiteSpace: 'nowrap' }}>
+                                    {l.value}{l.unit ? ` ${l.unit}` : ''}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Recent Vitals</div>
+                        {vitalsReadings.length === 0 ? (
+                          <div style={{ fontSize: 12.5, color: 'var(--text3)' }}>No recent vitals</div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {vitalsReadings.map(r => (
+                              <div key={r.id} style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{r.recorded_at?.slice(0, 10)}</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                  {VITALS_REF.filter(v => r[v.key] != null && r[v.key] !== '').map(v => {
+                                    const status = vitalStatus(v.key, r[v.key])
+                                    return (
+                                      <span key={v.key} style={{ fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: status === 'critical' ? 'var(--danger-light)' : status === 'warning' ? 'var(--warning-light)' : 'var(--surface)', color: status === 'critical' ? 'var(--danger)' : status === 'warning' ? 'var(--warning)' : 'var(--text2)' }}>
+                                        {v.label}: {r[v.key]}{v.unit}
+                                      </span>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Care plan */}
                 <div className="card" style={{ padding: '24px 28px', marginBottom: 20 }}>
