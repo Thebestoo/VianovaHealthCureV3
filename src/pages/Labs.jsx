@@ -179,8 +179,25 @@ export default function Labs() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [saveResult, setSaveResult] = useState(null)
+  const [notesSuggesting, setNotesSuggesting] = useState(false)
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Drafts a clinical note from the entered value once we have enough to
+  // interpret it — only if the clinician hasn't already typed their own.
+  async function suggestNotes(f = form) {
+    if (!f.patient_id || !f.test_name || !f.value || f.notes || notesSuggesting) return
+    setNotesSuggesting(true)
+    try {
+      const r = await fetch('/api/labs/ai-suggest-note', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({ patient_id: f.patient_id, test_name: f.test_name, value: f.value, unit: f.unit, reference_low: f.reference_low, reference_high: f.reference_high })
+      })
+      const d = await r.json()
+      if (d.notes) setForm(cur => cur.notes ? cur : { ...cur, notes: d.notes })
+    } catch {} finally { setNotesSuggesting(false) }
+  }
 
   // Picking a known test auto-fills unit + reference range so the clinician
   // only has to type the measured value.
@@ -658,7 +675,7 @@ export default function Labs() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
                     <div>
                       <label style={labelStyle}>Value <span style={{ color: 'var(--danger)' }}>*</span></label>
-                      <input type="text" value={form.value} onChange={e => setField('value', e.target.value)} placeholder="e.g. 5.4" className="lab-input" style={inputStyle} />
+                      <input type="text" value={form.value} onChange={e => setField('value', e.target.value)} onBlur={() => suggestNotes()} placeholder="e.g. 5.4" className="lab-input" style={inputStyle} />
                     </div>
                     <div>
                       <label style={labelStyle}>Unit</label>
@@ -686,7 +703,7 @@ export default function Labs() {
 
                   {/* Notes */}
                   <div style={{ marginBottom: 22 }}>
-                    <label style={labelStyle}>Clinical Notes</label>
+                    <label style={labelStyle}>Clinical Notes{notesSuggesting && <span style={{ marginLeft: 8, fontWeight: 500, color: 'var(--text3)', fontSize: 11.5 }}>drafting…</span>}</label>
                     <textarea
                       value={form.notes}
                       onChange={e => setField('notes', e.target.value)}

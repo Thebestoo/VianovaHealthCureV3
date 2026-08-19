@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CCM &amp; RPM Enrollment — Flowchart</title>
+<style>
+  :root{
+    --input:#2563eb;   --input-bg:#eff6ff;
+    --validate:#b45309; --validate-bg:#fffbeb;
+    --process:#7c3aed; --process-bg:#f5f3ff;
+    --output:#059669;  --output-bg:#ecfdf5;
+    --billing:#0891b2; --billing-bg:#ecfeff;
+    --text:#111827; --text2:#4b5563; --text3:#9ca3af; --border:#e5e7eb;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    background:#f8fafc; color:var(--text); margin:0; padding:32px 20px 80px;
+  }
+  h1{ text-align:center; font-size:24px; margin:0 0 4px; letter-spacing:-.01em; }
+  .subtitle{ text-align:center; color:var(--text2); font-size:13.5px; margin:0 0 28px; }
+  .legend{ display:flex; justify-content:center; gap:18px; flex-wrap:wrap; margin-bottom:36px; font-size:12px; color:var(--text2); }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .dot{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+  .source{
+    max-width:720px; margin:0 auto 8px; background:#fff; border:1.5px solid var(--border);
+    border-radius:12px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,.05);
+  }
+  .source .label{ font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text3); margin-bottom:6px; }
+  .source .title{ font-size:15px; font-weight:700; margin-bottom:6px; }
+  .source .fields{ font-size:12.5px; color:var(--text2); line-height:1.6; }
+  .arrow-down{ text-align:center; font-size:22px; color:var(--text3); margin:2px 0; }
+  .fork{ text-align:center; color:var(--text3); font-size:12px; margin:0 0 4px; }
+
+  .lanes{ display:grid; grid-template-columns:1fr 1fr; gap:36px; max-width:1180px; margin:0 auto; align-items:start; }
+  @media (max-width: 900px){ .lanes{ grid-template-columns:1fr; } }
+
+  .lane-title{ text-align:center; font-size:16px; font-weight:800; padding:8px 0 16px; }
+  .lane-title.ccm{ color:#6d28d9; } .lane-title.rpm{ color:#0e7490; }
+
+  .node{
+    background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:4px;
+    border:1.5px solid var(--border); box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+  .node .kind{
+    display:inline-block; font-size:10px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
+    padding:2px 8px; border-radius:99px; margin-bottom:8px;
+  }
+  .node .title{ font-size:13.5px; font-weight:700; margin-bottom:6px; }
+  .node ul{ margin:0; padding-left:18px; font-size:12.5px; color:var(--text2); line-height:1.65; }
+  .node ul li b{ color:var(--text); font-weight:600; }
+  .node .note{ font-size:11.5px; color:var(--text3); margin-top:8px; font-style:italic; }
+
+  .kind.input{ background:var(--input-bg); color:var(--input); }
+  .kind.validate{ background:var(--validate-bg); color:var(--validate); }
+  .kind.process{ background:var(--process-bg); color:var(--process); }
+  .kind.output{ background:var(--output-bg); color:var(--output); }
+  .kind.billing{ background:var(--billing-bg); color:var(--billing); }
+
+  .connector{ text-align:center; color:var(--text3); font-size:18px; margin:2px 0 6px; }
+
+  .converge{
+    max-width:900px; margin:36px auto 0; background:#fff; border:1.5px solid var(--border);
+    border-radius:12px; padding:18px 22px; box-shadow:0 1px 3px rgba(0,0,0,.05);
+  }
+  .converge .label{ font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text3); margin-bottom:8px; }
+  .converge ul{ margin:0; padding-left:20px; font-size:12.5px; color:var(--text2); line-height:1.7; }
+  .converge ul li b{ color:var(--text); }
+
+  .asym{
+    max-width:900px; margin:18px auto 0; background:#fff7ed; border:1.5px solid #fed7aa;
+    border-radius:12px; padding:16px 20px; font-size:12.5px; color:#7c2d12; line-height:1.65;
+  }
+  .asym b{ color:#9a3412; }
+</style>
+</head>
+<body>
+
+  <h1>CCM &amp; RPM Enrollment — Inputs, Process, Outputs</h1>
+  <p class="subtitle">What's entered by hand, what's pulled automatically, what fires as a side effect of enrolling — for Chronic Care Management and Remote Patient Monitoring.</p>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--input)"></span>Input (human-entered / picked)</span>
+    <span><span class="dot" style="background:var(--validate)"></span>Validation gate</span>
+    <span><span class="dot" style="background:var(--process)"></span>Backend process</span>
+    <span><span class="dot" style="background:var(--billing)"></span>Auto-billing</span>
+    <span><span class="dot" style="background:var(--output)"></span>Output</span>
+  </div>
+
+  <!-- Shared source -->
+  <div class="source">
+    <div class="label">Shared starting point</div>
+    <div class="title">Pick an existing patient from the Patients roster (<code>gen_patients</code>)</div>
+    <div class="fields">Auto-pulled, not retyped: <b>name</b>, <b>dob</b>, <b>phone</b>, <b>medications</b>, <b>allergies</b>. This is the single source of truth both programs enroll from — no duplicate manual demographic entry.</div>
+  </div>
+  <div class="arrow-down">↓</div>
+  <div class="fork">Care manager chooses which program(s) to enroll the patient into — CCM and RPM are independent, a patient can be in one or both</div>
+
+  <div class="lanes">
+    <!-- ══════════════════ CCM LANE ══════════════════ -->
+    <div class="lane">
+      <div class="lane-title ccm">CCM Enrollment</div>
+
+      <div class="node">
+        <span class="kind input">Input</span>
+        <div class="title">CCM-specific fields (typed / picked)</div>
+        <ul>
+          <li><b>Chronic conditions</b> — free-text tag list, at least 1 required</li>
+          <li><b>Insurance</b> — optional text</li>
+          <li><b>Care manager</b> — defaults to the logged-in user's name</li>
+          <li><b>Consent date</b> — required, defaults to today</li>
+          <li><b>Consent method</b> — required (e.g. verbal / written)</li>
+          <li><b>Linked call</b> — optional: an already-logged call for this patient (e.g. the consent/intake call) shown as a pick list</li>
+        </ul>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind validate">Validate</span>
+        <div class="title">Client-side gate before submit</div>
+        <ul>
+          <li>Blocks submit unless <b>≥1 condition</b> is added</li>
+          <li>Blocks submit unless <b>consent_date</b> and <b>consent_method</b> are both set</li>
+        </ul>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind process">POST /api/ccm/patients</span>
+        <div class="title">Insert enrollment record</div>
+        <ul>
+          <li>Writes a new <b>ccm_patients</b> row: name, dob, phone, condition(s), insurance, care manager, consent date/method, link back to the roster patient (<code>gen_patient_id</code>)</li>
+        </ul>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind process">Auto-draft care plan (AI)</span>
+        <div class="title">Runs immediately, inline, same call</div>
+        <ul>
+          <li>Pulls in parallel: last 3 <b>RPM vitals</b>, last 5 <b>lab results</b>, open <b>care gaps</b>, recent check-in <b>barriers</b> (all keyed to this patient)</li>
+          <li>One LLM call drafts <b>goals</b>, <b>tasks</b> and <b>care team</b> tailored to that actual clinical picture — not a generic template</li>
+          <li>Saved as an <i>editable</i> <code>ccm_care_plans</code> row, status <b>active</b> — never presented as finalized, a care manager reviews/edits it</li>
+        </ul>
+        <div class="note">If this step fails, enrollment still succeeds — the manual "AI Draft" button remains as a fallback.</div>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind billing">Auto-bill G0506</span>
+        <div class="title">One-time comprehensive care-planning code</div>
+        <ul>
+          <li>Fires only if the enrollment is linked to a real roster patient (<code>gen_patient_id</code> present)</li>
+          <li>Billed once ever per patient — never monthly, unlike 99490/99439</li>
+          <li>Failure here also does not block enrollment</li>
+        </ul>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind process">Link pre-enrollment call (if picked)</span>
+        <div class="title">Only runs if a call was selected in the input step</div>
+        <ul>
+          <li>Inserts a <b>ccm_checkins</b> row using that call's duration as minutes</li>
+          <li>Checks the monthly time thresholds immediately — if the linked call alone already clears 20 min, <b>99490</b> (or 60 min → <b>99487</b> if the patient is separately flagged Complex CCM) is auto-drafted right away instead of waiting for a future check-in</li>
+        </ul>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind output">Output</span>
+        <div class="title">API response → UI</div>
+        <ul>
+          <li><code>{ id, care_plan_drafted, g0506_billed, call_linked, time_auto_billed }</code></li>
+          <li>Toast message reflects exactly which of care-plan-draft / G0506 actually succeeded</li>
+          <li>Patient now appears in the CCM roster with status <b>active</b>, ready for monthly check-ins</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ══════════════════ RPM LANE ══════════════════ -->
+    <div class="lane">
+      <div class="lane-title rpm">RPM Enrollment</div>
+
+      <div class="node">
+        <span class="kind input">Input</span>
+        <div class="title">RPM-specific fields (typed / picked)</div>
+        <ul>
+          <li><b>Condition</b> — optional free text (reason for monitoring)</li>
+          <li><b>Linked call</b> — optional: an already-logged call for this patient (e.g. the device setup/education call)</li>
+        </ul>
+        <div class="note">No separate consent capture in this form — RPM consent is handled outside enrollment, unlike CCM which gates on it directly (see asymmetry note below).</div>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind validate">Validate</span>
+        <div class="title">Client-side gate before submit</div>
+        <ul>
+          <li>Only requires that a <b>patient has been picked</b> from the roster — no condition or consent fields are enforced</li>
+        </ul>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind process">POST /api/rpm/patients</span>
+        <div class="title">Insert enrollment record</div>
+        <ul>
+          <li>Writes a new <b>rpm_patients</b> row: name, dob, condition, link back to the roster patient (<code>gen_patient_id</code>)</li>
+        </ul>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind billing">Auto-bill 99453</span>
+        <div class="title">One-time initial setup &amp; patient education code</div>
+        <ul>
+          <li>Fires only if <code>gen_patient_id</code> is present — mirrors G0506's condition on the CCM side</li>
+          <li>Billed once ever per patient, regardless of whether a call is linked (setup/education is assumed to happen at enrollment either way)</li>
+          <li>Failure here does not block enrollment</li>
+        </ul>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind process">Link pre-enrollment call (if picked)</span>
+        <div class="title">Only runs if a call was selected in the input step</div>
+        <ul>
+          <li>Inserts an <b>rpm_readings</b> row with all vitals left null, note <i>"Initial RPM enrollment / patient education call"</i>, minutes = call duration</li>
+          <li>Checks the monthly time threshold immediately — if it already clears 20 min, <b>99457</b> is auto-drafted right away</li>
+        </ul>
+      </div>
+      <div class="connector">↓</div>
+
+      <div class="node">
+        <span class="kind output">Output</span>
+        <div class="title">API response → UI</div>
+        <ul>
+          <li><code>{ id, setup_billed, call_linked, time_auto_billed }</code></li>
+          <li>Patient now appears in the RPM roster</li>
+          <li>Next time staff open "Log Reading" for this patient, vitals + note auto-populate from their last known reading (or normal-range midpoints if none exist yet) — enrollment itself doesn't capture vitals</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="converge">
+    <div class="label">What happens after enrollment (not part of enrollment itself)</div>
+    <ul>
+      <li>Recurring time-based codes are <b>never</b> billed at enrollment — only the one-time codes (G0506 / 99453) are. <b>99490 / 99439 / 99487 / 99489</b> (CCM) and <b>99457 / 99458</b> (RPM) are drafted later, the moment a month's logged minutes cross each threshold in check-ins/readings.</li>
+      <li><b>99454</b> (RPM device-supply code) is unrelated to minutes — it's checked on every reading based on whether the patient has readings on file for 16+ of the last 30 days.</li>
+      <li>Complex CCM (<b>99487/99489</b>) additionally requires a care manager to manually flag the patient — CMS ties that tier to medical-decision-making complexity, not time alone, so it's never auto-triggered by enrollment or check-in time.</li>
+      <li>Every patient-scoped route re-checks that the record's <code>owner_email</code> matches the caller's API key before reading or writing — enrollment doesn't grant standing access beyond that.</li>
+    </ul>
+  </div>
+
+  <div class="asym">
+    <b>Asymmetry worth knowing:</b> CCM enrollment hard-blocks on consent (date + method) and on having at least one condition recorded — RPM enrollment blocks on neither. Both programs still require separate, program-specific consent to actually monitor/bill under CMS rules; RPM's just isn't captured as a field inside this particular form the way CCM's is.
+  </div>
+
+</body>
+</html>

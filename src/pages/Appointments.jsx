@@ -343,20 +343,24 @@ export default function Appointments() {
     setNotifyingAll(false)
   }
 
-  async function aiSuggest() {
-    if (!form.patient_id) return
+async function aiSuggest(patientId = form.patient_id) {
+    if (!patientId) return
     setSuggesting(true)
     setSuggestion(null)
     try {
       const r = await fetch(`/api/appointments/suggest`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify({ patient_id: form.patient_id })
+        body: JSON.stringify({ patient_id: patientId })
       })
       const d = await r.json()
       setSuggestion(d)
-      setField('appointment_type', d.appointment_type || form.appointment_type)
-      setField('duration_minutes', d.duration_minutes ? String(d.duration_minutes) : form.duration_minutes)
+      setForm(f => ({
+        ...f,
+        appointment_type: d.appointment_type || f.appointment_type,
+        duration_minutes: d.duration_minutes ? String(d.duration_minutes) : f.duration_minutes,
+        notes: d.notes || f.notes,
+      }))
     } catch {}
     setSuggesting(false)
   }
@@ -521,7 +525,7 @@ export default function Appointments() {
               <div style={{ marginBottom: 14 }}>
                 <FL>Patient *</FL>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <select value={form.patient_id} onChange={e => { setField('patient_id', e.target.value); setSuggestion(null) }}
+                  <select value={form.patient_id} onChange={e => { setField('patient_id', e.target.value); setSuggestion(null); if (e.target.value) aiSuggest(e.target.value) }}
                     style={{ flex: 1, padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 7, fontSize: 13, outline: 'none' }}>
                     <option value="">— Select patient —</option>
                     {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

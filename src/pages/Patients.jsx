@@ -23,9 +23,9 @@ function Tag({ label, color = '#1d4ed8', bg = '#dbeafe' }) {
 function FL({ children }) {
   return <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>{children}</label>
 }
-function FI({ value, onChange, placeholder, type = 'text' }) {
+function FI({ value, onChange, placeholder, type = 'text', onBlur }) {
   return (
-    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+    <input type={type} value={value} onChange={e => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder}
       style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
   )
 }
@@ -140,6 +140,20 @@ export default function Patients() {
 
   const [form, setForm] = useState(EMPTY)
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Composes a notes summary purely from what's already been typed into the
+  // conditions/medications/allergies fields — no invented clinical detail.
+  function autofillNotes(f = form) {
+    if (f.notes) return f.notes
+    const parts = []
+    if (f.conditions) parts.push(`History of ${f.conditions}.`)
+    if (f.medications) parts.push(`Current medications: ${f.medications}.`)
+    if (f.allergies) parts.push(`Allergies: ${f.allergies}.`)
+    return parts.join(' ')
+  }
+  function syncNotesFromClinicalFields() {
+    setForm(f => (f.notes ? f : { ...f, notes: autofillNotes(f) }))
+  }
 
   useEffect(() => { if (key) { load(); loadCases(); loadAppointments() } }, [key])
 
@@ -760,15 +774,15 @@ export default function Patients() {
 
               <div style={{ marginBottom: 10 }}>
                 <FL>Known Conditions <span style={{ color: '#9ca3af', fontWeight: 400 }}>(comma separated)</span></FL>
-                <FI value={form.conditions} onChange={v => setField('conditions', v)} placeholder="Diabetes Type 2, Hypertension…" />
+                <FI value={form.conditions} onChange={v => setField('conditions', v)} onBlur={syncNotesFromClinicalFields} placeholder="Diabetes Type 2, Hypertension…" />
               </div>
               <div style={{ marginBottom: 10 }}>
                 <FL>Current Medications <span style={{ color: '#9ca3af', fontWeight: 400 }}>(comma separated)</span></FL>
-                <FI value={form.medications} onChange={v => setField('medications', v)} placeholder="Metformin 500mg, Lisinopril 10mg…" />
+                <FI value={form.medications} onChange={v => setField('medications', v)} onBlur={syncNotesFromClinicalFields} placeholder="Metformin 500mg, Lisinopril 10mg…" />
               </div>
               <div style={{ marginBottom: 10 }}>
                 <FL>Allergies <span style={{ color: '#9ca3af', fontWeight: 400 }}>(comma separated)</span></FL>
-                <FI value={form.allergies} onChange={v => setField('allergies', v)} placeholder="Penicillin, Sulfa drugs…" />
+                <FI value={form.allergies} onChange={v => setField('allergies', v)} onBlur={syncNotesFromClinicalFields} placeholder="Penicillin, Sulfa drugs…" />
               </div>
               <div style={{ marginBottom: 20 }}>
                 <FL>Notes</FL>

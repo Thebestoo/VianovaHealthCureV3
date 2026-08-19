@@ -21,6 +21,19 @@ const CONSENT_TYPES = [
   { value: 'sensitive_reproductive', label: 'Reproductive Health', sensitive: true },
 ]
 
+// Standard scope/restrictions boilerplate per consent type — a starting
+// point the signee can edit, not a substitute for reviewing the actual terms.
+const CONSENT_TEMPLATES = {
+  treatment:                 { scope: 'Authorization to provide, evaluate, and coordinate routine medical treatment and diagnostic services.', restrictions: '' },
+  research:                  { scope: 'Participation in the named research study, including collection and analysis of health data for study purposes.', restrictions: 'May withdraw at any time without affecting ongoing care.' },
+  data_sharing:               { scope: 'Sharing of relevant health records with named care partners for coordination of care.', restrictions: 'Limited to the minimum necessary information for the stated purpose.' },
+  marketing:                  { scope: 'Receipt of marketing communications about services, programs, and health education materials.', restrictions: 'May opt out at any time.' },
+  sensitive_mental_health:    { scope: 'Access to and disclosure of mental health treatment records for continuity of care.', restrictions: 'Disclosure limited to treating providers unless separately authorized; excludes psychotherapy notes.' },
+  sensitive_substance_abuse:  { scope: 'Access to and disclosure of substance use treatment records for continuity of care.', restrictions: 'Subject to 42 CFR Part 2 — re-disclosure prohibited without further patient authorization.' },
+  sensitive_hiv:              { scope: 'Access to and disclosure of HIV/AIDS-related test results and treatment records for continuity of care.', restrictions: 'Re-disclosure prohibited without further patient authorization.' },
+  sensitive_reproductive:     { scope: 'Access to and disclosure of reproductive health records for continuity of care.', restrictions: 'Disclosure limited to treating providers unless separately authorized.' },
+}
+
 const TYPE_COLORS = {
   treatment:                  { color: 'var(--primary-dark)', bg: 'var(--primary-light)' },
   research:                   { color: '#7c3aed', bg: '#ede9fe' },
@@ -347,7 +360,7 @@ function ConsentCard({ c, apiKey, onRefresh }) {
 
 // ── New Consent Modal ─────────────────────────────────────────────────────────
 
-const EMPTY_FORM = { patient_id: '', consent_type: 'treatment', scope: '', restrictions: '', expires_at: '', signee_name: '', signature: '' }
+const EMPTY_FORM = { patient_id: '', consent_type: 'treatment', scope: CONSENT_TEMPLATES.treatment.scope, restrictions: CONSENT_TEMPLATES.treatment.restrictions, expires_at: '', signee_name: '', signature: '' }
 
 function NewConsentModal({ patients, onClose, onSaved, apiKey }) {
   const [form, setForm] = useState(EMPTY_FORM)
@@ -389,7 +402,15 @@ function NewConsentModal({ patients, onClose, onSaved, apiKey }) {
           </div>
           <div>
             <FL>Consent Type *</FL>
-            <SelectEl value={form.consent_type} onChange={e => set('consent_type', e.target.value)}>
+            <SelectEl value={form.consent_type} onChange={e => {
+              const type = e.target.value
+              const tpl = CONSENT_TEMPLATES[type]
+              setForm(f => ({
+                ...f, consent_type: type,
+                scope: (!f.scope || f.scope === CONSENT_TEMPLATES[f.consent_type]?.scope) ? (tpl?.scope || '') : f.scope,
+                restrictions: (!f.restrictions || f.restrictions === CONSENT_TEMPLATES[f.consent_type]?.restrictions) ? (tpl?.restrictions || '') : f.restrictions,
+              }))
+            }}>
               {CONSENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}{t.sensitive ? ' (Sensitive)' : ''}</option>)}
             </SelectEl>
           </div>

@@ -1,11 +1,33 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   AlertOctagon, Plus, Shield, Loader2, X, ChevronDown, ChevronUp,
-  Trash2, CheckCircle2, Copy, Check, Zap, BarChart2, FileText, Activity
+  Trash2, CheckCircle2, Copy, Check, Zap, BarChart2, FileText, Activity, Sparkles
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
+
+// Builds an editable description/actions-taken skeleton purely from the
+// structured fields already on the form — never invents incident specifics,
+// just saves the reporter from retyping what they've already selected.
+function draftEventText(f, patientName) {
+  const type = (f.event_type || 'event').replace(/_/g, ' ')
+  const sev = (f.severity || '').replace(/_/g, '-')
+  let description = `${sev ? sev.charAt(0).toUpperCase() + sev.slice(1) + '-severity ' : ''}${type}${patientName ? ` involving ${patientName}` : ''}${f.near_miss ? ' (near miss — no harm occurred)' : ''}.`
+  if (f.suspected_medication) description += ` Suspected medication: ${f.suspected_medication}${f.suspected_medication_dose ? ` (${f.suspected_medication_dose})` : ''}.`
+  if (f.onset_date) description += ` Onset: ${f.onset_date}.`
+  description += ` Causality assessed as ${f.causality || 'unassessable'}; outcome ${(f.outcome || 'unknown').replace(/_/g, ' ')}.`
+
+  const parts = ['Patient assessed and monitored.']
+  if (f.suspected_medication) parts.push(`${f.suspected_medication} held pending review.`)
+  if (f.severity === 'high' || f.severity === 'life_threatening') parts.push('Attending physician notified immediately.')
+  else parts.push('Attending physician notified.')
+  parts.push('Event documented in patient record for follow-up.')
+  const actions_taken = parts.join(' ')
+
+  return { description, actions_taken }
+}
+
 function Badge({ label, color, bg }) {
   return (
     <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color, background: bg }}>{label}</span>
@@ -339,6 +361,12 @@ export default function AdverseEvents() {
     setForm({ patient_id: '', event_type: 'medication_error', severity: 'moderate', suspected_medication: '', suspected_medication_dose: '', onset_date: '', description: '', causality: 'possible', outcome: 'unknown', actions_taken: '', near_miss: false })
   }
 
+  function draftFromDetails() {
+    const patientName = patients.find(p => p.id === form.patient_id)?.name
+    const { description, actions_taken } = draftEventText(form, patientName)
+    setForm(f => ({ ...f, description: f.description || description, actions_taken: f.actions_taken || actions_taken }))
+  }
+
   async function handleScan() {
     if (!scanPatient) return
     setScanning(true); setScanResult(null)
@@ -658,7 +686,13 @@ export default function AdverseEvents() {
                 <input type="date" value={form.onset_date} onChange={e => setForm(f => ({ ...f, onset_date: e.target.value }))} style={inputStyle} />
               </div>
               <div>
-                <FL>Description *</FL>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <FL>Description *</FL>
+                  <button type="button" onClick={draftFromDetails} disabled={!form.patient_id || !form.event_type}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', border: '1.5px solid #ddd6fe', borderRadius: 7, background: '#f5f3ff', color: '#7c3aed', fontSize: 11.5, fontWeight: 600, cursor: form.patient_id && form.event_type ? 'pointer' : 'not-allowed', opacity: form.patient_id && form.event_type ? 1 : .5 }}>
+                    <Sparkles size={12} /> Draft from details above
+                  </button>
+                </div>
                 <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required rows={3}
                   placeholder="Describe the adverse event in clinical detail…" style={{ ...inputStyle, resize: 'vertical' }} />
               </div>
