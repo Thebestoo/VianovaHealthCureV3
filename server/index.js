@@ -263,6 +263,15 @@ async function initDB() {
     `ALTER TABLE ccm_patients ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
     // ccm_care_plans.owner_key — same gap, referenced by the manual plan-save INSERT.
     `ALTER TABLE ccm_care_plans ADD COLUMN owner_key TEXT`,
+    // Fix: 'template' and 'created_at' are declared in the CREATE TABLE above, but
+    // that only applies when the table is created fresh — any environment where
+    // ccm_care_plans already existed before these columns were added to the schema
+    // never got them, so every plan-save INSERT on that DB throws "no such column".
+    // Add them explicitly (nullable, since existing rows have no value to backfill)
+    // instead of relying on CREATE TABLE IF NOT EXISTS, which is a no-op once the
+    // table exists.
+    `ALTER TABLE ccm_care_plans ADD COLUMN template TEXT`,
+    `ALTER TABLE ccm_care_plans ADD COLUMN created_at TEXT`,
     // Real call-duration tracking for call_requests, covering all three directions
     // (patient->doctor and family->doctor already modeled via caller_role; doctor->
     // patient is new — see caller_role='doctor' below). started_at/ended_at capture
