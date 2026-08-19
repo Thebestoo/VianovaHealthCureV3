@@ -483,6 +483,10 @@ export default function CCM() {
         body: JSON.stringify({}),
       })
       const d = await r.json()
+      // A failed draft (e.g. AI provider error) used to silently fall through to
+      // the existing plan/empty arrays, opening the edit modal with nothing in it
+      // and no indication anything went wrong — surface it instead.
+      if (!r.ok) { toast.error(d.error || 'AI draft failed'); return }
       // Seeds the edit buffer only — never the committed planTasks/planGoals/careTeam
       // — so this un-reviewed draft can't leak into a toggleTask() save or the
       // read-only view before the clinician explicitly clicks Save Plan.
@@ -491,7 +495,9 @@ export default function CCM() {
       setEditCareTeam(d.care_team || careTeam)
       setEditStatus(planStatus)
       setShowPlanEdit(true)
-    } catch {} finally { setAiDrafting(false) }
+    } catch {
+      toast.error('AI draft failed — check your connection and try again')
+    } finally { setAiDrafting(false) }
   }
 
   const monthlyMinutes = sumMinutesThisMonth(checkins)

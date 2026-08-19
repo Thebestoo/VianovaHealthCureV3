@@ -813,7 +813,7 @@ app.post('/api/analyze', auth, aiLimiter, async (req, res) => {
     patientData.current_date = new Date().toISOString().slice(0, 10) // YYYY-MM-DD for FHIR freshness rules
 
     const message = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       max_tokens: 4096,
       temperature: 0.2,
       response_format: { type: 'json_object' },
@@ -1946,7 +1946,7 @@ app.post('/api/cases', auth, async (req, res) => {
     patientData.current_date = new Date().toISOString().slice(0, 10)
 
     const message = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       max_tokens: 4096,
       temperature: 0.2,
       response_format: { type: 'json_object' },
@@ -2137,7 +2137,7 @@ Return ONLY valid JSON array: [{"csv_column":"...","field":"...or null"}]`
 
   try {
     const chat = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0,
       max_tokens: 600,
@@ -2414,7 +2414,7 @@ Respond with JSON only: {"note": "string"}`
 
   try {
     const chat = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3, max_tokens: 120,
     })
@@ -2664,7 +2664,7 @@ Draft a care plan tailored to this patient's actual clinical picture above (not 
 Provide 2-4 goals and 4-8 tasks addressing the open care gaps and recent barriers where relevant.`
 
   const chat = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
     temperature: 0.3, max_tokens: 900,
@@ -2911,7 +2911,7 @@ Respond with JSON only: {"minutes": number, "notes": "string", "barriers": "stri
 
     try {
       const chat = await client.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.4, max_tokens: 220,
       })
@@ -3028,7 +3028,7 @@ Limit to the 5 most clinically important gaps. Return [] if no gaps.`
 
   try {
     const chat = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
       max_tokens: 800,
@@ -3108,7 +3108,7 @@ ${rules.instructions}
 Return only the message text — no subject line, no explanation, no quotation marks around it.`
 
   const chat = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.5,
     max_tokens: 260,
@@ -3273,7 +3273,7 @@ Test: ${test_name} | Value: ${value} ${unit || ''} | Reference: ${refLow ?? '?'}
 Patient: ${patient.name}, age ${patient.dob ? Math.floor((Date.now() - new Date(patient.dob)) / (365.25 * 24 * 3600 * 1000)) : 'unknown'}, ${patient.sex || 'unknown sex'}
 Conditions: ${patient.conditions || 'none'}`
     const chat = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
       max_tokens: 120,
@@ -3319,7 +3319,7 @@ Test: ${test_name} | Value: ${value} ${unit || ''} | Reference: ${refLow ?? '?'}
 Patient: ${patient.name}, conditions: ${patient.conditions || 'none'}`
   try {
     const chat = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1, max_tokens: 120,
     })
@@ -3401,7 +3401,7 @@ Respond with JSON: {"appointment_type":"string","reason":"1 sentence","duration_
 
   try {
     const chat = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1, max_tokens: 200,
     })
@@ -3542,7 +3542,7 @@ Return ONLY valid JSON matching the schema above. patient_instructions and patie
 
   try {
     const chat = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
       max_tokens: 1500,
@@ -3806,7 +3806,7 @@ Return JSON with keys:
 - signal_strength: "strong" | "moderate" | "weak"`
 
       const aiRes = await client.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
         temperature: 0.2
@@ -3864,7 +3864,7 @@ Return a JSON array of detected signals (empty array if none found). Each signal
 Only report genuine signals, not already-reported ones. Return [] if no new signals.`
 
     const aiRes = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.2
@@ -4174,7 +4174,7 @@ ${members.map((m, i) => `${i+1}. ${m.name} | Conditions: ${m.conditions || 'none
 
 Return JSON: { "stratification": [ { "patient_id": "...", "risk_level": "high"|"medium"|"low", "reason": "brief reason" } ] }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const { stratification = [] } = parseAiJson(aiRes.choices[0].message.content)
 
     for (const s of stratification) {
@@ -4196,7 +4196,7 @@ Patient: ${patient.name}, Conditions: ${patient.conditions || 'not documented'}
 Message should: introduce the program, explain benefits, ask patient to schedule an appointment.
 Keep it under 120 words. Plain language. Return JSON: { "message": "..." }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.5 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.5 })
     const { message } = parseAiJson(aiRes.choices[0].message.content)
     await db.execute({ sql: "UPDATE cohort_members SET outreach_status = 'sent' WHERE cohort_id = ? AND patient_id = ?", args: [req.params.cohortId, req.params.patientId] })
     res.json({ message, patient_name: patient.name })
@@ -4229,7 +4229,7 @@ Return JSON:
   "summary": "1-2 sentence clinical summary"
 }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
     const extracted = parseAiJson(aiRes.choices[0].message.content)
     res.json({ extracted, patient_id: patient_id || null })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -4244,7 +4244,7 @@ app.post('/api/nlp/deidentify', auth, aiLimiter, async (req, res) => {
 Replace: patient names → [PATIENT], provider names → [PROVIDER], dates → [DATE], MRN/IDs → [ID], phone numbers → [PHONE], addresses → [ADDRESS], facility names → [FACILITY].
 Return JSON: { "deidentified_text": "...", "phi_found": ["list of PHI types found"] }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: `${prompt}\n\nNote:\n${note_text.slice(0, 3000)}` }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: `${prompt}\n\nNote:\n${note_text.slice(0, 3000)}` }], response_format: { type: 'json_object' }, temperature: 0.1 })
     const result = parseAiJson(aiRes.choices[0].message.content)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -4467,7 +4467,7 @@ Return this exact JSON structure:
 }`
 
     const aiRes = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.2,
@@ -4548,7 +4548,7 @@ Return JSON:
   "overall_recommendation": "proceed"|"caution"|"do_not_prescribe"
 }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
     const result = parseAiJson(aiRes.choices[0].message.content)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -4583,7 +4583,7 @@ Return JSON:
 }`
 
     const aiRes = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.1,
@@ -4616,7 +4616,7 @@ Return JSON:
 }`
 
     const aiRes = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.2,
@@ -4660,7 +4660,7 @@ Return JSON:
   "priority": "low"|"moderate"|"high"
 }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const ai = parseAiJson(aiRes.choices[0].message.content)
 
     await db.execute({
@@ -4724,7 +4724,7 @@ Return JSON:
   "priority_action": "most urgent thing to do now"
 }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const result = parseAiJson(aiRes.choices[0].message.content)
     const _activeConditions = (result.programs||[]).map(p => p.condition)
     const _overallRisk = result.overall_status === 'critical' ? 'critical' : result.overall_status === 'worsening' ? 'high' : result.overall_status === 'stable' ? 'low' : 'moderate'
@@ -4774,7 +4774,7 @@ Return JSON:
   "mental_health_note": "note if PHQ-9 or GAD-7 scores indicate concern or null"
 }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const ai = parseAiJson(aiRes.choices[0].message.content)
 
     const id = randomUUID(); const now = new Date().toISOString()
@@ -4810,7 +4810,7 @@ Rules: Never diagnose. Always recommend seeing a doctor for serious symptoms. Be
     const history = Array.isArray(context) ? context.slice(-8) : []
     const messages = [{ role: 'system', content: sysPrompt }, ...history, { role: 'user', content: message }]
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages, temperature: 0.5, max_tokens: 400 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages, temperature: 0.5, max_tokens: 400 })
     res.json({ reply: aiRes.choices[0].message.content })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4832,7 +4832,7 @@ app.post('/api/beta/assist', auth, aiLimiter, async (req, res) => {
     const sysPrompt = BETA_ASSIST_GUIDES[mod] || BETA_ASSIST_GUIDES.ccm
     const history = Array.isArray(context) ? context.slice(-6) : []
     const messages = [{ role: 'system', content: sysPrompt }, ...history, { role: 'user', content: message }]
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages, temperature: 0.3, max_tokens: 300 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages, temperature: 0.3, max_tokens: 300 })
     res.json({ reply: aiRes.choices[0].message.content })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4891,7 +4891,7 @@ Target system: ${target_system || 'SNOMED CT, LOINC, and RxNorm as appropriate'}
 
 Return JSON: { "mappings": [ { "original_term": "...", "code": "...", "display": "...", "system": "SNOMED CT"|"LOINC"|"RxNorm"|"ICD-10", "confidence": 0.0-1.0 } ] }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.1 })
     const result = parseAiJson(aiRes.choices[0].message.content)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -4936,7 +4936,7 @@ Return JSON:
   "recommendations": ["recommendation 1"]
 }`
 
-    const aiRes = await client.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
+    const aiRes = await client.chat.completions.create({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2 })
     const result = parseAiJson(aiRes.choices[0].message.content)
     res.json({ ...result, event_count: events.length, period_days: 7 })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -5197,7 +5197,7 @@ Tables with patient data: gen_patients (demographics), cases (clinical cases), l
 Reason for deletion: ${reason || 'Patient requested data deletion under GDPR right to erasure'}.
 Return JSON: { "can_delete": ["list of tables/data that CAN be deleted"], "must_retain": ["list that MUST be retained (audit logs, billing, legal holds)"], "redact_only": ["list that should be redacted/anonymized"], "summary": "brief explanation", "retention_period_years": 7, "legal_basis_for_retention": "explanation" }`
     const aiRes = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       response_format: { type: 'json_object' },
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }]
@@ -5343,7 +5343,7 @@ Return JSON with these exact keys:
 }`
 
     const aiResp = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       response_format: { type: 'json_object' },
       max_tokens: 2000,
       messages: [
@@ -5394,7 +5394,7 @@ app.post('/api/billing/scrub/:claimId', auth, aiLimiter, async (req, res) => {
     const hcpcs = safeJson(claim.hcpcs_codes, [])
 
     const aiResp = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       response_format: { type: 'json_object' },
       max_tokens: 1500,
       messages: [
@@ -5578,7 +5578,7 @@ app.post('/api/nlp-notes/process', auth, aiLimiter, async (req, res) => {
 
     // Step 1: NLP extraction
     const nlpResp = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       response_format: { type: 'json_object' },
       max_tokens: 2000,
       messages: [{
@@ -5598,7 +5598,7 @@ app.post('/api/nlp-notes/process', auth, aiLimiter, async (req, res) => {
     deidentified_text = deidentified_text.replace(/\b(age[d]?\s+)?(9[1-9]|[1-9]\d{2,})\s*(year[s]?(\s*old)?|yo|y\/o)?/gi, '[AGE>90]')
     try {
       const deidResp = await client.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
         response_format: { type: 'json_object' },
         max_tokens: 500,
         messages: [{
@@ -5685,7 +5685,7 @@ app.post('/api/nlp-notes/deidentify-batch', auth, aiLimiter, async (req, res) =>
       deidentified_text = deidentified_text.replace(/\bMRN[:\s#]*\d+/gi, '[MRN]')
       try {
         const deidResp = await client.chat.completions.create({
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
           response_format: { type: 'json_object' },
           max_tokens: 500,
           messages: [{ role: 'user', content: `De-identify this clinical note by replacing: patient names, provider names, facility names, addresses, phone numbers, dates, MRNs, and any other PHI. Return JSON: { "deidentified_text": "string" }\n\nNote:\n${deidentified_text}` }]
@@ -5879,7 +5879,7 @@ async function generateBotReply(sessionId, userMessage, history) {
       { role: 'user', content: userMessage },
     ]
     const aiRes = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages,
       temperature: 0.5,
       max_tokens: 500,
@@ -5954,7 +5954,7 @@ app.post('/api/ai-call/message', auth, aiLimiter, async (req, res) => {
       { role: 'user', content: message.trim().slice(0, 2000) },
     ]
     const aiRes = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
       messages,
       temperature: 0.6,
       max_tokens: 200,
