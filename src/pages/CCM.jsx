@@ -402,18 +402,39 @@ export default function CCM() {
     setShowPlanEdit(true)
   }
 
+  async function postPlan() {
+    const r = await fetch(`/api/ccm/patients/${selected.id}/plan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key },
+      body: JSON.stringify({ tasks: JSON.stringify(editTasks), goals: JSON.stringify(editGoals), care_team: JSON.stringify(editCareTeam), status: editStatus })
+    })
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Failed to save care plan') }
+  }
+
+  // Previously this neither checked r.ok nor had a catch block — a failed save
+  // (network hiccup, 500, etc.) still fell through to closing the modal and
+  // reloading the plan as if it had worked, so a save that silently failed looked
+  // identical to one that hung ("delay or not working"). Now it auto-retries once
+  // on a transient failure (the network blip that's the usual cause of a one-off
+  // save glitch), and only surfaces an error — keeping the modal open with the
+  // edits intact — if the retry fails too.
   async function savePlan(e) {
     e.preventDefault()
+    if (saving) return
     setSaving(true)
     try {
-      await fetch(`/api/ccm/patients/${selected.id}/plan`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify({ tasks: JSON.stringify(editTasks), goals: JSON.stringify(editGoals), care_team: JSON.stringify(editCareTeam), status: editStatus })
-      })
+      try {
+        await postPlan()
+      } catch {
+        await new Promise(res => setTimeout(res, 800))
+        await postPlan()
+      }
       setShowPlanEdit(false)
+      toast.success(editStatus === 'draft' ? 'Care plan saved as draft' : 'Care plan saved')
       loadPlan(selected.id)
       if (showHistory) loadPlanHistory(selected.id)
+    } catch (err) {
+      toast.error(err.message || 'Failed to save care plan — check your connection and try again')
     } finally { setSaving(false) }
   }
 

@@ -2798,12 +2798,18 @@ app.post('/api/ccm/patients/:pid/plan', auth, async (req, res) => {
     const nextCareTeam = care_team !== undefined ? care_team : (existing?.care_team ?? '[]')
     const nextStatus = status !== undefined ? (ALLOWED_STATUSES.includes(status) ? status : existing?.status || 'active') : (existing?.status || 'active')
     if (existing) {
-      // snapshot the previous state before overwriting it
-      await db.execute({
-        sql: 'INSERT INTO ccm_care_plan_versions (patient_id, tasks, goals, care_team, saved_at, saved_by) VALUES (?,?,?,?,?,?)',
-        args: [req.params.pid, existing.tasks || '[]', existing.goals || '[]', existing.care_team || '[]', existing.updated_at || now, req.apiKey]
-      })
-      await db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, goals = ?, care_team = ?, status = ?, updated_at = ? WHERE patient_id = ?', args: [nextTasks, nextGoals, nextCareTeam, nextStatus, now, req.params.pid] })
+      // Snapshot the previous state before overwriting it. The snapshot reads
+      // only the already-fetched `existing` row, so it doesn't depend on the
+      // update (or vice versa) — running them one after another was two
+      // sequential network round trips to Turso for no reason, which is exactly
+      // the kind of save latency a clinician would experience as "delay".
+      await Promise.all([
+        db.execute({
+          sql: 'INSERT INTO ccm_care_plan_versions (patient_id, tasks, goals, care_team, saved_at, saved_by) VALUES (?,?,?,?,?,?)',
+          args: [req.params.pid, existing.tasks || '[]', existing.goals || '[]', existing.care_team || '[]', existing.updated_at || now, req.apiKey]
+        }),
+        db.execute({ sql: 'UPDATE ccm_care_plans SET tasks = ?, goals = ?, care_team = ?, status = ?, updated_at = ? WHERE patient_id = ?', args: [nextTasks, nextGoals, nextCareTeam, nextStatus, now, req.params.pid] }),
+      ])
     } else {
       // Fix: template/created_at are NOT NULL with no default — this insert was
       // previously missing both and would throw on a genuinely fresh care plan.
