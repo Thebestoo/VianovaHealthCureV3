@@ -2622,14 +2622,17 @@ async function draftCarePlanForPatient(pid, patient) {
   const rpmPid = genPid
     ? await db.execute({ sql: 'SELECT id FROM rpm_patients WHERE gen_patient_id = ? LIMIT 1', args: [genPid] }).then(r => r.rows[0]?.id || null).catch(() => null)
     : null
-  // Four independent lookups against different tables — run concurrently instead
+  // Five independent lookups against different tables — run concurrently instead
   // of one round trip after another (this runs inline during enrollment, so its
-  // latency is directly in the way of the response).
-  const [vitalsRows, labRows, gapRows, barrierRows] = await Promise.all([
+  // latency is directly in the way of the response). The existing plan row is
+  // included so a re-draft builds on what's already there instead of starting
+  // from a blank slate each time (see existingPlanStr below).
+  const [vitalsRows, labRows, gapRows, barrierRows, existingPlanRow] = await Promise.all([
     rpmPid ? db.execute({ sql: 'SELECT * FROM rpm_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 3', args: [rpmPid] }).then(r => r.rows).catch(() => []) : [],
     genPid ? db.execute({ sql: 'SELECT test_name, value, unit, interpretation FROM lab_results WHERE patient_id = ? ORDER BY result_date DESC LIMIT 5', args: [genPid] }).then(r => r.rows).catch(() => []) : [],
     genPid ? db.execute({ sql: "SELECT gap_type, description, priority FROM care_gaps WHERE patient_id = ? AND status = 'open' LIMIT 5", args: [genPid] }).then(r => r.rows).catch(() => []) : [],
     db.execute({ sql: 'SELECT barriers, created_at FROM ccm_checkins WHERE patient_id = ? AND barriers IS NOT NULL ORDER BY created_at DESC LIMIT 3', args: [pid] }).then(r => r.rows).catch(() => []),
+    db.execute({ sql: 'SELECT goals, tasks, care_team FROM ccm_care_plans WHERE patient_id = ?', args: [pid] }).then(r => r.rows[0] || null).catch(() => null),
   ])
 
   let conds = []; let meds = []; let allgs = []
@@ -2643,6 +2646,22 @@ async function draftCarePlanForPatient(pid, patient) {
   const labsStr = labRows.length ? labRows.map(l => `- ${l.test_name}: ${l.value}${l.unit || ''} (${l.interpretation || 'n/a'})`).join('\n') : 'no recent labs on record'
   const gapsStr = gapRows.length ? gapRows.map(g => `- [${g.priority}] ${g.gap_type}: ${g.description}`).join('\n') : 'none open'
   const barriersStr = barrierRows.length ? barrierRows.map(b => `- ${b.created_at?.slice(0, 10)}: ${b.barriers}`).join('\n') : 'none reported recently'
+
+  // Without this, every click regenerated goals/tasks from scratch off the same
+  // clinical snapshot, so two drafts in a row could read as unrelated plans even
+  // though nothing about the patient changed. Feeding the currently-saved plan
+  // back in and telling the model to revise rather than replace makes repeat
+  // drafts converge on the same plan instead of drifting each time.
+  let existingGoals = []; let existingTasks = []; let existingCareTeam = []
+  if (existingPlanRow) {
+    try { existingGoals = JSON.parse(existingPlanRow.goals || '[]') } catch { existingGoals = [] }
+    try { existingTasks = JSON.parse(existingPlanRow.tasks || '[]') } catch { existingTasks = [] }
+    try { existingCareTeam = JSON.parse(existingPlanRow.care_team || '[]') } catch { existingCareTeam = [] }
+  }
+  const hasExistingPlan = existingGoals.length || existingTasks.length || existingCareTeam.length
+  const existingPlanStr = hasExistingPlan
+    ? `Current saved care plan for this patient (goals: ${JSON.stringify(existingGoals)}, tasks: ${JSON.stringify(existingTasks)}, care_team: ${JSON.stringify(existingCareTeam)})`
+    : 'No care plan saved for this patient yet.'
 
   const prompt = `You are a clinical decision support assistant drafting a Chronic Care Management (CCM) care plan for a care manager to review and edit. This is a DRAFT ONLY — it will not be saved automatically.
 Patient: ${patient.name}
@@ -2659,7 +2678,12 @@ ${gapsStr}
 Recent check-in barriers reported by patient:
 ${barriersStr}
 
-Draft a care plan tailored to this patient's actual clinical picture above (not a generic template). Respond with JSON only in this exact shape:
+${existingPlanStr}
+
+${hasExistingPlan
+  ? 'Revise the current saved care plan above to reflect this patient\'s actual clinical picture. Keep goals/tasks/care_team items that are still clinically relevant unchanged (same wording), drop ones no longer supported by the data, and add new ones only where the open care gaps, recent barriers, or abnormal vitals/labs actually call for it. Do not regenerate the whole plan from scratch or reword items that are still valid — an unrelated care manager should be able to tell this is the same plan, refined, not a different plan.'
+  : 'Draft a care plan tailored to this patient\'s actual clinical picture above (not a generic template).'}
+Respond with JSON only in this exact shape:
 {"goals": [{"description": "string", "target": "string", "due": "YYYY-MM-DD or empty string", "status": "not-started"}], "tasks": [{"text": "string", "done": false, "frequency": "string e.g. daily/weekly/monthly/as needed", "due": "YYYY-MM-DD or empty string"}], "care_team": [{"name": "string role placeholder like 'Care Manager' if no name known", "role": "string"}]}
 Provide 2-4 goals and 4-8 tasks addressing the open care gaps and recent barriers where relevant.`
 
@@ -2667,15 +2691,18 @@ Provide 2-4 goals and 4-8 tasks addressing the open care gaps and recent barrier
     model: 'openai/gpt-oss-120b', reasoning_effort: 'low',
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
-    temperature: 0.3, max_tokens: 900,
+    // Low, non-zero temperature: consistent/repeatable revisions of the same
+    // clinical picture rather than a fresh random plan each click, while still
+    // leaving room to react when the underlying data actually changed.
+    temperature: 0.1, max_tokens: 900,
   })
-  // Unlike the other AI-drafting endpoints in this file, this used to be a bare
-  // JSON.parse with no fallback — one malformed LLM response would throw past the
-  // enrollment try/catch and skip the drafted plan entirely with no diagnostic.
+  // Unlike some other AI-drafting endpoints in this file, this used to be a bare
+  // regex + JSON.parse with no fallback for near-miss formatting — switched to
+  // the shared parseAiJson helper used elsewhere so this call site gets the same
+  // resilience (e.g. surviving stray leading/trailing text around the JSON).
   const raw = chat.choices[0].message.content
-  const m = raw.match(/\{[\s\S]*\}/)
-  if (!m) throw new Error('AI returned an unparseable care plan')
-  const parsed = JSON.parse(m[0])
+  let parsed
+  try { parsed = parseAiJson(raw) } catch { throw new Error('AI returned an unparseable care plan') }
   return {
     goals: Array.isArray(parsed.goals) ? parsed.goals : [],
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
