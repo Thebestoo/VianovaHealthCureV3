@@ -5,7 +5,7 @@ import { useKey } from '../context/KeyContext.jsx'
 // Floating "not sure what to do" assistant for beta modules (CCM/RPM). Answers
 // questions about how to use the screen itself — separate from any per-patient
 // clinical AI calls (e.g. check-in note drafting), which live inline in those forms.
-export default function AiHelp({ module, accent = '#8b5cf6' }) {
+export default function AiHelp({ module, accent = '#0e7490' }) {
   const { key } = useKey()
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
@@ -47,6 +47,7 @@ export default function AiHelp({ module, accent = '#8b5cf6' }) {
       <button
         onClick={() => setOpen(o => !o)}
         title="Ask AI what to do"
+        aria-label={open ? 'Close AI help' : 'Ask AI what to do'}
         style={{
           position: 'fixed', bottom: 26, right: 26, zIndex: 1100,
           width: 54, height: 54, borderRadius: '50%', border: 'none', cursor: 'pointer',

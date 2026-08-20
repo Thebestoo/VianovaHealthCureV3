@@ -4,6 +4,7 @@ import {
   UserCheck, Activity, AlertTriangle, Copy, Check
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 
 const PROGRAM_TYPES = ['Diabetes', 'Heart Failure', 'COPD', 'CKD', 'Hypertension', 'Other']
 
@@ -72,6 +73,7 @@ export default function PopulationHealth() {
   const [outreachMsg, setOutreachMsg] = useState(null)
   const [outreachLoading, setOutreachLoading] = useState({})
   const [copied, setCopied] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -88,7 +90,7 @@ export default function PopulationHealth() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this cohort?')) return
+    setConfirmDeleteId(null)
     setDeleting(p => ({ ...p, [id]: true }))
     try {
       await fetch(`/api/cohorts/${id}`, { method: 'DELETE', headers: { 'x-api-key': key } })
@@ -263,7 +265,7 @@ export default function PopulationHealth() {
                         )}
                       </div>
                       <button
-                        onClick={() => handleDelete(cohort.id)}
+                        onClick={() => setConfirmDeleteId(cohort.id)}
                         disabled={deleting[cohort.id]}
                         style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', color: 'var(--danger)', display: 'flex', alignItems: 'center', flexShrink: 0 }}
                         title="Delete cohort"
@@ -466,6 +468,15 @@ export default function PopulationHealth() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete Cohort"
+        message="Delete this cohort? This cannot be undone."
+        danger
+        onConfirm={() => handleDelete(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
 
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
     </div>

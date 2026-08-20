@@ -12,14 +12,14 @@ const CHANNELS = [
 import { useKey } from '../context/KeyContext.jsx'
 
 const PRIORITY_STYLES = {
-  high:   { color: 'var(--danger)', bg: 'var(--danger-light)' },
-  medium: { color: 'var(--warning)', bg: 'var(--warning-light)' },
-  low:    { color: 'var(--success)', bg: 'var(--success-light)' },
+  high:   { color: '#991b1b', bg: 'var(--danger-light)' },
+  medium: { color: '#92400e', bg: 'var(--warning-light)' },
+  low:    { color: '#065f46', bg: 'var(--success-light)' },
 }
 
 const STATUS_STYLES = {
   open:       { color: 'var(--primary)', bg: 'var(--primary-light)' },
-  closed:     { color: 'var(--success)', bg: 'var(--success-light)' },
+  closed:     { color: '#065f46', bg: 'var(--success-light)' },
   suppressed: { color: 'var(--text2)', bg: 'var(--surface2)' },
 }
 

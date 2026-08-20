@@ -4,6 +4,7 @@ import {
   Trash2, CheckCircle2, Copy, Check, Zap, BarChart2, FileText, Activity, Sparkles
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 
@@ -91,6 +92,7 @@ function EventCard({ ev, apiKey, onRefresh }) {
   const [copied, setCopied] = useState(null)
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const sv = severityStyle(ev.severity)
   const st = statusStyle(ev.status)
@@ -127,7 +129,7 @@ function EventCard({ ev, apiKey, onRefresh }) {
   }
 
   async function deleteEv() {
-    if (!window.confirm('Delete this adverse event?')) return
+    setConfirmDelete(false)
     setLoading(true)
     await fetch(`/api/adverse-events/${ev.id}`, { method: 'DELETE', headers: { 'x-api-key': apiKey } })
     onRefresh()
@@ -157,7 +159,7 @@ function EventCard({ ev, apiKey, onRefresh }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          <button onClick={e => { e.stopPropagation(); deleteEv() }} disabled={loading}
+          <button onClick={e => { e.stopPropagation(); setConfirmDelete(true) }} disabled={loading}
             style={{ padding: '4px 8px', border: '1px solid var(--danger-light)', borderRadius: 7, background: 'var(--surface)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             {loading ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={12} />}
           </button>
@@ -260,6 +262,15 @@ function EventCard({ ev, apiKey, onRefresh }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete Adverse Event"
+        message="Delete this adverse event? This cannot be undone."
+        danger
+        onConfirm={deleteEv}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }

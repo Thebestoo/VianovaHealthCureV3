@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-19T00:00:00.000Z",
+  "title": "Design System: Vianova Health",
+  "extensions": {
+    "colorMeta": {
+      "clinical-teal": {
+        "role": "primary",
+        "displayName": "Clinical Teal",
+        "canonical": "#0e7490",
+        "tonalRamp": ["#062e38", "#0a4a58", "#0c5f78", "#0e7490", "#159bb8", "#3fb8d1", "#8ad7e6", "#dff5fa"]
+      },
+      "sky-accent": {
+        "role": "secondary",
+        "displayName": "Sky Accent",
+        "canonical": "#0284c7",
+        "tonalRamp": ["#062b3e", "#0a4864", "#0c608a", "#0284c7", "#38a6dd", "#75c3ea", "#b3e0f4", "#e8f6fc"]
+      },
+      "success": { "role": "semantic", "displayName": "Success", "canonical": "#059669", "tonalRamp": ["#022c22", "#064e3b", "#047857", "#059669", "#34d399", "#6ee7b7", "#a7f3d0", "#d1fae5"] },
+      "warning": { "role": "semantic", "displayName": "Warning", "canonical": "#d97706", "tonalRamp": ["#451a03", "#7c2d12", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fde68a", "#fef3c7"] },
+      "danger": { "role": "semantic", "displayName": "Danger", "canonical": "#dc2626", "tonalRamp": ["#450a0a", "#7f1d1d", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fee2e2"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#0f172a", "tonalRamp": ["#020617", "#0f172a", "#1e293b", "#334155", "#475569", "#94a3b8", "#cbd5e1", "#f1f5f9"] },
+      "canvas": { "role": "neutral", "displayName": "Canvas", "canonical": "#f0f4f8", "tonalRamp": ["#0f172a", "#334155", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f0f4f8", "#f8fafc", "#ffffff"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Stat-card headline numbers only." },
+      "title": { "displayName": "Page Title", "purpose": "One per page, in .page-header h1." },
+      "label-heading": { "displayName": "Label Heading", "purpose": "Topbar title and card-level emphasis headings." },
+      "body": { "displayName": "Body", "purpose": "Default running text, form copy, table body." },
+      "label": { "displayName": "Label", "purpose": "Uppercase eyebrows: table headers, stat labels, section labels." }
+    },
+    "shadows": [
+      { "name": "shadow", "value": "0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04)", "purpose": "Default resting card elevation." },
+      { "name": "shadow-md", "value": "0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04)", "purpose": "Raised state: dropdowns, drawer, hovered secondary buttons." },
+      { "name": "shadow-lg", "value": "0 10px 30px rgba(0,0,0,.10), 0 4px 8px rgba(0,0,0,.06)", "purpose": "Highest layer: bottom nav, topmost overlays." },
+      { "name": "glow-primary", "value": "0 2px 8px rgba(14,116,144,.3)", "purpose": "Reserved for the primary CTA on a screen." },
+      { "name": "glow-danger", "value": "0 4px 16px rgba(220,38,38,.3)", "purpose": "Reserved for critical/emergency banners." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "all .18s", "purpose": "Default transition for buttons and nav items." },
+      { "name": "ease-card", "value": "box-shadow .2s, transform .2s", "purpose": "Card hover elevation + lift." },
+      { "name": "fade-up", "value": "fadeInUp .5s ease both", "purpose": "Staggered stat-card entrance animation." }
+    ],
+    "breakpoints": [
+      { "name": "tablet", "value": "900px" },
+      { "name": "mobile", "value": "640px" },
+      { "name": "xs", "value": "380px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main call-to-action; teal gradient with colored ambient shadow and a 1px hover lift.",
+      "html": "<button class=\"ds-btn-primary\">Save Plan</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 9px; font-size: 13px; font-weight: 600; letter-spacing: .01em; border: none; color: #fff; background: linear-gradient(135deg, #0e7490 0%, #0c6580 100%); box-shadow: 0 2px 8px rgba(14,116,144,.3); transition: all .18s; } .ds-btn-primary:hover { background: linear-gradient(135deg, #0c6580 0%, #0a5670 100%); box-shadow: 0 4px 14px rgba(14,116,144,.4); transform: translateY(-1px); } .ds-btn-primary:focus-visible { outline: 3.5px solid rgba(14,116,144,.35); outline-offset: 1px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutral action button; white fill, bordered, no color shift on hover.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 9px; font-size: 13px; font-weight: 600; letter-spacing: .01em; color: #0f172a; background: #fff; border: 1.5px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,.06); transition: all .18s; } .ds-btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; box-shadow: 0 2px 6px rgba(0,0,0,.08); }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-success",
+      "description": "Pill status indicator; five fixed semantic roles (success/warning/danger/info/neutral).",
+      "html": "<span class=\"ds-badge ds-badge-success\">Active</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .03em; } .ds-badge-success { background: #d1fae5; color: #065f46; } .ds-badge-warning { background: #fef3c7; color: #92400e; } .ds-badge-danger { background: #fee2e2; color: #991b1b; } .ds-badge-info { background: #e0f2fe; color: #0c4a6e; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Base container: white surface, hairline border, soft resting shadow, optional hover lift.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-header\"><span class=\"ds-card-title\">Care Plan</span></div><div class=\"ds-card-body\">Card content goes here.</div></div>",
+      "css": ".ds-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04); transition: box-shadow .2s, transform .2s; } .ds-card-header { padding: 18px 20px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; } .ds-card-title { font-size: 14px; font-weight: 600; color: #0f172a; } .ds-card-body { padding: 20px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard form field; teal border + soft glow ring on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search patients\" />",
+      "css": ".ds-input { width: 100%; padding: 9px 13px; border: 1.5px solid #e2e8f0; border-radius: 9px; font-size: 13.5px; color: #0f172a; background: #fff; outline: none; transition: border-color .15s, box-shadow .15s; } .ds-input::placeholder { color: #94a3b8; } .ds-input:focus { border-color: #0e7490; box-shadow: 0 0 0 3.5px rgba(14,116,144,.12); }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Desktop sidebar navigation row; teal tint background + text when active, no border/shadow.",
+      "html": "<button class=\"ds-nav-item ds-nav-item-active\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/></svg>Dashboard</button>",
+      "css": ".ds-nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 9px; color: #475569; font-size: 13px; font-weight: 500; background: none; border: none; text-align: left; width: 100%; letter-spacing: .01em; transition: all .18s; } .ds-nav-item:hover { background: #f8fafc; color: #0f172a; transform: translateX(2px); } .ds-nav-item-active { background: #e0f2fe; color: #0e7490; font-weight: 600; }"
+    },
+    {
+      "name": "Stat Card",
+      "kind": "custom",
+      "refersTo": "stat-card",
+      "description": "Signature KPI component: large display number, uppercase label, icon chip, hover lift with icon micro-rotation.",
+      "html": "<div class=\"ds-stat-card\"><div class=\"ds-stat-icon\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 2a10 10 0 100 20 10 10 0 000-20z\"/></svg></div><div class=\"ds-stat-val\">128</div><div class=\"ds-stat-label\">Active Patients</div></div>",
+      "css": ".ds-stat-card { padding: 22px 24px; border-radius: 14px; background: #fff; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,.06); transition: transform .25s ease, box-shadow .25s ease; } .ds-stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(15,23,42,.08); } .ds-stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; background: rgba(14,116,144,.08); color: #0e7490; transition: transform .25s ease; } .ds-stat-card:hover .ds-stat-icon { transform: scale(1.08) rotate(-4deg); } .ds-stat-val { font-size: 34px; font-weight: 800; letter-spacing: -.02em; color: #0f172a; line-height: 1.1; } .ds-stat-label { font-size: 13px; font-weight: 600; color: #475569; margin-top: 5px; text-transform: uppercase; letter-spacing: .04em; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Clinical Command Console",
+    "overview": "Vianova reads as an instrument panel for people who live in it all day, not a marketing surface: a fixed sidebar, a sticky topbar, and a scroll area of cards, tables, and stat tiles built for fast scanning under real clinical load. Clinical Teal (#0e7490) is the single signal color — reserved for primary actions, active navigation, focus rings, and the handful of data points that matter most — set against a mostly-neutral canvas of white surfaces, slate borders, and a barely-there blue-gray page background. Status is carried almost entirely through the badge/pill vocabulary (success green, warning amber, danger red, info sky, neutral slate) rather than through decoration, so a care manager scanning a roster reads state at a glance.\n\nThe console idiom also carries the \"multi-role coordination\" half of the brief: badges, stat cards, and table rows are built to represent live operational status (open care gaps, pending cases, active CCM/RPM enrollment) rather than static content, and the layout scales from a 4-role desktop dashboard down to a mobile bottom-tab app without changing its visual language — because a doctor, a care manager, and an admin all need the same trustworthy, low-noise reading of the same data.",
+    "keyCharacteristics": [
+      "One accent (Clinical Teal), used sparingly, against a neutral slate/white palette",
+      "Soft, layered shadows and small hover-lift motion — never flat/brutalist, never heavy/skeuomorphic",
+      "Rounded-but-restrained geometry: 8–14px radii on containers, pill (99px) radii on badges/tabs/search",
+      "Status communicated through a consistent badge vocabulary, not through varying card chrome",
+      "Dense, scanable information layout (tables, stat grids, list+detail panels) over generous whitespace-led layout",
+      "Fully responsive: sidebar+topbar (desktop) → collapsible drawer (tablet) → bottom tab bar (mobile), same components throughout"
+    ],
+    "rules": [
+      { "name": "The One Signal Rule", "body": "Clinical Teal is the only color allowed to mean \"primary action\" or \"currently active.\" Never introduce a second accent hue for emphasis — reach for the semantic status colors (success/warning/danger/sky) instead, which already carry their own fixed meaning.", "section": "colors" },
+      { "name": "The Weight-Over-Size Rule", "body": "Hierarchy is built primarily through font-weight jumps (400 → 600 → 700 → 800) at a narrow size range (11–22px, with 34px reserved only for headline stat values), not through a wide type scale.", "section": "typography" },
+      { "name": "The Structural Breakpoint Rule", "body": "Each breakpoint changes which chrome exists (sidebar↔drawer↔bottom-tabs), not just how big things are. Never simulate a breakpoint with scale/zoom alone.", "section": "layout" },
+      { "name": "The Earned Glow Rule", "body": "A colored (non-gray) shadow is reserved for exactly one thing per screen — the primary CTA or an active emergency/critical banner. Everything else, however elevated, uses the neutral gray shadow scale.", "section": "elevation" },
+      { "name": "The Pill-Means-Status Rule", "body": "Full pill radius (99px) is reserved for small, discrete status/filter/search elements (badges, tags, dropdown pills, tab-adjacent search). Larger content containers stay in the 8–14px range and never go full-pill.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do keep Clinical Teal reserved for primary actions and active/selected state — if something new needs emphasis, reach for a semantic status color first.",
+      "Do pair every card/panel border with a soft neutral shadow; never rely on border-only separation from the canvas.",
+      "Do build hierarchy with font-weight jumps within the existing 11–22px range before reaching for a new type size.",
+      "Do give every breakpoint a real structural change (which chrome exists), matching the existing sidebar → drawer → bottom-tabs pattern, rather than only scaling elements down.",
+      "Do use the pill radius exclusively for small status/filter elements (badges, tags, search, dropdown pills)."
+    ],
+    "donts": [
+      "Don't introduce a second accent hue for \"another important thing\" — it dilutes the One Signal Rule and makes teal stop meaning \"primary.\"",
+      "Don't add decorative illustration, stock photography, or marketing-style hero imagery — this is an Operate-mode tool, not a persuade-mode surface.",
+      "Don't give large containers (cards, modals, panels) a full pill radius — that reads as a button/chip, not a container.",
+      "Don't rely on a gray shadow for the single most important actionable element on a screen when a colored, tinted shadow is available and unclaimed.",
+      "Don't ship a new form input without the established focus contract (teal border + 3.5px soft glow ring)."
+    ]
+  }
+}

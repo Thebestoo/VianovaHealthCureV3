@@ -2,7 +2,7 @@ import React from 'react'
 import { Calendar, Phone, Mail, MapPin, Languages, Heart, Pill, AlertTriangle, FileJson } from 'lucide-react'
 import { toArr, qualityTier } from '../utils/patientUtils.js'
 
-function Tag({ label, color = '#1d4ed8', bg = '#dbeafe' }) {
+function Tag({ label, color = 'var(--primary)', bg = 'var(--primary-light)' }) {
   return (
     <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 600, color, background: bg, margin: '2px 3px 2px 0' }}>{label}</span>
   )

@@ -368,10 +368,12 @@ export default function Admin() {
                               autoFocus
                             />
                             <button onClick={() => saveNotifyEmail(u.id)} disabled={savingNotify === u.id}
+                              aria-label="Save notification email"
                               style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: 'var(--primary)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
                               {savingNotify === u.id ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={11} />}
                             </button>
                             <button onClick={() => setEditNotify(null)}
+                              aria-label="Cancel edit"
                               style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: 'var(--surface2)', cursor: 'pointer' }}>
                               <X size={11} color="var(--text2)" />
                             </button>
@@ -385,6 +387,7 @@ export default function Admin() {
                             )}
                             <button onClick={() => { setEditNotify(u.id); setNotifyVal(u.notify_email || '') }}
                               title="Edit notification email"
+                              aria-label="Edit notification email"
                               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text3)', display: 'flex' }}>
                               <Edit3 size={12} />
                             </button>
@@ -409,10 +412,12 @@ export default function Admin() {
                               {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                             <button onClick={() => saveSpecialty(u.id)} disabled={savingSpecialty === u.id}
+                              aria-label="Save specialty"
                               style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: 'var(--primary)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
                               {savingSpecialty === u.id ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={11} />}
                             </button>
                             <button onClick={() => setEditSpecialty(null)}
+                              aria-label="Cancel edit"
                               style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: 'var(--surface2)', cursor: 'pointer' }}>
                               <X size={11} color="var(--text2)" />
                             </button>
@@ -426,6 +431,7 @@ export default function Admin() {
                             )}
                             <button onClick={() => { setEditSpecialty(u.id); setSpecialtyVal(u.specialty || '') }}
                               title="Edit specialty"
+                              aria-label="Edit specialty"
                               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text3)', display: 'flex' }}>
                               <Edit3 size={12} />
                             </button>
@@ -447,10 +453,12 @@ export default function Admin() {
                               autoFocus
                             />
                             <button onClick={() => savePassword(u.id)} disabled={savingPassword === u.id || !passwordVal.trim()}
+                              aria-label="Save password"
                               style={{ padding: '4px 8px', border: 'none', borderRadius: 6, background: 'var(--primary)', color: 'var(--surface)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
                               {savingPassword === u.id ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={11} />}
                             </button>
                             <button onClick={() => { setEditPassword(null); setPasswordVal('') }}
+                              aria-label="Cancel edit"
                               style={{ padding: '4px 6px', border: 'none', borderRadius: 6, background: 'var(--surface2)', cursor: 'pointer' }}>
                               <X size={11} color="var(--text2)" />
                             </button>
@@ -612,7 +620,7 @@ export default function Admin() {
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Add User</div>
               </div>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}><X size={18} /></button>
+              <button onClick={() => setShowModal(false)} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}><X size={18} /></button>
             </div>
             <form onSubmit={handleCreate} noValidate style={{ padding: '20px 24px' }}>
               <div style={{ marginBottom: 14 }}>

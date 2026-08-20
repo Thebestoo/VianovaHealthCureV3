@@ -3,6 +3,7 @@ import { MessageSquare, Plus, X, Loader2, ShieldCheck, Send, Users, Check, Info,
          CheckCircle, XCircle, Crown, Hash, Siren, BellRing, Search, Bell, BellOff, Trash2, LogOut } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import toast from 'react-hot-toast'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 
 const DEFAULT_RULES = 'No racism, hate speech, or discrimination of any kind.\nNo harassment or personal attacks.\nKeep discussion professional and patient-related.\nRespect patient confidentiality (no PHI outside secure systems).'
 
@@ -118,6 +119,7 @@ export default function Channels() {
   const [search, setSearch] = useState('')
   const [lastReadMap, setLastReadMap] = useState(readLastReadMap)
   const [mutedSet, setMutedSet] = useState(readMutedSet)
+  const [confirmDeleteMsgId, setConfirmDeleteMsgId] = useState(null)
   const scrollRef = useRef(null)
   const seenLastMsgRef = useRef({})
   const selectedIdRef = useRef(null)
@@ -268,6 +270,7 @@ export default function Channels() {
   }
 
   async function deleteMessage(messageId) {
+    setConfirmDeleteMsgId(null)
     try {
       await api(`/api/channels/${selectedId}/messages/${messageId}`, { method: 'DELETE' })
       await loadMessages()
@@ -621,7 +624,7 @@ export default function Channels() {
                                 {m.message}
                               </div>
                               {canDelete && (
-                                <Trash2 size={12} onClick={() => window.confirm('Delete this message?') && deleteMessage(m.id)}
+                                <Trash2 size={12} onClick={() => setConfirmDeleteMsgId(m.id)}
                                   className="msg-meta-hover" style={{ cursor: 'pointer', color: 'var(--text3)', flexShrink: 0 }} />
                               )}
                             </div>
@@ -769,6 +772,15 @@ export default function Channels() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteMsgId}
+        title="Delete Message"
+        message="Delete this message? This cannot be undone."
+        danger
+        onConfirm={() => deleteMessage(confirmDeleteMsgId)}
+        onCancel={() => setConfirmDeleteMsgId(null)}
+      />
 
       <style>{`
         .ch-icon-btn {

@@ -52,9 +52,9 @@ export function computeQualityScore(p) {
 
 /** Colour-coded tier for quality score */
 export function qualityTier(score) {
-  if (score >= 80) return { label: 'High',     color: '#059669', bg: '#d1fae5' }
-  if (score >= 50) return { label: 'Moderate', color: '#d97706', bg: '#fef3c7' }
-  return                  { label: 'Low',      color: '#dc2626', bg: '#fee2e2' }
+  if (score >= 80) return { label: 'High',     color: '#065f46', bg: '#d1fae5' }
+  if (score >= 50) return { label: 'Moderate', color: '#92400e', bg: '#fef3c7' }
+  return                  { label: 'Low',      color: '#991b1b', bg: '#fee2e2' }
 }
 
 /** All supported patient fields with human-readable labels */

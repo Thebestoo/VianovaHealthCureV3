@@ -84,7 +84,7 @@ export default function FhirPreview({ data, fileName }) {
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, color: theme.icon }}>
                     {icon}
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: '#64748b' }}>{v.name}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text2)' }}>{v.name}</span>
                   </div>
                   <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>{v.value}</div>
                   <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>{v.unit}</div>
@@ -117,11 +117,11 @@ export default function FhirPreview({ data, fileName }) {
                 <div style={{ display: 'flex', gap: 6 }}>
                   <span style={{
                     padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-                    background: c.status === 'active' ? '#dcfce7' : '#f1f5f9',
-                    color: c.status === 'active' ? '#15803d' : '#64748b'
+                    background: c.status === 'active' ? 'var(--success-light)' : '#f1f5f9',
+                    color: c.status === 'active' ? 'var(--success)' : 'var(--text2)'
                   }}>{cap(c.status || 'unknown')}</span>
                   {c.verified && (
-                    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#e0f2fe', color: '#0369a1' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: '#e0f2fe', color: 'var(--accent)' }}>
                       {cap(c.verified)}
                     </span>
                   )}
@@ -138,15 +138,15 @@ export default function FhirPreview({ data, fileName }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
             {medications.map((m, i) => (
               <div key={i} style={{
-                padding: '12px 14px', background: '#faf5ff', border: '1.5px solid #ddd6fe', borderRadius: 9
+                padding: '12px 14px', background: '#faf5ff', border: '1.5px solid var(--primary-light)', borderRadius: 9
               }}>
                 <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{m.name}</div>
-                {m.dosage && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>{m.dosage}</div>}
+                {m.dosage && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>{m.dosage}</div>}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8 }}>
                   <span style={{
                     padding: '2px 7px', borderRadius: 99, fontSize: 10.5, fontWeight: 600,
                     background: m.status === 'active' ? '#d1fae5' : '#f1f5f9',
-                    color: m.status === 'active' ? '#059669' : '#64748b'
+                    color: m.status === 'active' ? '#059669' : 'var(--text2)'
                   }}>{cap(m.status || 'unknown')}</span>
                   {m.authored && (
                     <span style={{ fontSize: 11, color: '#94a3b8' }}>since {m.authored}</span>
@@ -164,11 +164,11 @@ export default function FhirPreview({ data, fileName }) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {allergies.map((a, i) => (
               <div key={i} style={{
-                padding: '8px 14px', background: '#fff7ed',
-                border: '1.5px solid #fed7aa', borderRadius: 8
+                padding: '8px 14px', background: 'var(--warning-light)',
+                border: '1.5px solid var(--warning)', borderRadius: 8
               }}>
                 <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{a.substance}</div>
-                {a.reaction && <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>{a.reaction}</div>}
+                {a.reaction && <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 2 }}>{a.reaction}</div>}
                 {a.severity && (
                   <span style={{
                     display: 'inline-block', marginTop: 4, padding: '1px 7px', borderRadius: 99,
@@ -202,7 +202,7 @@ export default function FhirPreview({ data, fileName }) {
 /* ── sub-components ── */
 function Section({ icon, title, accent, children }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--shadow)' }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 9,
         padding: '13px 18px', borderBottom: '1px solid #f1f5f9',

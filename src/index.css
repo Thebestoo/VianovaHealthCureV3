@@ -30,7 +30,7 @@ body {
   --danger-light: #fee2e2;
   --text: #0f172a;
   --text2: #475569;
-  --text3: #94a3b8;
+  --text3: #64748b;
   --radius: 12px;
   --radius-sm: 8px;
   --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
@@ -65,6 +65,41 @@ input, textarea, select { font-family: inherit; }
 .recharts-surface:focus,
 .recharts-sector:focus,
 .recharts-pie-sector:focus { outline: none !important; }
+
+/* ── focus-visible: keyboard-navigation focus ring, teal to match
+   the .form-input focus box-shadow. Generic baseline; pill/rounded
+   interactive elements get a matching border-radius so the ring
+   doesn't look like a square clashing with a rounded control. */
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.form-input:focus-visible, .form-select:focus-visible, .form-textarea:focus-visible {
+  outline: none; /* already has its own focus box-shadow ring above */
+}
+.nav-item:focus-visible, .nav-item-mobile:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: inherit;
+}
+.dropdown-pill:focus-visible, .global-avatar:focus-visible, .icon-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+.tab-item:focus-visible, .bottom-tab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
 
 .page { min-height: 100vh; display: flex; flex-direction: column; }
 .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; width: 100%; }
@@ -292,7 +327,76 @@ input, textarea, select { font-family: inherit; }
   box-shadow: 0 0 0 3.5px rgba(14,116,144,.12);
   outline: none;
 }
+.form-input:disabled, .form-input[disabled],
+.form-select:disabled, .form-select[disabled],
+.form-textarea:disabled, .form-textarea[disabled] {
+  background: var(--surface2);
+  color: var(--text3);
+  border-color: var(--border);
+  opacity: .65;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.form-input.error, .form-input:invalid,
+.form-select.error, .form-select:invalid,
+.form-textarea.error, .form-textarea:invalid {
+  border-color: var(--danger);
+  background: var(--danger-light);
+}
+.form-input.error:focus, .form-input:invalid:focus,
+.form-select.error:focus, .form-select:invalid:focus,
+.form-textarea.error:focus, .form-textarea:invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3.5px rgba(220,38,38,.12);
+}
+.form-error-message {
+  font-size: 11.5px;
+  color: var(--danger);
+  margin-top: 4px;
+  font-weight: 500;
+}
 .form-textarea { resize: vertical; min-height: 90px; }
+
+/* ── modal / confirm dialog ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,.45);
+  z-index: 1200;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.modal-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.modal-header {
+  padding: 22px 24px 4px;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.modal-icon {
+  width: 38px; height: 38px; flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-icon.danger { background: var(--danger-light); color: var(--danger); }
+.modal-icon.neutral { background: var(--primary-light); color: var(--primary); }
+.modal-title { font-weight: 700; font-size: 15px; color: var(--text); margin-top: 2px; }
+.modal-close {
+  margin-left: auto; background: none; border: none; cursor: pointer;
+  color: var(--text3); padding: 4px; border-radius: var(--radius-sm); flex-shrink: 0;
+}
+.modal-close:hover { background: var(--surface2); color: var(--text2); }
+.modal-body {
+  padding: 10px 24px 4px;
+  color: var(--text2); font-size: 13.5px; line-height: 1.6;
+}
+.modal-footer {
+  padding: 20px 24px 24px;
+  display: flex; gap: 10px; justify-content: flex-end;
+}
 .form-hint { font-size: 11.5px; color: var(--text3); margin-top: 4px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
@@ -486,7 +590,7 @@ tr:hover td { background: #fafcff; }
 .bottom-tab {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   flex: 1; padding: 6px 4px; background: none; border: none;
-  color: var(--text3); font-size: 10px; font-weight: 500;
+  color: var(--text3); font-size: 12px; font-weight: 500;
   cursor: pointer; transition: color .15s; border-radius: 10px;
 }
 .bottom-tab.active { color: var(--primary); }

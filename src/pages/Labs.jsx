@@ -6,6 +6,7 @@ import {
 import { useKey } from '../context/KeyContext.jsx'
 import SummaryActions from '../components/SummaryActions.jsx'
 import PatientSnapshot from '../components/PatientSnapshot.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 
 // Typical adult reference ranges, keyed by test name — lets the form
 // auto-fill unit/reference range the moment a known test is picked instead
@@ -180,6 +181,8 @@ export default function Labs() {
   const [saving, setSaving] = useState(false)
   const [saveResult, setSaveResult] = useState(null)
   const [notesSuggesting, setNotesSuggesting] = useState(false)
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -264,7 +267,7 @@ export default function Labs() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this lab result?')) return
+    setConfirmDeleteId(null)
     setDeletingId(id)
     try {
       await fetch(`/api/labs/${id}`, { method: 'DELETE', headers: { 'x-api-key': key } })
@@ -275,7 +278,7 @@ export default function Labs() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.patient_id || !form.test_name || !form.value) return
+    if (!form.patient_id || !form.test_name || !form.value) { setSubmitAttempted(true); return }
     setSaving(true)
     setSaveResult(null)
     try {
@@ -307,6 +310,7 @@ export default function Labs() {
     // they've already selected on this page.
     setForm(freshForm())
     setSaveResult(null)
+    setSubmitAttempted(false)
     setShowModal(true)
   }
   function closeModal() { setShowModal(false); setSaveResult(null) }
@@ -531,7 +535,7 @@ export default function Labs() {
                     {/* Far right: expand + delete */}
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
                       <button
-                        onClick={e => { e.stopPropagation(); handleDelete(result.id) }}
+                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(result.id) }}
                         disabled={deletingId === result.id}
                         style={{
                           padding: '5px 8px', border: '1px solid var(--border)',
@@ -648,11 +652,15 @@ export default function Labs() {
                     <select
                       value={form.patient_id}
                       onChange={e => setField('patient_id', e.target.value)}
-                      className="lab-input" style={inputStyle}
+                      disabled={saving}
+                      className={`lab-input${submitAttempted && !form.patient_id ? ' error' : ''}`} style={inputStyle}
                     >
                       <option value="">— Select patient —</option>
                       {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
+                    {submitAttempted && !form.patient_id && (
+                      <div className="form-error-message">Select a patient before saving this result.</div>
+                    )}
                   </div>
 
                   {/* Test name */}
@@ -664,22 +672,31 @@ export default function Labs() {
                       onChange={e => setTestName(e.target.value)}
                       placeholder="e.g. Glucose"
                       list="test-suggestions"
-                      className="lab-input" style={inputStyle}
+                      disabled={saving}
+                      className={`lab-input${submitAttempted && !form.test_name ? ' error' : ''}`} style={inputStyle}
                     />
                     <datalist id="test-suggestions">
                       {TEST_SUGGESTIONS.map(t => <option key={t} value={t} />)}
                     </datalist>
+                    {submitAttempted && !form.test_name && (
+                      <div className="form-error-message">Test name is required.</div>
+                    )}
                   </div>
 
                   {/* Value + Unit */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
                     <div>
                       <label style={labelStyle}>Value <span style={{ color: 'var(--danger)' }}>*</span></label>
-                      <input type="text" value={form.value} onChange={e => setField('value', e.target.value)} onBlur={() => suggestNotes()} placeholder="e.g. 5.4" className="lab-input" style={inputStyle} />
+                      <input type="text" value={form.value} onChange={e => setField('value', e.target.value)} onBlur={() => suggestNotes()} placeholder="e.g. 5.4"
+                        disabled={saving}
+                        className={`lab-input${submitAttempted && !form.value ? ' error' : ''}`} style={inputStyle} />
+                      {submitAttempted && !form.value && (
+                        <div className="form-error-message">Result value is required.</div>
+                      )}
                     </div>
                     <div>
                       <label style={labelStyle}>Unit</label>
-                      <input type="text" value={form.unit} onChange={e => setField('unit', e.target.value)} placeholder="e.g. mmol/L" className="lab-input" style={inputStyle} />
+                      <input type="text" value={form.unit} onChange={e => setField('unit', e.target.value)} placeholder="e.g. mmol/L" disabled={saving} className="lab-input" style={inputStyle} />
                     </div>
                   </div>
 
@@ -687,18 +704,18 @@ export default function Labs() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
                     <div>
                       <label style={labelStyle}>Reference Low</label>
-                      <input type="text" value={form.reference_low} onChange={e => setField('reference_low', e.target.value)} placeholder="e.g. 3.9" className="lab-input" style={inputStyle} />
+                      <input type="text" value={form.reference_low} onChange={e => setField('reference_low', e.target.value)} placeholder="e.g. 3.9" disabled={saving} className="lab-input" style={inputStyle} />
                     </div>
                     <div>
                       <label style={labelStyle}>Reference High</label>
-                      <input type="text" value={form.reference_high} onChange={e => setField('reference_high', e.target.value)} placeholder="e.g. 7.1" className="lab-input" style={inputStyle} />
+                      <input type="text" value={form.reference_high} onChange={e => setField('reference_high', e.target.value)} placeholder="e.g. 7.1" disabled={saving} className="lab-input" style={inputStyle} />
                     </div>
                   </div>
 
                   {/* Date */}
                   <div style={{ marginBottom: 16 }}>
                     <label style={labelStyle}>Result Date</label>
-                    <input type="date" value={form.result_date} onChange={e => setField('result_date', e.target.value)} className="lab-input" style={inputStyle} />
+                    <input type="date" value={form.result_date} onChange={e => setField('result_date', e.target.value)} disabled={saving} className="lab-input" style={inputStyle} />
                   </div>
 
                   {/* Notes */}
@@ -709,6 +726,7 @@ export default function Labs() {
                       onChange={e => setField('notes', e.target.value)}
                       rows={3}
                       placeholder="Optional clinical notes…"
+                      disabled={saving}
                       className="lab-input" style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }}
                     />
                   </div>
@@ -799,7 +817,19 @@ export default function Labs() {
         @keyframes labModalFade{from{opacity:0}to{opacity:1}}
         @keyframes labModalIn{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
         .lab-input:focus{border-color:var(--primary) !important;box-shadow:0 0 0 3px var(--primary-light)}
+        .lab-input.error{border-color:var(--danger) !important;background:var(--danger-light) !important}
+        .lab-input.error:focus{border-color:var(--danger) !important;box-shadow:0 0 0 3px rgba(220,38,38,.15)}
+        .lab-input:disabled{background:var(--surface2) !important;color:var(--text3) !important;opacity:.65;cursor:not-allowed}
       `}</style>
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete Lab Result"
+        message="Delete this lab result? This cannot be undone."
+        danger
+        onConfirm={() => handleDelete(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   )
 }

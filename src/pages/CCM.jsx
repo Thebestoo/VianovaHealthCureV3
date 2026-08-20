@@ -101,6 +101,7 @@ export default function CCM() {
   const [editCareTeam, setEditCareTeam] = useState([])
   const [editStatus, setEditStatus] = useState('active')
   const [saving, setSaving]         = useState(false)
+  const [planSubmitAttempted, setPlanSubmitAttempted] = useState(false)
   const [expanded, setExpanded]     = useState({})
   const [showDisenroll, setShowDisenroll] = useState(false)
   const [disenrolling, setDisenrolling] = useState(false)
@@ -399,7 +400,20 @@ export default function CCM() {
     setEditGoals(planGoals)
     setEditCareTeam(careTeam)
     setEditStatus(planStatus)
+    setPlanSubmitAttempted(false)
     setShowPlanEdit(true)
+  }
+
+  // A task/goal with blank text, and a care-team member missing its identifying
+  // field (name for a generic member, a selected doctor for a doctor row), can't
+  // be told apart from a placeholder row once saved — so block the save and
+  // point at the empty fields rather than writing them to the committed plan.
+  function planValidationErrors() {
+    return {
+      tasks: editTasks.map(t => !t.text?.trim()),
+      goals: editGoals.map(g => !g.description?.trim()),
+      careTeam: editCareTeam.map(m => m.type === 'doctor' ? !m.doctor_email : !m.name?.trim()),
+    }
   }
 
   async function postPlan() {
@@ -421,6 +435,12 @@ export default function CCM() {
   async function savePlan(e) {
     e.preventDefault()
     if (saving) return
+    const errs = planValidationErrors()
+    if (errs.tasks.some(Boolean) || errs.goals.some(Boolean) || errs.careTeam.some(Boolean)) {
+      setPlanSubmitAttempted(true)
+      toast.error('Fix the highlighted fields before saving the care plan')
+      return
+    }
     setSaving(true)
     try {
       try {
@@ -1301,8 +1321,8 @@ export default function CCM() {
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                <select value={editStatus} onChange={e => setEditStatus(e.target.value)}
-                  style={{ border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 700, color: PLAN_STATUS_COLOR[editStatus], background: PLAN_STATUS_BG[editStatus] }}>
+                <select value={editStatus} onChange={e => setEditStatus(e.target.value)} disabled={saving}
+                  style={{ border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 700, color: PLAN_STATUS_COLOR[editStatus], background: PLAN_STATUS_BG[editStatus], cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? .65 : 1 }}>
                   <option value="draft">Draft</option>
                   <option value="active">Active</option>
                   <option value="completed">Completed</option>
@@ -1319,28 +1339,33 @@ export default function CCM() {
                 {editTasks.length === 0 && (
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10, fontStyle: 'italic' }}>No tasks yet — add one below.</div>
                 )}
-                {editTasks.map((t, i) => (
+                {editTasks.map((t, i) => {
+                  const taskError = planSubmitAttempted && !t.text?.trim()
+                  return (
                   <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10, padding: 12, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface2)' }}>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <input placeholder="Task" value={t.text} onChange={e => setEditTasks(tasks => tasks.map((tk, j) => j === i ? { ...tk, text: e.target.value } : tk))}
-                        className="form-input" style={{ flex: 1 }} />
-                      <button type="button" onClick={() => setEditTasks(tasks => tasks.filter((_, j) => j !== i))}
-                        style={{ background: 'var(--danger-light)', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', color: 'var(--danger)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <input placeholder="Task" value={t.text} disabled={saving}
+                        onChange={e => setEditTasks(tasks => tasks.map((tk, j) => j === i ? { ...tk, text: e.target.value } : tk))}
+                        className={`form-input${taskError ? ' error' : ''}`} style={{ flex: 1 }} />
+                      <button type="button" disabled={saving} onClick={() => setEditTasks(tasks => tasks.filter((_, j) => j !== i))}
+                        style={{ background: 'var(--danger-light)', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: saving ? 'not-allowed' : 'pointer', color: 'var(--danger)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: saving ? .5 : 1 }}>
                         <X size={14} />
                       </button>
                     </div>
+                    {taskError && <div className="form-error-message">Task description can't be empty.</div>}
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <input placeholder="Frequency (e.g. daily)" value={t.frequency || ''}
+                      <input placeholder="Frequency (e.g. daily)" value={t.frequency || ''} disabled={saving}
                         onChange={e => setEditTasks(tasks => tasks.map((tk, j) => j === i ? { ...tk, frequency: e.target.value } : tk))}
                         className="form-input" style={{ flex: 1, fontSize: 12.5, padding: '7px 10px', background: '#fff' }} />
-                      <input type="date" value={t.due || ''}
+                      <input type="date" value={t.due || ''} disabled={saving}
                         onChange={e => setEditTasks(tasks => tasks.map((tk, j) => j === i ? { ...tk, due: e.target.value } : tk))}
                         className="form-input" style={{ width: 'auto', fontSize: 12.5, padding: '7px 10px', background: '#fff' }} />
                     </div>
                   </div>
-                ))}
-                <button type="button" onClick={() => setEditTasks(tasks => [...tasks, { text: '', done: false, frequency: 'as needed', due: null }])}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--primary-light)', border: '1.5px dashed var(--primary)', borderRadius: 9, padding: '10px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--primary-dark)', width: '100%', fontWeight: 600 }}>
+                  )
+                })}
+                <button type="button" disabled={saving} onClick={() => setEditTasks(tasks => [...tasks, { text: '', done: false, frequency: 'as needed', due: null }])}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--primary-light)', border: '1.5px dashed var(--primary)', borderRadius: 9, padding: '10px 12px', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, color: 'var(--primary-dark)', width: '100%', fontWeight: 600, opacity: saving ? .5 : 1 }}>
                   <Plus size={13} /> Add task
                 </button>
               </div>
@@ -1353,25 +1378,28 @@ export default function CCM() {
                 {editGoals.length === 0 && (
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10, fontStyle: 'italic' }}>No goals yet — add one below.</div>
                 )}
-                {editGoals.map((g, i) => (
+                {editGoals.map((g, i) => {
+                  const goalError = planSubmitAttempted && !g.description?.trim()
+                  return (
                   <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10, padding: 12, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface2)' }}>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <input placeholder="Description" value={g.description || ''}
+                      <input placeholder="Description" value={g.description || ''} disabled={saving}
                         onChange={e => setEditGoals(gs => gs.map((gg, j) => j === i ? { ...gg, description: e.target.value } : gg))}
-                        className="form-input" style={{ flex: 1, background: '#fff' }} />
-                      <button type="button" onClick={() => setEditGoals(gs => gs.filter((_, j) => j !== i))}
-                        style={{ background: 'var(--danger-light)', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', color: 'var(--danger)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        className={`form-input${goalError ? ' error' : ''}`} style={{ flex: 1, background: '#fff' }} />
+                      <button type="button" disabled={saving} onClick={() => setEditGoals(gs => gs.filter((_, j) => j !== i))}
+                        style={{ background: 'var(--danger-light)', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: saving ? 'not-allowed' : 'pointer', color: 'var(--danger)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: saving ? .5 : 1 }}>
                         <X size={14} />
                       </button>
                     </div>
+                    {goalError && <div className="form-error-message">Goal description can't be empty.</div>}
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <input placeholder="Target" value={g.target || ''}
+                      <input placeholder="Target" value={g.target || ''} disabled={saving}
                         onChange={e => setEditGoals(gs => gs.map((gg, j) => j === i ? { ...gg, target: e.target.value } : gg))}
                         className="form-input" style={{ flex: 1, background: '#fff' }} />
-                      <input type="date" value={g.due || ''}
+                      <input type="date" value={g.due || ''} disabled={saving}
                         onChange={e => setEditGoals(gs => gs.map((gg, j) => j === i ? { ...gg, due: e.target.value } : gg))}
                         className="form-input" style={{ width: 'auto', background: '#fff' }} />
-                      <select value={g.status || 'not-started'}
+                      <select value={g.status || 'not-started'} disabled={saving}
                         onChange={e => setEditGoals(gs => gs.map((gg, j) => j === i ? { ...gg, status: e.target.value } : gg))}
                         className="form-select" style={{ width: 'auto', background: '#fff' }}>
                         <option value="not-started">Not started</option>
@@ -1380,9 +1408,10 @@ export default function CCM() {
                       </select>
                     </div>
                   </div>
-                ))}
-                <button type="button" onClick={() => setEditGoals(gs => [...gs, { description: '', target: '', due: '', status: 'not-started' }])}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--primary-light)', border: '1.5px dashed var(--primary)', borderRadius: 9, padding: '10px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--primary-dark)', width: '100%', fontWeight: 600 }}>
+                  )
+                })}
+                <button type="button" disabled={saving} onClick={() => setEditGoals(gs => [...gs, { description: '', target: '', due: '', status: 'not-started' }])}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--primary-light)', border: '1.5px dashed var(--primary)', borderRadius: 9, padding: '10px 12px', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, color: 'var(--primary-dark)', width: '100%', fontWeight: 600, opacity: saving ? .5 : 1 }}>
                   <Plus size={13} /> Add goal
                 </button>
               </div>
@@ -1395,9 +1424,12 @@ export default function CCM() {
                 {editCareTeam.length === 0 && (
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10, fontStyle: 'italic' }}>No care team members yet — add one below.</div>
                 )}
-                {editCareTeam.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                    <select value={m.type === 'doctor' ? 'doctor' : 'other'}
+                {editCareTeam.map((m, i) => {
+                  const memberError = planSubmitAttempted && (m.type === 'doctor' ? !m.doctor_email : !m.name?.trim())
+                  return (
+                  <div key={i} style={{ marginBottom: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select value={m.type === 'doctor' ? 'doctor' : 'other'} disabled={saving}
                       onChange={e => {
                         const type = e.target.value
                         setEditCareTeam(ct => ct.map((cm, j) => j === i
@@ -1409,35 +1441,40 @@ export default function CCM() {
                       <option value="doctor">Doctor</option>
                     </select>
                     {m.type === 'doctor' ? (
-                      <select value={m.doctor_email || ''}
+                      <select value={m.doctor_email || ''} disabled={saving}
                         onChange={e => {
                           const doc = doctorDirectory.find(d => d.email === e.target.value)
                           setEditCareTeam(ct => ct.map((cm, j) => j === i ? {
                             ...cm, doctor_email: doc?.email || '', name: doc?.name || '', role: doc?.specialty || 'Doctor',
                           } : cm))
                         }}
-                        className="form-select" style={{ flex: 1 }}>
+                        className={`form-select${memberError ? ' error' : ''}`} style={{ flex: 1 }}>
                         <option value="">Select a doctor…</option>
                         {doctorDirectory.map(d => (
                           <option key={d.email} value={d.email}>{d.name}{d.specialty ? ` — ${d.specialty}` : ''}</option>
                         ))}
                       </select>
                     ) : (
-                      <input placeholder="Name" value={m.name || ''}
+                      <input placeholder="Name" value={m.name || ''} disabled={saving}
                         onChange={e => setEditCareTeam(ct => ct.map((cm, j) => j === i ? { ...cm, name: e.target.value } : cm))}
-                        className="form-input" style={{ flex: 1 }} />
+                        className={`form-input${memberError ? ' error' : ''}`} style={{ flex: 1 }} />
                     )}
-                    <input placeholder="Role" value={m.role || ''} disabled={m.type === 'doctor'}
+                    <input placeholder="Role" value={m.role || ''} disabled={m.type === 'doctor' || saving}
                       onChange={e => setEditCareTeam(ct => ct.map((cm, j) => j === i ? { ...cm, role: e.target.value } : cm))}
                       className="form-input" style={{ flex: 1, background: m.type === 'doctor' ? 'var(--surface2)' : 'var(--surface)' }} />
-                    <button type="button" onClick={() => setEditCareTeam(ct => ct.filter((_, j) => j !== i))}
-                      style={{ background: 'var(--danger-light)', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', color: 'var(--danger)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <button type="button" disabled={saving} onClick={() => setEditCareTeam(ct => ct.filter((_, j) => j !== i))}
+                      style={{ background: 'var(--danger-light)', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: saving ? 'not-allowed' : 'pointer', color: 'var(--danger)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: saving ? .5 : 1 }}>
                       <X size={14} />
                     </button>
+                    </div>
+                    {memberError && (
+                      <div className="form-error-message">{m.type === 'doctor' ? 'Select a doctor for this care team row.' : "Name can't be empty."}</div>
+                    )}
                   </div>
-                ))}
-                <button type="button" onClick={() => setEditCareTeam(ct => [...ct, { type: 'other', name: '', role: '' }])}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--primary-light)', border: '1.5px dashed var(--primary)', borderRadius: 9, padding: '10px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--primary-dark)', width: '100%', fontWeight: 600 }}>
+                  )
+                })}
+                <button type="button" disabled={saving} onClick={() => setEditCareTeam(ct => [...ct, { type: 'other', name: '', role: '' }])}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--primary-light)', border: '1.5px dashed var(--primary)', borderRadius: 9, padding: '10px 12px', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, color: 'var(--primary-dark)', width: '100%', fontWeight: 600, opacity: saving ? .5 : 1 }}>
                   <Plus size={13} /> Add team member
                 </button>
               </div>

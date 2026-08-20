@@ -9,6 +9,7 @@ import { useKey } from '../context/KeyContext.jsx'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { parseFhirBundle } from '../utils/parseFhir.js'
 import FhirPreview from '../components/FhirPreview.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import {
   normalizePhone, normalizeName, normalizeDOB,
   computeQualityScore, qualityTier, PATIENT_FIELDS, parseCSV, toArr
@@ -23,10 +24,12 @@ function Tag({ label, color = '#1d4ed8', bg = '#dbeafe' }) {
 function FL({ children }) {
   return <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>{children}</label>
 }
-function FI({ value, onChange, placeholder, type = 'text', onBlur }) {
+function FI({ value, onChange, placeholder, type = 'text', onBlur, error, disabled }) {
   return (
     <input type={type} value={value} onChange={e => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder}
-      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+      disabled={disabled}
+      className={`form-input${error ? ' error' : ''}`}
+      style={{ width: '100%', boxSizing: 'border-box' }} />
   )
 }
 function Sec({ icon, title, children, wide }) {
@@ -106,7 +109,9 @@ export default function Patients() {
   const [editId, setEditId]       = useState(null)
   const [expanded, setExpanded]   = useState(null)
   const [deleting, setDeleting]   = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
   const [saving, setSaving]       = useState(false)
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const [dupWarning, setDupWarning] = useState('')
   const [patientCases, setPatientCases] = useState({})
   const [casesLoading, setCasesLoading] = useState({})
@@ -306,12 +311,12 @@ export default function Patients() {
 
   // ── Single patient CRUD ───────────────────────────────────────────────────
   function openCreate() {
-    setEditId(null); setForm(EMPTY); setDupWarning('')
+    setEditId(null); setForm(EMPTY); setDupWarning(''); setSubmitAttempted(false)
     setFhirData(null); setFhirFile(''); setFhirError('')
     setShowModal(true)
   }
   function openEdit(p) {
-    setEditId(p.id); setDupWarning('')
+    setEditId(p.id); setDupWarning(''); setSubmitAttempted(false)
     setForm({
       name: p.name || '', dob: p.dob || '', sex: p.sex || '',
       mrn: p.mrn || '', phone: p.phone || '',
@@ -327,7 +332,7 @@ export default function Patients() {
 
   async function handleSave(e) {
     e.preventDefault()
-    if (!form.name.trim()) return
+    if (!form.name.trim()) { setSubmitAttempted(true); return }
     setSaving(true); setDupWarning('')
     const body = {
       ...form,
@@ -351,8 +356,14 @@ export default function Patients() {
     setSaving(false)
   }
 
-  async function handleDelete(p) {
-    if (!window.confirm(`Delete patient "${p.name}"?`)) return
+  function handleDelete(p) {
+    setConfirmDelete(p)
+  }
+
+  async function doDeletePatient() {
+    const p = confirmDelete
+    if (!p) return
+    setConfirmDelete(null)
     setDeleting(p.id)
     try {
       await fetch(`/api/gen-patients/${p.id}`, { method: 'DELETE', headers: { 'x-api-key': key } })
@@ -615,10 +626,10 @@ export default function Patients() {
                               const isEmergency = c.emergency_detected || c.requires_urgent_review
                               const isApproved  = c.status === 'approved'
                               const badge = isEmergency
-                                ? { label: 'Emergency', color: '#dc2626', bg: '#fee2e2' }
+                                ? { label: 'Emergency', color: '#991b1b', bg: '#fee2e2' }
                                 : isApproved
-                                  ? { label: 'Approved', color: '#059669', bg: '#d1fae5' }
-                                  : { label: 'Pending',  color: '#d97706', bg: '#fef3c7' }
+                                  ? { label: 'Approved', color: '#065f46', bg: '#d1fae5' }
+                                  : { label: 'Pending',  color: '#92400e', bg: '#fef3c7' }
                               return (
                                 <div key={c.id} onClick={() => navigate(`/cases/${c.id}`)}
                                   style={{ padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, transition: 'background .15s' }}
@@ -736,58 +747,62 @@ export default function Patients() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                 <div style={{ gridColumn: '1/-1' }}>
                   <FL>Full Name *</FL>
-                  <FI value={form.name} onChange={v => setField('name', v)} placeholder="Jane Smith" />
+                  <FI value={form.name} onChange={v => setField('name', v)} placeholder="Jane Smith"
+                    error={submitAttempted && !form.name.trim()} disabled={saving} />
+                  {submitAttempted && !form.name.trim() && (
+                    <div className="form-error-message">Full name is required.</div>
+                  )}
                 </div>
                 <div>
                   <FL>Date of Birth</FL>
-                  <FI type="date" value={form.dob} onChange={v => setField('dob', v)} />
+                  <FI type="date" value={form.dob} onChange={v => setField('dob', v)} disabled={saving} />
                 </div>
                 <div>
                   <FL>Biological Sex</FL>
-                  <select value={form.sex} onChange={e => setField('sex', e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}>
+                  <select value={form.sex} onChange={e => setField('sex', e.target.value)} disabled={saving}
+                    className="form-select">
                     <option value="">— Select —</option>
                     <option>Male</option><option>Female</option><option>Other</option>
                   </select>
                 </div>
                 <div>
                   <FL>MRN / Patient ID</FL>
-                  <FI value={form.mrn} onChange={v => setField('mrn', v)} placeholder="00123456" />
+                  <FI value={form.mrn} onChange={v => setField('mrn', v)} placeholder="00123456" disabled={saving} />
                 </div>
                 <div>
                   <FL>Phone</FL>
-                  <FI value={form.phone} onChange={v => setField('phone', v)} placeholder="+1 555 000 0000" />
+                  <FI value={form.phone} onChange={v => setField('phone', v)} placeholder="+1 555 000 0000" disabled={saving} />
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
                   <FL>Email</FL>
-                  <FI type="email" value={form.email} onChange={v => setField('email', v)} placeholder="patient@example.com" />
+                  <FI type="email" value={form.email} onChange={v => setField('email', v)} placeholder="patient@example.com" disabled={saving} />
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
                   <FL>Address</FL>
-                  <FI value={form.address} onChange={v => setField('address', v)} placeholder="123 Main St, Springfield, IL 62701" />
+                  <FI value={form.address} onChange={v => setField('address', v)} placeholder="123 Main St, Springfield, IL 62701" disabled={saving} />
                 </div>
                 <div>
                   <FL>Preferred Language</FL>
-                  <FI value={form.language} onChange={v => setField('language', v)} placeholder="e.g. English, Spanish" />
+                  <FI value={form.language} onChange={v => setField('language', v)} placeholder="e.g. English, Spanish" disabled={saving} />
                 </div>
               </div>
 
               <div style={{ marginBottom: 10 }}>
                 <FL>Known Conditions <span style={{ color: '#9ca3af', fontWeight: 400 }}>(comma separated)</span></FL>
-                <FI value={form.conditions} onChange={v => setField('conditions', v)} onBlur={syncNotesFromClinicalFields} placeholder="Diabetes Type 2, Hypertension…" />
+                <FI value={form.conditions} onChange={v => setField('conditions', v)} onBlur={syncNotesFromClinicalFields} placeholder="Diabetes Type 2, Hypertension…" disabled={saving} />
               </div>
               <div style={{ marginBottom: 10 }}>
                 <FL>Current Medications <span style={{ color: '#9ca3af', fontWeight: 400 }}>(comma separated)</span></FL>
-                <FI value={form.medications} onChange={v => setField('medications', v)} onBlur={syncNotesFromClinicalFields} placeholder="Metformin 500mg, Lisinopril 10mg…" />
+                <FI value={form.medications} onChange={v => setField('medications', v)} onBlur={syncNotesFromClinicalFields} placeholder="Metformin 500mg, Lisinopril 10mg…" disabled={saving} />
               </div>
               <div style={{ marginBottom: 10 }}>
                 <FL>Allergies <span style={{ color: '#9ca3af', fontWeight: 400 }}>(comma separated)</span></FL>
-                <FI value={form.allergies} onChange={v => setField('allergies', v)} onBlur={syncNotesFromClinicalFields} placeholder="Penicillin, Sulfa drugs…" />
+                <FI value={form.allergies} onChange={v => setField('allergies', v)} onBlur={syncNotesFromClinicalFields} placeholder="Penicillin, Sulfa drugs…" disabled={saving} />
               </div>
               <div style={{ marginBottom: 20 }}>
                 <FL>Notes</FL>
                 <textarea value={form.notes} onChange={e => setField('notes', e.target.value)} rows={2} placeholder="Additional clinical notes…"
-                  style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+                  disabled={saving} className="form-textarea" style={{ width: '100%', boxSizing: 'border-box' }} />
               </div>
 
               {/* Live quality preview */}
@@ -1005,6 +1020,17 @@ export default function Patients() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete Patient"
+        message={confirmDelete ? `Delete patient "${confirmDelete.name}"? This permanently removes their record and cannot be undone.` : ''}
+        danger
+        confirmLabel="Delete Patient"
+        requireTypedConfirmation={confirmDelete?.name}
+        onConfirm={doDeletePatient}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
     </div>

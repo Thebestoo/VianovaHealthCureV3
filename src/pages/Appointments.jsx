@@ -5,6 +5,7 @@ import {
   User, Stethoscope, Sparkles, Send
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 
 /* ── helpers ── */
 function FL({ children }) {
@@ -98,14 +99,16 @@ function AppointmentCalendar({
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={() => { const d = new Date(year, monthIdx - 1, 1); setMonth(d); setSelectedDay(null) }}
-            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--surface)' }}>
+            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--surface)' }}
+            aria-label="Previous month">
             <ChevronLeft size={16} />
           </button>
           <div style={{ fontWeight: 700, fontSize: 16, minWidth: 150, textAlign: 'center' }}>
             {month.toLocaleString('en-US', { month: 'long', year: 'numeric' })}
           </div>
           <button onClick={() => { const d = new Date(year, monthIdx + 1, 1); setMonth(d); setSelectedDay(null) }}
-            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--surface)' }}>
+            style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--surface)' }}
+            aria-label="Next month">
             <ChevronRight size={16} />
           </button>
           <button onClick={() => { const d = new Date(); d.setDate(1); setMonth(d); setSelectedDay(null) }}
@@ -268,6 +271,7 @@ export default function Appointments() {
   const [calendarMonth, setCalendarMonth] = useState(() => { const d = new Date(); d.setDate(1); return d })
   const [selectedDay, setSelectedDay] = useState(null)
   const [notifyingAll, setNotifyingAll] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -311,7 +315,7 @@ export default function Appointments() {
   }
 
   async function deleteAppt(id) {
-    if (!window.confirm('Delete this appointment?')) return
+    setConfirmDeleteId(null)
     setActionLoading(a => ({ ...a, [`${id}_del`]: true }))
     try {
       await fetch(`/api/appointments/${id}`, { method: 'DELETE', headers: { 'x-api-key': key } })
@@ -498,7 +502,7 @@ async function aiSuggest(patientId = form.patient_id) {
                         {a.reminder_sent ? 'Sent' : 'Remind'}
                       </button>
                     </>}
-                    <button onClick={() => deleteAppt(a.id)} disabled={!!actionLoading[`${a.id}_del`]}
+                    <button onClick={() => setConfirmDeleteId(a.id)} disabled={!!actionLoading[`${a.id}_del`]}
                       style={{ padding: '5px 8px', border: '1px solid var(--danger-light)', borderRadius: 7, background: 'var(--surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--danger)' }}>
                       {actionLoading[`${a.id}_del`] ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <X size={13} />}
                     </button>
@@ -603,6 +607,15 @@ async function aiSuggest(patientId = form.patient_id) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete Appointment"
+        message="Delete this appointment? This cannot be undone."
+        danger
+        onConfirm={() => deleteAppt(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
 
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
     </div>

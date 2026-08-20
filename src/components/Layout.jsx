@@ -277,7 +277,7 @@ export default function Layout({ children }) {
       {/* ── Mobile top header ── */}
       <header className="mobile-header">
         <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 20, width: 'auto', display: 'block' }} />
-        <button className="mobile-menu-btn" onClick={() => setMenuOpen(o => !o)}>
+        <button className="mobile-menu-btn" onClick={() => setMenuOpen(o => !o)} aria-label={menuOpen ? 'Close menu' : 'Open menu'}>
           {menuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
       </header>
@@ -362,8 +362,8 @@ export default function Layout({ children }) {
             }} />
           </div>
           <div className="global-topbar-right">
-            <button className="icon-btn" title="Calls" onClick={() => navigate('/calls')}><Phone size={16} /></button>
-            <button className="icon-btn" title="Team" onClick={() => navigate('/patients')}><Users2 size={16} /></button>
+            <button className="icon-btn" title="Calls" aria-label="Calls" onClick={() => navigate('/calls')}><Phone size={16} /></button>
+            <button className="icon-btn" title="Team" aria-label="Team" onClick={() => navigate('/patients')}><Users2 size={16} /></button>
             <div className="global-topbar-divider" />
             <div style={{ position: 'relative' }}>
               <button className="global-avatar" onClick={() => isConnected ? setProfileMenuOpen(o => !o) : navigate('/login')} title={isConnected ? 'Account' : 'Sign in'}>
@@ -439,7 +439,7 @@ export default function Layout({ children }) {
           <div className="card" style={{ padding: 0, width: 340, boxShadow: '0 24px 64px rgba(0,0,0,.2)', animation: 'modalIn .2s ease', border: 'none' }}>
             <div className="card-header">
               <span className="card-title">Profile Settings</span>
-              <button onClick={() => setSettingsOpen(false)} className="icon-btn" style={{ borderRadius: '50%', border: 'none', background: 'var(--surface2)' }}>
+              <button onClick={() => setSettingsOpen(false)} className="icon-btn" style={{ borderRadius: '50%', border: 'none', background: 'var(--surface2)' }} aria-label="Close profile settings">
                 <X size={15} />
               </button>
             </div>
@@ -454,7 +454,7 @@ export default function Layout({ children }) {
                       : <span style={{ fontSize: 36, fontWeight: 800, color: '#fff' }}>{(label || '?').charAt(0).toUpperCase()}</span>
                     }
                   </div>
-                  <button onClick={() => fileRef.current?.click()} style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: '50%', background: 'var(--primary)', border: '2px solid #fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <button onClick={() => fileRef.current?.click()} style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: '50%', background: 'var(--primary)', border: '2px solid #fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Upload photo">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                   </button>
                 </div>

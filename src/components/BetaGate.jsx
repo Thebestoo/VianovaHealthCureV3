@@ -10,7 +10,7 @@ function isUnlocked(featureKey) {
   return sessionStorage.getItem(`vnh_beta_unlocked_${featureKey}`) === '1'
 }
 
-export default function BetaGate({ featureKey, title, accent = '#8b5cf6', children }) {
+export default function BetaGate({ featureKey, title, accent = '#0e7490', children }) {
   const [unlocked, setUnlocked] = useState(() => isUnlocked(featureKey))
   const [code, setCode] = useState('')
   const [error, setError] = useState('')

@@ -1,0 +1,29 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": "15px",
+        "createdAt": "2026-08-20T08:41:47.762Z",
+        "reason": "Matches KeyModal.jsx's existing modal-title font-size (15px), the canonical modal pattern this new ConfirmDialog intentionally mirrors"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#991b1b",
+        "createdAt": "2026-08-20T09:11:51.611Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#92400e",
+        "createdAt": "2026-08-20T09:11:51.706Z"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#065f46",
+        "createdAt": "2026-08-20T09:11:51.796Z"
+      }
+    ]
+  }
+}

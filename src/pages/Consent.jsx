@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
 import SummaryActions from '../components/SummaryActions.jsx'
+import ConfirmDialog from '../components/ConfirmDialog.jsx'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -36,13 +37,13 @@ const CONSENT_TEMPLATES = {
 
 const TYPE_COLORS = {
   treatment:                  { color: 'var(--primary-dark)', bg: 'var(--primary-light)' },
-  research:                   { color: '#7c3aed', bg: '#ede9fe' },
-  data_sharing:               { color: '#0891b2', bg: '#cffafe' },
+  research:                   { color: 'var(--accent)', bg: 'var(--primary-light)' },
+  data_sharing:               { color: 'var(--accent)', bg: 'var(--primary-light)' },
   marketing:                  { color: 'var(--text2)', bg: 'var(--surface2)' },
   sensitive_mental_health:    { color: 'var(--danger)', bg: 'var(--danger-light)' },
   sensitive_substance_abuse:  { color: 'var(--danger)', bg: 'var(--danger-light)' },
   sensitive_hiv:              { color: 'var(--warning)', bg: 'var(--warning-light)' },
-  sensitive_reproductive:     { color: '#9d174d', bg: '#fce7f3' },
+  sensitive_reproductive:     { color: 'var(--danger)', bg: 'var(--danger-light)' },
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ function StatusBadge({ status, expiresAt }) {
     pending:            { label: 'Pending Signature',  color: 'var(--warning)', bg: 'var(--warning-light)' },
     revoked:            { label: 'Revoked',            color: 'var(--danger)', bg: 'var(--danger-light)' },
     expired:            { label: 'Expired',            color: 'var(--text2)', bg: 'var(--surface2)' },
-    deletion_requested: { label: 'Deletion Requested', color: '#7c2d12', bg: '#ffedd5' },
+    deletion_requested: { label: 'Deletion Requested', color: '#7c2d12', bg: 'var(--warning-light)' },
   }
   const s = map[status] || { label: status, color: 'var(--text2)', bg: 'var(--surface2)' }
   return (
@@ -168,6 +169,7 @@ function ConsentCard({ c, apiKey, onRefresh }) {
   const [working, setWorking] = useState(false)
   const [deleteWorking, setDeleteWorking] = useState(false)
   const [deleteReport, setDeleteReport] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const fhirParsed = c.fhir_consent ? (() => { try { return JSON.parse(c.fhir_consent) } catch { return null } })() : null
 
@@ -192,7 +194,7 @@ function ConsentCard({ c, apiKey, onRefresh }) {
   }
 
   async function doDeleteRequest() {
-    if (!window.confirm('Submit GDPR right-to-delete request? This will flag the patient record for data deletion review.')) return
+    setConfirmDelete(false)
     setDeleteWorking(true)
     const r = await fetch(`/api/consent/${c.id}/delete-request`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ reason: 'Patient requested data deletion under GDPR right to erasure' }) })
     const d = await r.json()
@@ -243,7 +245,7 @@ function ConsentCard({ c, apiKey, onRefresh }) {
             </button>
           )}
           {c.status === 'active' && (
-            <button className="btn btn-secondary btn-sm" onClick={doDeleteRequest} disabled={deleteWorking} style={{ color: '#7c3aed' }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setConfirmDelete(true)} disabled={deleteWorking} style={{ color: 'var(--danger)' }}>
               {deleteWorking ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <><X size={12} /> GDPR Delete</>}
             </button>
           )}
@@ -279,7 +281,7 @@ function ConsentCard({ c, apiKey, onRefresh }) {
 
       {/* GDPR Delete Report */}
       {deleteReport && (
-        <div style={{ marginTop: 12, padding: '12px 14px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
+        <div style={{ marginTop: 12, padding: '12px 14px', background: 'var(--warning-light)', border: '1px solid var(--warning)', borderRadius: 8 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: '#7c2d12', marginBottom: 8 }}>GDPR Deletion Report</div>
           {deleteReport.summary && <p style={{ fontSize: 12, color: 'var(--text)', margin: '0 0 8px' }}>{deleteReport.summary}</p>}
           {deleteReport.summary && (
@@ -295,8 +297,8 @@ function ConsentCard({ c, apiKey, onRefresh }) {
 
       {/* Revoke Modal */}
       {showRevokeModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={e => e.target === e.currentTarget && setShowRevokeModal(false)}>
-          <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 400, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={e => e.target === e.currentTarget && setShowRevokeModal(false)}>
+          <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 400, padding: 24, boxShadow: 'var(--shadow-lg)' }}>
             <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--danger)', marginBottom: 12 }}>Revoke Consent</div>
             <FL>Reason for revocation (optional)</FL>
             <TextareaEl rows={3} value={revokeReason} onChange={e => setRevokeReason(e.target.value)} placeholder="Patient withdrew consent…" />
@@ -312,8 +314,8 @@ function ConsentCard({ c, apiKey, onRefresh }) {
 
       {/* Sign Modal */}
       {showSignModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={e => e.target === e.currentTarget && setShowSignModal(false)}>
-          <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 420, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={e => e.target === e.currentTarget && setShowSignModal(false)}>
+          <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 420, padding: 24, boxShadow: 'var(--shadow-lg)' }}>
             <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 14 }}>Capture E-Signature</div>
             <div style={{ marginBottom: 12 }}>
               <FL>Signee Name *</FL>
@@ -336,8 +338,8 @@ function ConsentCard({ c, apiKey, onRefresh }) {
 
       {/* Break-Glass Modal */}
       {showBgModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={e => e.target === e.currentTarget && setShowBgModal(false)}>
-          <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 420, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.25)', border: '2px solid var(--warning)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }} onClick={e => e.target === e.currentTarget && setShowBgModal(false)}>
+          <div style={{ background: 'var(--surface)', borderRadius: 12, width: '100%', maxWidth: 420, padding: 24, boxShadow: 'var(--shadow-lg)', border: '2px solid var(--warning)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <Zap size={18} color="var(--warning)" />
               <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--warning)' }}>Emergency Break-Glass Access</span>
@@ -354,6 +356,17 @@ function ConsentCard({ c, apiKey, onRefresh }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="GDPR Right-to-Delete Request"
+        message="Submit GDPR right-to-delete request? This will flag the patient record for data deletion review."
+        danger
+        confirmLabel="Submit Request"
+        requireTypedConfirmation={c.patient_name}
+        onConfirm={doDeleteRequest}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }
@@ -385,8 +398,8 @@ function NewConsentModal({ patients, onClose, onSaved, apiKey }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '28px 16px', overflowY: 'auto' }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.22)', marginBottom: 28 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '28px 16px', overflowY: 'auto' }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: 560, boxShadow: 'var(--shadow-lg)', marginBottom: 28 }}>
         <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}><ShieldCheck size={18} color="var(--primary)" /> New Consent</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 4 }}><X size={18} /></button>
@@ -598,7 +611,7 @@ export default function Consent() {
 
         {/* Page header */}
         <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,var(--primary),#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <ShieldCheck size={24} color="var(--surface)" />
           </div>
           <div>
@@ -614,7 +627,7 @@ export default function Consent() {
             { label: 'Active', value: stats.active, color: 'var(--success)', bg: 'var(--success-light)', icon: CheckCircle2 },
             { label: 'Expiring Soon', value: stats.expiring, color: 'var(--warning)', bg: 'var(--warning-light)', icon: Bell },
             { label: 'Violations', value: stats.violations, color: 'var(--danger)', bg: 'var(--danger-light)', icon: AlertTriangle },
-            { label: 'Pending Deletion', value: stats.pendingDeletion, color: '#7c2d12', bg: '#ffedd5', icon: X },
+            { label: 'Pending Deletion', value: stats.pendingDeletion, color: '#7c2d12', bg: 'var(--warning-light)', icon: X },
           ].map(({ label, value, color, bg, icon: Icon }) => (
             <div key={label} style={{ background: bg, borderRadius: 14, padding: '22px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
               <Icon size={24} color={color} />

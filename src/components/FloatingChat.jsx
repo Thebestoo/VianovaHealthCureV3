@@ -3,6 +3,7 @@ import { MessageCircle, X, Home, MessageSquare, Ticket, Send, Check, XCircle,
          ArrowRight, ChevronDown, Clock, CheckCircle, AlertCircle, BookOpen, PhoneOff,
          AlertTriangle, Ban, HandMetal, ShieldAlert, Lock } from 'lucide-react'
 import { useKey } from '../context/KeyContext.jsx'
+import ConfirmDialog from './ConfirmDialog.jsx'
 
 /* ─── helpers ────────────────────────────────────────────────────── */
 const fmtTime = ts => new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -86,10 +87,10 @@ function clearStoredTimeout() {
 
 /* ─── Avatar ─────────────────────────────────────────────────────── */
 const GRAD = {
-  superadmin: 'linear-gradient(135deg,#1d6ef5,#38bdf8)',
+  superadmin: 'linear-gradient(135deg,var(--primary),var(--accent))',
   doctor:     'linear-gradient(135deg,#059669,#34d399)',
   nurse:      'linear-gradient(135deg,#d97706,#fbbf24)',
-  default:    'linear-gradient(135deg,#7c3aed,#a78bfa)',
+  default:    'linear-gradient(135deg,var(--primary),var(--primary-dark))',
 }
 const Avatar = memo(function Avatar({ name, size = 36, role, src }) {
   if (src) return <img src={src} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
@@ -118,7 +119,7 @@ const InputBar = memo(function InputBar({ value, onChange, onSend, disabled, fwd
         />
         <button onClick={onSend} disabled={disabled || !value.trim()} style={{
           width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: disabled || !value.trim() ? 'default' : 'pointer',
-          background: (!disabled && value.trim()) ? 'linear-gradient(135deg,#1d6ef5,#0ea5e9)' : '#e2e8f0',
+          background: (!disabled && value.trim()) ? 'linear-gradient(135deg,var(--primary),var(--accent))' : '#e2e8f0',
           display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s',
         }}><Send size={14} color="#fff" /></button>
       </div>
@@ -170,7 +171,7 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
       {!mine && <Avatar name={msg.sender_name} size={26} role={msg.sender_role} src={msg.sender_avatar} />}
       <div style={{ maxWidth: '74%' }}>
         {!mine && <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3, paddingLeft: 2, fontWeight: 600 }}>{msg.sender_name}</div>}
-        <div style={{ padding: '9px 13px', fontSize: 13.5, lineHeight: 1.55, borderRadius: mine ? '16px 16px 3px 16px' : '3px 16px 16px 16px', background: mine ? 'linear-gradient(135deg,#1d6ef5,#0ea5e9)' : '#f1f5f9', color: mine ? '#fff' : '#1e293b', wordBreak: 'break-word' }}>
+        <div style={{ padding: '9px 13px', fontSize: 13.5, lineHeight: 1.55, borderRadius: mine ? '16px 16px 3px 16px' : '3px 16px 16px 16px', background: mine ? 'linear-gradient(135deg,var(--primary),var(--accent))' : '#f1f5f9', color: mine ? '#fff' : '#1e293b', wordBreak: 'break-word' }}>
           {msg.message}
         </div>
         <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 3, textAlign: mine ? 'right' : 'left', paddingInline: 3 }}>{fmtTime(msg.created_at)}</div>
@@ -182,14 +183,14 @@ const Bubble = memo(function Bubble({ msg, myEmail }) {
 /* ─── Blue gradient header (chat view) ──────────────────────────── */
 const ChatHeader = memo(function ChatHeader({ name, subRole, avatar, onEnd, onReview, onClose, isAdmin }) {
   return (
-    <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}>
+    <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,var(--primary),var(--accent))' }}>
       <div style={{ padding: '10px 14px 0' }}>
         <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 15, width: 'auto', filter: 'brightness(0) invert(1)', opacity: .9 }} />
       </div>
       <div style={{ padding: '10px 14px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ position: 'relative' }}>
           <Avatar name={name} size={38} role={subRole} src={avatar || undefined} />
-          <span style={{ position: 'absolute', bottom: 1, right: 1, width: 9, height: 9, background: '#22c55e', borderRadius: '50%', border: '2px solid #1a65e8' }} />
+          <span style={{ position: 'absolute', bottom: 1, right: 1, width: 9, height: 9, background: 'var(--success)', borderRadius: '50%', border: '2px solid var(--primary)' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ color: 'rgba(255,255,255,.65)', fontSize: 10.5 }}>Chat with</div>
@@ -207,8 +208,8 @@ const ChatHeader = memo(function ChatHeader({ name, subRole, avatar, onEnd, onRe
       </div>
       <svg viewBox="0 0 375 22" style={{ display: 'block', width: '100%' }}><path d="M0,8 C80,22 220,0 375,14 L375,22 L0,22 Z" fill="#fff" /></svg>
       <div style={{ background: '#fff', padding: '2px 14px 8px', display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-        <span style={{ fontSize: 11.5, color: '#64748b' }}>We are online</span>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--success)', display: 'inline-block' }} />
+        <span style={{ fontSize: 11.5, color: 'var(--text2)' }}>We are online</span>
       </div>
     </div>
   )
@@ -217,7 +218,7 @@ const ChatHeader = memo(function ChatHeader({ name, subRole, avatar, onEnd, onRe
 /* ─── Blue gradient header (home/tabs view) ──────────────────────── */
 const HomeHeader = memo(function HomeHeader({ label, role, avatar, escalatedCount, onClose }) {
   return (
-    <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)' }}>
+    <div style={{ flexShrink: 0, background: 'linear-gradient(135deg,var(--primary),var(--accent))' }}>
       <div style={{ padding: '12px 14px 0' }}>
         <img src="/vianova-logo.svg" alt="Vianova Health" style={{ height: 15, width: 'auto', filter: 'brightness(0) invert(1)', opacity: .9 }} />
       </div>
@@ -230,7 +231,7 @@ const HomeHeader = memo(function HomeHeader({ label, role, avatar, escalatedCoun
         {role === 'superadmin' && escalatedCount > 0 && (
           <span style={{ background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 11, padding: '2px 8px', borderRadius: 99, flexShrink: 0 }}>{escalatedCount} urgent</span>
         )}
-        <button onClick={onClose} style={{ background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <button onClick={onClose} style={{ background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} aria-label="Close chat">
           <X size={15} color="#fff" />
         </button>
       </div>
@@ -247,7 +248,7 @@ const TabBar = memo(function TabBar({ tab, setTab, isSuperAdmin, escalatedCount 
   return (
     <div style={{ display: 'flex', borderTop: '1px solid #f1f5f9', background: '#fff', flexShrink: 0 }}>
       {tabs.map(t => (
-        <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: '9px 0 7px', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: tab === t.id ? '#1d6ef5' : '#94a3b8', borderTop: `2px solid ${tab === t.id ? '#1d6ef5' : 'transparent'}`, fontSize: 10, fontWeight: tab === t.id ? 700 : 400, position: 'relative', transition: 'color .15s' }}>
+        <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: '9px 0 7px', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: tab === t.id ? 'var(--primary)' : '#94a3b8', borderTop: `2px solid ${tab === t.id ? 'var(--primary)' : 'transparent'}`, fontSize: 10, fontWeight: tab === t.id ? 700 : 400, position: 'relative', transition: 'color .15s' }}>
           <t.Icon size={17} strokeWidth={tab === t.id ? 2.3 : 1.7} />
           {t.label}
           {t.badge > 0 && <span style={{ position: 'absolute', top: 5, left: '50%', marginLeft: 5, background: '#ef4444', color: '#fff', borderRadius: 99, fontSize: 9, fontWeight: 800, padding: '0 4px', lineHeight: '13px' }}>{t.badge}</span>}
@@ -261,7 +262,7 @@ const TabBar = memo(function TabBar({ tab, setTab, isSuperAdmin, escalatedCount 
 const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, onNewChat, onGoMessages, onGoTickets, starting, history, onViewHistory }) {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <button onClick={onNewChat} disabled={starting} style={{ borderRadius: 14, padding: '16px 18px', background: 'linear-gradient(135deg,#1a65e8,#7c3aed)', border: 'none', cursor: starting ? 'default' : 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, opacity: starting ? .7 : 1, boxShadow: '0 4px 20px rgba(26,101,232,.3)' }}>
+      <button onClick={onNewChat} disabled={starting} style={{ borderRadius: 14, padding: '16px 18px', background: 'linear-gradient(135deg,var(--primary),var(--primary))', border: 'none', cursor: starting ? 'default' : 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, opacity: starting ? .7 : 1, boxShadow: '0 4px 20px rgba(14,116,144,.3)' }}>
         <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,255,255,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {starting ? <div style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,.4)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'fc-spin 1s linear infinite' }} /> : <MessageSquare size={20} color="#fff" />}
         </div>
@@ -272,13 +273,13 @@ const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, 
         <ArrowRight size={16} color="rgba(255,255,255,.6)" />
       </button>
 
-      <div style={{ borderRadius: 12, padding: '12px 14px', border: '1.5px solid #bbf7d0', background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 11 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 9, background: '#fff', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+      <div style={{ borderRadius: 12, padding: '12px 14px', border: '1.5px solid var(--success-light)', background: 'var(--success-light)', display: 'flex', alignItems: 'center', gap: 11 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 9, background: '#fff', border: '1px solid var(--success-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
           <img src="/vianova-logo.svg" alt="Vianova Health" style={{ width: 20, height: 'auto' }} />
         </div>
         <div>
           <div style={{ color: '#047857', fontWeight: 700, fontSize: 12.5 }}>All Systems Operational</div>
-          <div style={{ color: '#6b7280', fontSize: 11, marginTop: 1 }}>Vianova Health Platform</div>
+          <div style={{ color: 'var(--text2)', fontSize: 11, marginTop: 1 }}>Vianova Health Platform</div>
         </div>
       </div>
 
@@ -288,24 +289,24 @@ const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, 
       </button>
 
       {role === 'superadmin' && escalatedCount > 0 && (
-        <button onClick={onGoTickets} style={{ borderRadius: 12, padding: '12px 14px', border: '1.5px solid #fecaca', background: '#fff7f7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 11 }}>
+        <button onClick={onGoTickets} style={{ borderRadius: 12, padding: '12px 14px', border: '1.5px solid var(--danger-light)', background: 'var(--danger-light)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 11 }}>
           <span style={{ background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 13, width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{escalatedCount}</span>
           <div style={{ flex: 1, textAlign: 'left' }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: '#dc2626' }}>Urgent admin requests</div>
-            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>Tap to review</div>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 1 }}>Tap to review</div>
           </div>
           <ArrowRight size={15} color="#ef4444" />
         </button>
       )}
 
       {hasActiveSession && (
-        <button onClick={onGoMessages} style={{ borderRadius: 12, padding: '12px 14px', border: '1.5px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 11 }}>
-          <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <button onClick={onGoMessages} style={{ borderRadius: 12, padding: '12px 14px', border: '1.5px solid var(--border)', background: '#eff6ff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 11 }}>
+          <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,var(--primary),var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <MessageSquare size={14} color="#fff" />
           </div>
           <div style={{ flex: 1, textAlign: 'left' }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: '#1d6ef5' }}>Resume chat</div>
-            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>You have an ongoing conversation</div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--primary)' }}>Resume chat</div>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 1 }}>You have an ongoing conversation</div>
           </div>
           <ArrowRight size={15} color="#1d6ef5" />
         </button>
@@ -334,21 +335,22 @@ const HomeTab = memo(function HomeTab({ role, escalatedCount, hasActiveSession, 
 
 /* ─── Status badge config ────────────────────────────────────────── */
 const STATUS_STYLE = {
-  open:      { bg: '#eff6ff', color: '#1d6ef5', border: '#bfdbfe', label: 'Open',     Icon: Clock },
-  escalated: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', label: 'Urgent',   Icon: AlertCircle },
-  active:    { bg: '#f0fdf4', color: '#059669', border: '#bbf7d0', label: 'Active',   Icon: CheckCircle },
+  open:      { bg: '#eff6ff', color: 'var(--primary)', border: 'var(--border)', label: 'Open',     Icon: Clock },
+  escalated: { bg: '#fef2f2', color: '#dc2626', border: 'var(--danger-light)', label: 'Urgent',   Icon: AlertCircle },
+  active:    { bg: 'var(--success-light)', color: '#059669', border: 'var(--success-light)', label: 'Active',   Icon: CheckCircle },
   closed:    { bg: '#f8fafc', color: '#94a3b8', border: '#e2e8f0', label: 'Closed',   Icon: XCircle },
-  reviewed:  { bg: '#faf5ff', color: '#7c3aed', border: '#e9d5ff', label: 'Reviewed', Icon: BookOpen },
+  reviewed:  { bg: '#faf5ff', color: 'var(--text2)', border: 'var(--border)', label: 'Reviewed', Icon: BookOpen },
 }
 
 /* ─── TicketsTab ─────────────────────────────────────────────────── */
 const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOpen, onCloseTicket, filter, setFilter }) {
   const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter)
+  const [confirmClose, setConfirmClose] = useState(null)
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: '8px 12px 4px', display: 'flex', gap: 5, flexShrink: 0, overflowX: 'auto' }}>
         {['all', 'escalated', 'active', 'open', 'closed'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{ padding: '3px 10px', borderRadius: 99, border: `1px solid ${filter === f ? '#1d6ef5' : '#e2e8f0'}`, background: filter === f ? '#1d6ef5' : '#fff', color: filter === f ? '#fff' : '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0, textTransform: 'capitalize', transition: 'all .15s' }}>
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '3px 10px', borderRadius: 99, border: `1px solid ${filter === f ? 'var(--primary)' : '#e2e8f0'}`, background: filter === f ? 'var(--primary)' : '#fff', color: filter === f ? '#fff' : 'var(--text2)', fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0, textTransform: 'capitalize', transition: 'all .15s' }}>
             {f}
           </button>
         ))}
@@ -359,7 +361,7 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
             <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Ticket size={24} color="#d1d5db" strokeWidth={1.5} />
             </div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#64748b' }}>No {filter === 'all' ? '' : filter} tickets</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text2)' }}>No {filter === 'all' ? '' : filter} tickets</div>
             <div style={{ fontSize: 12, color: '#94a3b8' }}>All chat sessions appear here.</div>
           </div>
         )}
@@ -371,7 +373,7 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
                 <Avatar name={t.created_by_name} size={30} role={t.created_by_role} src={t.created_by_avatar} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.created_by_name}</div>
-                  <div style={{ fontSize: 11, color: '#64748b', textTransform: 'capitalize' }}>{t.created_by_role}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'capitalize' }}>{t.created_by_role}</div>
                 </div>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 99, background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
                   <st.Icon size={10} strokeWidth={2.5} /> {st.label}
@@ -384,14 +386,14 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
                 {t.admin_name && t.status === 'active' && <><span>·</span><span style={{ color: '#059669', fontWeight: 600 }}>w/ {t.admin_name}</span></>}
               </div>
               {(t.status === 'closed' || t.status === 'reviewed') && t.closed_by_name && (
-                <div style={{ marginTop: 5, fontSize: 11, color: t.resolution === 'reviewed' ? '#7c3aed' : '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ marginTop: 5, fontSize: 11, color: t.resolution === 'reviewed' ? 'var(--text2)' : '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
                   {t.resolution === 'reviewed' ? <BookOpen size={11} /> : <XCircle size={11} />}
                   {t.resolution === 'reviewed' ? `Sent to review by ${t.closed_by_name}` : `Closed by ${t.closed_by_name}`}
                 </div>
               )}
               {t.status === 'escalated' && (
                 <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
-                  <button onClick={() => onAccept(t)} style={{ flex: 1, padding: '7px 0', borderRadius: 10, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                  <button onClick={() => onAccept(t)} style={{ flex: 1, padding: '7px 0', borderRadius: 10, background: 'linear-gradient(135deg,var(--primary),var(--accent))', border: 'none', color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                     <Check size={13} /> Join Chat
                   </button>
                   <button onClick={() => onDecline(t)} style={{ flex: 1, padding: '7px 0', borderRadius: 10, background: '#fff', border: '1.5px solid #fca5a5', color: '#ef4444', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
@@ -405,7 +407,7 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
                 </button>
               )}
               {(t.status === 'open' || t.status === 'active') && (
-                <button onClick={() => { if (window.confirm(`Close this ticket from ${t.created_by_name}?`)) onCloseTicket(t) }} style={{ marginTop: 7, width: '100%', padding: '6px 0', borderRadius: 10, background: '#fff', border: '1.5px solid #fecaca', color: '#ef4444', fontWeight: 600, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                <button onClick={() => setConfirmClose(t)} style={{ marginTop: 7, width: '100%', padding: '6px 0', borderRadius: 10, background: '#fff', border: '1.5px solid var(--danger-light)', color: '#ef4444', fontWeight: 600, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                   <Lock size={12} /> Close ticket
                 </button>
               )}
@@ -413,6 +415,16 @@ const TicketsTab = memo(function TicketsTab({ tickets, onAccept, onDecline, onOp
           )
         })}
       </div>
+
+      <ConfirmDialog
+        open={!!confirmClose}
+        title="Close Ticket"
+        message={confirmClose ? `Close this ticket from ${confirmClose.created_by_name}?` : ''}
+        danger
+        confirmLabel="Close Ticket"
+        onConfirm={() => { onCloseTicket(confirmClose); setConfirmClose(null) }}
+        onCancel={() => setConfirmClose(null)}
+      />
     </div>
   )
 })
@@ -423,7 +435,7 @@ const TicketViewer = memo(function TicketViewer({ ticket, messages, myEmail, onC
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid #f1f5f9', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#64748b', display: 'flex', alignItems: 'center' }}>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text2)', display: 'flex', alignItems: 'center' }}>
           <ArrowRight size={15} style={{ transform: 'rotate(180deg)' }} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -785,9 +797,9 @@ export default function FloatingChat() {
   const hasActiveSession = session && session.status !== 'closed'
 
   const banner = !isSuperAdmin && session?.status === 'escalated'
-    ? { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', Icon: ShieldAlert, text: 'Admin call sent — joining shortly…' }
+    ? { bg: '#fef2f2', color: '#dc2626', border: 'var(--danger-light)', Icon: ShieldAlert, text: 'Admin call sent — joining shortly…' }
     : !isSuperAdmin && session?.status === 'active'
-    ? { bg: '#f0fdf4', color: '#059669', border: '#bbf7d0', Icon: CheckCircle,  text: `${session.admin_name || 'Admin'} joined the chat` }
+    ? { bg: 'var(--success-light)', color: '#059669', border: 'var(--success-light)', Icon: CheckCircle,  text: `${session.admin_name || 'Admin'} joined the chat` }
     : null
 
   return (
@@ -796,7 +808,7 @@ export default function FloatingChat() {
         @keyframes fc-pulse   { 0%{transform:scale(1);opacity:1} 100%{transform:scale(1.8);opacity:0} }
         @keyframes fc-spin    { to{transform:rotate(360deg)} }
         @keyframes fc-slidein { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-        .fc-win { animation: fc-slidein .2s ease both; position: fixed; bottom: 96px; right: 28px; z-index: 9998; width: 370px; height: 540px; border-radius: 20px; background: #fff; box-shadow: 0 20px 60px rgba(0,0,0,.18); display: flex; flex-direction: column; overflow: hidden; isolation: isolate; }
+        .fc-win { animation: fc-slidein .2s ease both; position: fixed; bottom: 96px; right: 28px; z-index: 9998; width: 370px; height: 540px; border-radius: 20px; background: #fff; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; overflow: hidden; isolation: isolate; }
         .fc-launcher { position: fixed; bottom: 28px; right: 28px; z-index: 9999; width: 60px; height: 60px; }
         @media (max-width: 480px) {
           .fc-win { bottom: 0; right: 0; left: 0; top: 0; width: 100%; height: 100%; border-radius: 0; }
@@ -805,12 +817,13 @@ export default function FloatingChat() {
       `}</style>
 
       {/* launcher button */}
-      <button className="fc-launcher" onClick={() => setOpen(o => !o)} style={{ borderRadius: '50%', background: 'linear-gradient(135deg,#1a65e8,#0ea5e9)', border: 'none', cursor: 'pointer', boxShadow: '0 6px 24px rgba(26,101,232,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .15s' }}
+      <button className="fc-launcher" onClick={() => setOpen(o => !o)} style={{ borderRadius: '50%', background: 'linear-gradient(135deg,var(--primary),var(--accent))', border: 'none', cursor: 'pointer', boxShadow: '0 6px 24px rgba(14,116,144,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .15s' }}
         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+        aria-label={open ? 'Close chat' : 'Open chat'}
       >
         {open ? <X size={22} color="#fff" /> : <MessageCircle size={25} color="#fff" />}
-        {!open && escalatedCount === 0 && <span style={{ position: 'absolute', inset: -5, borderRadius: '50%', border: '2px solid rgba(26,101,232,.35)', animation: 'fc-pulse 2.2s ease-out infinite' }} />}
+        {!open && escalatedCount === 0 && <span style={{ position: 'absolute', inset: -5, borderRadius: '50%', border: '2px solid rgba(14,116,144,.35)', animation: 'fc-pulse 2.2s ease-out infinite' }} />}
         {!open && escalatedCount > 0 && <span style={{ position: 'absolute', top: -3, right: -3, minWidth: 19, height: 19, borderRadius: 10, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff', padding: '0 3px' }}>{escalatedCount}</span>}
       </button>
 
@@ -859,7 +872,7 @@ export default function FloatingChat() {
                 )}
                 {!viewHistory && starting && (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                    <div style={{ width: 36, height: 36, border: '3px solid #e2e8f0', borderTop: '3px solid #1d6ef5', borderRadius: '50%', animation: 'fc-spin 1s linear infinite' }} />
+                    <div style={{ width: 36, height: 36, border: '3px solid #e2e8f0', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'fc-spin 1s linear infinite' }} />
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>Opening chat…</div>
                   </div>
                 )}
@@ -869,18 +882,18 @@ export default function FloatingChat() {
                       <MessageSquare size={26} color="#1d6ef5" strokeWidth={1.5} />
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>No active conversation</div>
-                    <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>Press <strong>New Message</strong> on the Home tab to start.</div>
-                    <button onClick={startChat} style={{ padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>Start Chat</button>
+                    <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>Press <strong>New Message</strong> on the Home tab to start.</div>
+                    <button onClick={startChat} style={{ padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,var(--primary),var(--accent))', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>Start Chat</button>
                   </div>
                 )}
                 {!viewHistory && !starting && session && session.status === 'closed' && (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '0 24px', textAlign: 'center' }}>
-                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--success-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <CheckCircle size={28} color="#059669" strokeWidth={1.5} />
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>Chat ended</div>
-                    <div style={{ fontSize: 13, color: '#64748b' }}>Thank you for reaching out!</div>
-                    <button onClick={() => { setSession(null); setMessages([]) }} style={{ marginTop: 8, padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>New Chat</button>
+                    <div style={{ fontSize: 13, color: 'var(--text2)' }}>Thank you for reaching out!</div>
+                    <button onClick={() => { setSession(null); setMessages([]) }} style={{ marginTop: 8, padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,var(--primary),var(--accent))', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>New Chat</button>
                   </div>
                 )}
                 {!viewHistory && !starting && session && session.status !== 'closed' && (
@@ -905,7 +918,7 @@ export default function FloatingChat() {
                     <div style={{ width: 50, height: 50, borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <MessageSquare size={22} color="#d1d5db" />
                     </div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: '#64748b' }}>No active chat</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text2)' }}>No active chat</div>
                     <div style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6 }}>Accept an <strong>!admincall</strong> from the Tickets tab.</div>
                     {escalatedCount > 0 && <button onClick={() => setTab('tickets')} style={{ padding: '9px 18px', borderRadius: 12, background: '#ef4444', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}><ShieldAlert size={14} /> {escalatedCount} Request{escalatedCount > 1 ? 's' : ''}</button>}
                   </div>
@@ -918,10 +931,10 @@ export default function FloatingChat() {
                       <PhoneOff size={22} color="#94a3b8" />
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>Session closed</div>
-                    <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
                       <strong>{activeSession.created_by_name}</strong> has ended the chat and no longer needs assistance.
                     </div>
-                    <button onClick={dismissClosedAdminChat} style={{ padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,#1d6ef5,#0ea5e9)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>
+                    <button onClick={dismissClosedAdminChat} style={{ padding: '10px 22px', borderRadius: 12, background: 'linear-gradient(135deg,var(--primary),var(--accent))', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>
                       Back to Tickets
                     </button>
                   </div>

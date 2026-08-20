@@ -104,8 +104,8 @@ function AppRoutes() {
               <Route path="/admin"            element={<P component={Admin} />} />
               <Route path="/channels"         element={<P component={Channels} />} />
               <Route path="/calls"            element={<P component={Calls} />} />
-              <Route path="/ccm"              element={<PBeta component={CCM} featureKey="ccm" title="Chronic Care Management" accent="#8b5cf6" />} />
-              <Route path="/rpm"              element={<PBeta component={RPM} featureKey="rpm" title="Remote Patient Monitoring" accent="#0ea5e9" />} />
+              <Route path="/ccm"              element={<PBeta component={CCM} featureKey="ccm" title="Chronic Care Management" accent="#0e7490" />} />
+              <Route path="/rpm"              element={<PBeta component={RPM} featureKey="rpm" title="Remote Patient Monitoring" accent="#0e7490" />} />
               <Route path="/rpm-ccm-guide"    element={<P component={RpmCcmGuide} />} />
             </Routes>
           </Suspense>

@@ -297,12 +297,12 @@ export default function CaseReview() {
 
           {/* red flags noted, but not a full emergency escalation */}
           {!emergencyDetected && a?.red_flags?.present && a.red_flags.items?.length > 0 && (
-            <div style={{ padding: '10px 14px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: '#9a3412', fontSize: 13, marginBottom: 8 }}>
+            <div style={{ padding: '10px 14px', background: 'var(--warning-light)', border: '1px solid var(--warning)', borderRadius: 8, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: 'var(--warning)', fontSize: 13, marginBottom: 8 }}>
                 <TriangleAlert size={14} /> Red Flags Noted
               </div>
               <div className="pill-row">
-                {a.red_flags.items.map((it, i) => <span key={i} className="pill" style={{ color: '#9a3412', borderColor: '#fed7aa' }}>{it}</span>)}
+                {a.red_flags.items.map((it, i) => <span key={i} className="pill" style={{ color: 'var(--warning)', borderColor: 'var(--warning)' }}>{it}</span>)}
               </div>
             </div>
           )}
@@ -345,13 +345,13 @@ export default function CaseReview() {
                     return (
                       <div key={i} style={{
                         padding: '8px 12px', borderRadius: 8,
-                        background: s > 0 ? '#fff7ed' : '#f0fdf4',
-                        border: `1.5px solid ${s > 0 ? '#fed7aa' : '#bbf7d0'}`,
+                        background: s > 0 ? 'var(--warning-light)' : 'var(--success-light)',
+                        border: `1.5px solid ${s > 0 ? 'var(--warning)' : 'var(--success-light)'}`,
                         minWidth: 110,
                       }}>
                         <div style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 600, marginBottom: 2 }}>{v.name}</div>
                         <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{v.value} <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>{v.unit}</span></div>
-                        {s !== undefined && <div style={{ fontSize: 10.5, marginTop: 3, color: s > 0 ? '#ea580c' : '#059669', fontWeight: 600 }}>+{s} pts</div>}
+                        {s !== undefined && <div style={{ fontSize: 10.5, marginTop: 3, color: s > 0 ? 'var(--warning)' : '#059669', fontWeight: 600 }}>+{s} pts</div>}
                       </div>
                     )
                   })}
@@ -360,13 +360,13 @@ export default function CaseReview() {
                 {/* vital flags */}
                 {vFlags.length > 0 && (
                   <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em' }}>Abnormal Values</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Abnormal Values</div>
                     {vFlags.map((f, i) => (
                       <div key={i} style={{
                         display: 'flex', alignItems: 'center', gap: 10,
                         padding: '8px 12px', borderRadius: 8,
-                        background: f.severity === 'critical' ? '#fee2e2' : '#fff7ed',
-                        border: `1px solid ${f.severity === 'critical' ? '#fecaca' : '#fed7aa'}`,
+                        background: f.severity === 'critical' ? '#fee2e2' : 'var(--warning-light)',
+                        border: `1px solid ${f.severity === 'critical' ? 'var(--danger-light)' : 'var(--warning)'}`,
                       }}>
                         <TriangleAlert size={14} color={f.severity === 'critical' ? '#dc2626' : '#d97706'} />
                         <div style={{ flex: 1 }}>
@@ -419,7 +419,7 @@ export default function CaseReview() {
               {a?.patient_snapshot?.special_population_flags?.length > 0 && (
                 <div>
                   <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Special Population Flags</dt>
-                  <div className="pill-row">{a.patient_snapshot.special_population_flags.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--warning)', borderColor: '#fcd34d' }}>{v}</span>)}</div>
+                  <div className="pill-row">{a.patient_snapshot.special_population_flags.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--warning)', borderColor: 'var(--warning)' }}>{v}</span>)}</div>
                 </div>
               )}
             </div>
@@ -458,7 +458,7 @@ export default function CaseReview() {
                             cursor: isCurrent ? 'default' : 'pointer',
                             padding: '8px 12px', borderRadius: 7,
                             background: isCurrent ? '#f0f9ff' : 'var(--surface2)',
-                            border: isCurrent ? '1px solid #bae6fd' : '1px solid transparent',
+                            border: isCurrent ? '1px solid var(--primary-light)' : '1px solid transparent',
                           }} onClick={() => { if (!isCurrent) navigate(`/cases/${t.case_id}`) }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                               <span style={{ fontSize: 12, color: 'var(--text3)' }}>{new Date(t.created_at).toLocaleDateString()}</span>
@@ -529,13 +529,13 @@ export default function CaseReview() {
               {symptoms?.aggravating_factors?.length > 0 && (
                 <div className="mb-4">
                   <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Aggravating Factors</dt>
-                  <div className="pill-row">{symptoms.aggravating_factors.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--warning)', borderColor: '#fcd34d' }}>{v}</span>)}</div>
+                  <div className="pill-row">{symptoms.aggravating_factors.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--warning)', borderColor: 'var(--warning)' }}>{v}</span>)}</div>
                 </div>
               )}
               {symptoms?.relieving_factors?.length > 0 && (
                 <div>
                   <dt style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 500, marginBottom: 5 }}>Relieving Factors</dt>
-                  <div className="pill-row">{symptoms.relieving_factors.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--success)', borderColor: '#bbf7d0' }}>{v}</span>)}</div>
+                  <div className="pill-row">{symptoms.relieving_factors.map((v, i) => <span key={i} className="pill" style={{ color: 'var(--success)', borderColor: 'var(--success-light)' }}>{v}</span>)}</div>
                 </div>
               )}
             </div>
@@ -570,8 +570,8 @@ export default function CaseReview() {
                 {retestRequired.map((t, i) => (
                   <div key={i} style={{
                     padding: '8px 12px', borderRadius: 7, marginBottom: 7,
-                    background: t.priority === 'urgent' ? '#fee2e2' : '#fff7ed',
-                    border: `1px solid ${t.priority === 'urgent' ? '#fecaca' : '#fed7aa'}`,
+                    background: t.priority === 'urgent' ? '#fee2e2' : 'var(--warning-light)',
+                    border: `1px solid ${t.priority === 'urgent' ? 'var(--danger-light)' : 'var(--warning)'}`,
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <strong style={{ fontSize: 13, color: '#0f172a' }}>{t.test}</strong>
@@ -625,7 +625,7 @@ export default function CaseReview() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {icdSuggestions.map((s, i) => (
                     <div key={i} style={{
-                      background: '#f0fdf4', border: '1px solid #bbf7d0',
+                      background: 'var(--success-light)', border: '1px solid var(--success-light)',
                       padding: '6px 10px', borderRadius: 7, fontSize: 12.5,
                       display: 'inline-flex', alignItems: 'center', gap: 6,
                     }}>
@@ -671,12 +671,12 @@ export default function CaseReview() {
                     <div key={i} style={{
                       display: 'flex', alignItems: 'center', gap: 8,
                       padding: '8px 12px', borderRadius: 7,
-                      background: '#fff7ed', border: '1px solid #fed7aa',
-                      fontSize: 13, color: '#9a3412',
+                      background: 'var(--warning-light)', border: '1px solid var(--warning)',
+                      fontSize: 13, color: 'var(--warning)',
                     }}>
                       <AlertTriangle size={14} color="#d97706" />
                       <span><strong>{f.a}</strong> &harr; <strong>{f.b}</strong></span>
-                      <span style={{ marginLeft: 'auto', fontSize: 11, color: '#92400e' }}>potential interaction reported</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--warning)' }}>potential interaction reported</span>
                     </div>
                   ))}
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>
@@ -751,7 +751,7 @@ export default function CaseReview() {
                           <div style={{ marginTop: 7 }}>
                             <div style={{ fontSize: 11.5, color: 'var(--text3)', fontWeight: 600, marginBottom: 3 }}>CONTRAINDICATIONS TO CHECK</div>
                             <div className="pill-row">
-                              {contraindications.map((c, j) => <span key={j} className="pill" style={{ color: 'var(--warning)', borderColor: '#fcd34d', fontSize: 11.5 }}>{c}</span>)}
+                              {contraindications.map((c, j) => <span key={j} className="pill" style={{ color: 'var(--warning)', borderColor: 'var(--warning)', fontSize: 11.5 }}>{c}</span>)}
                             </div>
                           </div>
                         )}
@@ -805,7 +805,7 @@ export default function CaseReview() {
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text3)', marginBottom: 5 }}>INTERACTION RISKS</div>
                   {interactionRisks.map((r, i) => (
-                    <div key={i} style={{ padding: '8px 12px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 7, marginBottom: 6, fontSize: 13, color: '#9a3412' }}>{r}</div>
+                    <div key={i} style={{ padding: '8px 12px', background: 'var(--warning-light)', border: '1px solid var(--warning)', borderRadius: 7, marginBottom: 6, fontSize: 13, color: 'var(--warning)' }}>{r}</div>
                   ))}
                 </div>
               )}
